@@ -1,0 +1,123 @@
+import 'bank_statement_monthly.dart';
+import 'models.dart';
+import 'spend_categories.dart';
+
+bool _inMonth(DateTime d, DateTime reference) {
+  return d.year == reference.year && d.month == reference.month;
+}
+
+DateTime _firstDayOfPreviousMonth(DateTime ref) {
+  if (ref.month == 1) return DateTime(ref.year - 1, 12, 1);
+  return DateTime(ref.year, ref.month - 1, 1);
+}
+
+/// Sum of positive inflows in the calendar month of [reference].
+double totalIncomeInMonth(List<Transaction> txs, DateTime reference) {
+  var sum = 0.0;
+  for (final t in txs) {
+    if (t.amount > 0 && _inMonth(t.date, reference)) {
+      sum += t.amount;
+    }
+  }
+  return sum;
+}
+
+/// Count of statement rows whose effective category is Uncategorized.
+int uncategorizedTransactionCount(
+  List<Transaction> txs, {
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) {
+  var n = 0;
+  for (final t in txs) {
+    if (!isBankStatementDataRow(t)) continue;
+    final label = spendGroupLabelForDisplay(
+      t,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+    );
+    if (label.trim().toLowerCase() == 'uncategorized') n++;
+  }
+  return n;
+}
+
+/// Spending by category (outflows, non-income labels), same rules as dashboard top categories.
+Map<String, double> _spendByCategoryInMonth(
+  List<Transaction> txs,
+  DateTime month,
+  Map<String, String> categoryOverrides,
+  Map<String, String> categoryDisplayRenamesLower,
+) {
+  final map = <String, double>{};
+  for (final t in txs) {
+    if (t.amount >= 0) continue;
+    if (!_inMonth(t.date, month)) continue;
+    final base = spendGroupLabel(t, categoryOverrides: categoryOverrides);
+    if (isIncomeCategoryLabel(base)) continue;
+    final name = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
+    map[name] = (map[name] ?? 0) + (-t.amount);
+  }
+  return map;
+}
+
+double? _percentChange(double prev, double current) {
+  if (prev <= 0) return null;
+  return (current - prev) / prev;
+}
+
+/// Top [limit] spending categories for [reference] month with change vs previous month.
+List<CategoryLeakStat> biggestCategoryLeaks(
+  List<Transaction> txs,
+  DateTime reference, {
+  int limit = 3,
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) {
+  final thisMonth = _spendByCategoryInMonth(
+    txs,
+    reference,
+    categoryOverrides,
+    categoryDisplayRenamesLower,
+  );
+  final prevRef = _firstDayOfPreviousMonth(reference);
+  final lastMonth = _spendByCategoryInMonth(
+    txs,
+    prevRef,
+    categoryOverrides,
+    categoryDisplayRenamesLower,
+  );
+
+  final sorted =
+      thisMonth.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+  final top = sorted.take(limit).toList();
+
+  return top
+      .map((e) {
+        final name = e.key;
+        final cur = e.value;
+        final prev = lastMonth[name] ?? 0.0;
+        return CategoryLeakStat(
+          name: name,
+          amountThisMonth: cur,
+          amountLastMonth: prev,
+          percentChangeFromLastMonth: _percentChange(prev, cur),
+        );
+      })
+      .toList();
+}
+
+/// Days of runway if [spentThisMonth] continues at per-day pace for elapsed days in month.
+int? runwayDaysFromBurnRate({
+  required double totalBalance,
+  required double spentThisMonth,
+  required DateTime referenceInMonth,
+}) {
+  if (totalBalance <= 0 || spentThisMonth <= 0) return null;
+  final day = referenceInMonth.day;
+  final daily = spentThisMonth / (day < 1 ? 1 : day);
+  if (daily <= 0 || daily.isNaN) return null;
+  final days = (totalBalance / daily).floor();
+  if (days < 0) return null;
+  return days;
+}

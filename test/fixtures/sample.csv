@@ -1,0 +1,13 @@
+Date,Description,Amount,Category,Balance
+2024-04-01,Grocery Mart,-42.10,Groceries,957.90
+2024-04-02,Coffee,-4.50,Food,953.40
+2024-04-03,Payroll deposit,2500.00,Income,3453.40
+2024-04-04,Rent payment,-1200.00,Housing,2253.40
+2024-04-05,Electric bill,-88.20,Utilities,2165.20
+2024-04-06,Transfer to savings,-200.00,Savings,1965.20
+2024-04-07,Grocery Mart,-61.30,Groceries,1903.90
+2024-04-08,Restaurant,-36.75,Food,1867.15
+2024-04-09,Unknown shop,-12.00,Uncategorized,1855.15
+2024-04-10,Pharmacy,-18.40,Health,1836.75
+2024-04-11,Streaming,-15.99,Subscriptions,1820.76
+2024-04-12,Gym,-29.00,Fitness,1791.76
