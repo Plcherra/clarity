@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../bank_statement_monthly.dart';
 import '../formatting.dart';
 import '../models.dart';
+import 'budgets_screen.dart';
 import 'month_detail_screen.dart';
 import 'uncategorized_transactions_screen.dart';
 
@@ -65,6 +66,18 @@ class DashboardScreen extends StatelessWidget {
                             color: cs.onSurface.withValues(alpha: 0.38),
                             fontWeight: FontWeight.w600,
                           ),
+                        ),
+                        const SizedBox(height: 20),
+                        FilledButton(
+                          onPressed: () {
+                            Navigator.of(context).push<void>(
+                              MaterialPageRoute<void>(
+                                builder: (context) =>
+                                    BudgetsScreen(appState: appState),
+                              ),
+                            );
+                          },
+                          child: const Text('Set Budgets'),
                         ),
                         const SizedBox(height: 20),
                         if (appState.uncategorizedCount > 0) ...[

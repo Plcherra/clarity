@@ -3,8 +3,12 @@ import 'package:flutter/material.dart';
 import 'app_state.dart';
 import 'screens/upload_screen.dart';
 
-void main() {
-  runApp(ClarityApp(appState: AppState()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final appState = AppState();
+  await appState.hydratePersistedBudgets();
+  await appState.hydrateCategoryRules();
+  runApp(ClarityApp(appState: appState));
 }
 
 final class ClarityApp extends StatelessWidget {

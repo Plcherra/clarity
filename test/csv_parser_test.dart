@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:clarity/app_state.dart';
 import 'package:clarity/balance_resolve.dart';
+import 'package:clarity/category_rule.dart';
 import 'package:clarity/csv_parser.dart';
 import 'package:clarity/models.dart';
 import 'package:clarity/spend_categories.dart';
@@ -70,6 +71,101 @@ void main() {
       amount: -800,
     );
     expect(spendGroupLabel(rent), 'Housing');
+  });
+
+  test('reversal and NSF map to Ignored; transfer does not false-positive', () {
+    expect(
+      spendGroupLabel(
+        Transaction(
+          date: DateTime(2024, 4, 1),
+          description: 'ACH NSF fee for payment',
+          amount: -35,
+        ),
+      ),
+      kIgnoredCategoryLabel,
+    );
+    expect(
+      spendGroupLabel(
+        Transaction(
+          date: DateTime(2024, 4, 1),
+          description: 'Payment RETURNED',
+          amount: -20,
+        ),
+      ),
+      kIgnoredCategoryLabel,
+    );
+    expect(
+      spendGroupLabel(
+        Transaction(
+          date: DateTime(2024, 4, 1),
+          description: 'Transfer to savings',
+          amount: -200,
+        ),
+      ),
+      isNot(kIgnoredCategoryLabel),
+    );
+  });
+
+  test('manual override wins over reversal detection', () {
+    final t = Transaction(
+      date: DateTime(2024, 4, 1),
+      description: 'NSF fee',
+      amount: -10,
+    );
+    final key = transactionCategoryKey(t);
+    expect(
+      spendGroupLabel(
+        t,
+        categoryOverrides: {key: 'Shopping'},
+      ),
+      'Shopping',
+    );
+  });
+
+  test('Ignored excluded from spentThisMonth income and topCategories', () async {
+    const csv = '''
+Date,Description,Amount
+2024-04-01,Normal shop,-50.00
+2024-04-02,ACH NSF RETURN,-25.00
+2024-04-03,Merchant refund REVERSAL,40.00''';
+    final state = AppState();
+    state.loadFromCsv(csv, reference: DateTime(2024, 4, 15));
+    expect(state.spentThisMonth, closeTo(50, 0.01));
+    expect(state.incomeThisMonth, closeTo(0, 0.01));
+    expect(
+      state.topCategories.map((c) => c.name),
+      isNot(contains(kIgnoredCategoryLabel)),
+    );
+  });
+
+  test('spendGroupLabel user rules match outflow descriptions only', () {
+    final nero = Transaction(
+      date: DateTime(2024, 4, 1),
+      description: 'NERO CAMBRIDGE MA',
+      amount: -12,
+    );
+    final rules = [
+      CategoryRule(
+        id: '1',
+        pattern: 'nero',
+        matchType: CategoryRule.matchTypeContains,
+        categoryCanonical: 'Coffee / Quick Food',
+        createdAt: DateTime.utc(2020),
+      ),
+    ];
+    expect(
+      spendGroupLabel(nero, categoryRules: rules),
+      'Coffee / Quick Food',
+    );
+    final zelleIn = Transaction(
+      date: DateTime(2024, 4, 1),
+      description: 'Zelle payment from Alice',
+      amount: 50,
+    );
+    expect(
+      spendGroupLabel(zelleIn, categoryRules: rules),
+      'Income / Zelle Received',
+    );
   });
 
   test('suggestCategoryFromDescription catches payroll and Zelle received', () {

@@ -1,4 +1,39 @@
+import 'category_description_normalize.dart';
+import 'category_rule.dart';
 import 'models.dart';
+
+/// System category for returned / reversed / NSF lines (not in normal picker or budgets).
+const String kIgnoredCategoryLabel = 'Ignored';
+
+bool isIgnoredCategoryLabel(String label) =>
+    label.trim().toLowerCase() == kIgnoredCategoryLabel.toLowerCase();
+
+bool _descWordMatch(String haystackLower, String wordLower) {
+  return RegExp(
+    '\\b${RegExp.escape(wordLower)}\\b',
+    caseSensitive: false,
+  ).hasMatch(haystackLower);
+}
+
+/// Bank-style lines to drop from spending, income rollups, and category charts.
+///
+/// Matched on the raw description (case-insensitive). Checked after manual overrides,
+/// before saved [categoryRules] and keyword/CSV inference.
+///
+/// Phrase substrings use plain [String.contains]. Short tokens use whole-word
+/// matching so descriptions like `Transfer` do not match `NSF`.
+bool isReturnedOrReversedDescription(String description) {
+  final h = description.toLowerCase();
+  if (h.contains('returned item')) return true;
+  if (h.contains('insufficient funds')) return true;
+  if (_descWordMatch(h, 'reversal')) return true;
+  if (_descWordMatch(h, 'reversed')) return true;
+  if (_descWordMatch(h, 'refunded')) return true;
+  if (_descWordMatch(h, 'returned')) return true;
+  if (_descWordMatch(h, 'nsf')) return true;
+  if (_descWordMatch(h, 'return')) return true;
+  return false;
+}
 
 /// Stable key for [Transaction] rows when applying manual category overrides.
 String transactionCategoryKey(Transaction t) {
@@ -35,16 +70,21 @@ List<String> mergedSortedCategories(Iterable<String> custom) {
 }
 
 /// Picker list: built-ins and custom, excluding [hiddenLower] (deleted from picker).
+///
+/// The system-only [kIgnoredCategoryLabel] is never shown (budget vs actual / assignment).
 List<String> categoryPickerCanonicals({
   required Iterable<String> customCategories,
   required Set<String> hiddenLower,
 }) {
-  final builtIns = kSelectableSpendCategories.where(
-    (c) => !hiddenLower.contains(c.toLowerCase()),
-  );
-  final customs = customCategories.where(
-    (c) => !hiddenLower.contains(c.trim().toLowerCase()),
-  );
+  bool visible(String c) {
+    final k = c.trim().toLowerCase();
+    if (k.isEmpty) return false;
+    if (isIgnoredCategoryLabel(c)) return false;
+    return !hiddenLower.contains(k);
+  }
+
+  final builtIns = kSelectableSpendCategories.where(visible);
+  final customs = customCategories.where(visible);
   final set = <String>{...builtIns, ...customs};
   final out = set.toList();
   out.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
@@ -66,8 +106,13 @@ String spendGroupLabelForDisplay(
   Transaction t, {
   Map<String, String>? categoryOverrides,
   Map<String, String>? categoryDisplayRenamesLower,
+  List<CategoryRule>? categoryRules,
 }) {
-  final base = spendGroupLabel(t, categoryOverrides: categoryOverrides);
+  final base = spendGroupLabel(
+    t,
+    categoryOverrides: categoryOverrides,
+    categoryRules: categoryRules,
+  );
   return applyCategoryDisplayRenames(base, categoryDisplayRenamesLower ?? {});
 }
 
@@ -134,14 +179,33 @@ bool isIncomeCategoryLabel(String label) =>
 /// Resolves the label used for grouping spending (CSV category or keyword bucket).
 ///
 /// [categoryOverrides] maps [transactionCategoryKey] to a chosen label (manual categorization).
+///
+/// [categoryRules]: first list-order match on normalized description wins; only applied
+/// to outflow rows ([Transaction.isOutflow]). Prefer [AppState.effectiveSpendGroupLabel]
+/// at call sites that have app state.
 String spendGroupLabel(
   Transaction t, {
   Map<String, String>? categoryOverrides,
+  List<CategoryRule>? categoryRules,
 }) {
   final key = transactionCategoryKey(t);
   final manual = categoryOverrides?[key];
   if (manual != null && manual.trim().isNotEmpty) {
     return manual.trim();
+  }
+  if (isReturnedOrReversedDescription(t.description)) {
+    return kIgnoredCategoryLabel;
+  }
+  if (categoryRules != null &&
+      categoryRules.isNotEmpty &&
+      t.isOutflow) {
+    final haystack = normalizeDescriptionForMatching(t.description);
+    for (final r in categoryRules) {
+      if (r.matchType != CategoryRule.matchTypeContains) continue;
+      if (haystack.contains(r.pattern)) {
+        return r.categoryCanonical;
+      }
+    }
   }
   final suggested = suggestCategoryFromDescription(t.description);
   // Income from description always wins over generic bank CSV categories

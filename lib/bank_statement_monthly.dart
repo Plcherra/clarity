@@ -1,3 +1,4 @@
+import 'category_rule.dart';
 import 'csv_parser.dart';
 import 'models.dart';
 import 'spend_categories.dart';
@@ -58,6 +59,7 @@ List<MonthlyBankGroup> monthlyGroupsFromTransactions(
   List<Transaction> transactions, {
   Map<String, String>? categoryOverrides,
   Map<String, String>? categoryDisplayRenamesLower,
+  List<CategoryRule> categoryRules = const [],
 }) {
   final kept = transactions.where(isBankStatementDataRow).toList();
 
@@ -73,6 +75,7 @@ List<MonthlyBankGroup> monthlyGroupsFromTransactions(
               t,
               categoryOverrides: categoryOverrides,
               categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+              categoryRules: categoryRules,
             ),
           ),
         );

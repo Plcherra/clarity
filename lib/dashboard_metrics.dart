@@ -1,4 +1,5 @@
 import 'bank_statement_monthly.dart';
+import 'category_rule.dart';
 import 'models.dart';
 import 'spend_categories.dart';
 
@@ -12,12 +13,27 @@ DateTime _firstDayOfPreviousMonth(DateTime ref) {
 }
 
 /// Sum of positive inflows in the calendar month of [reference].
-double totalIncomeInMonth(List<Transaction> txs, DateTime reference) {
+///
+/// Rows whose effective category is [kIgnoredCategoryLabel] (e.g. reversals) are omitted.
+double totalIncomeInMonth(
+  List<Transaction> txs,
+  DateTime reference, {
+  Map<String, String> categoryOverrides = const {},
+  Map<String, String> categoryDisplayRenamesLower = const {},
+  List<CategoryRule> categoryRules = const [],
+}) {
   var sum = 0.0;
   for (final t in txs) {
-    if (t.amount > 0 && _inMonth(t.date, reference)) {
-      sum += t.amount;
-    }
+    if (t.amount <= 0 || !_inMonth(t.date, reference)) continue;
+    final base = spendGroupLabel(
+      t,
+      categoryOverrides: categoryOverrides,
+      categoryRules: categoryRules,
+    );
+    if (isIgnoredCategoryLabel(base)) continue;
+    final display = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
+    if (isIgnoredCategoryLabel(display)) continue;
+    sum += t.amount;
   }
   return sum;
 }
@@ -27,6 +43,7 @@ int uncategorizedTransactionCount(
   List<Transaction> txs, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
+  List<CategoryRule> categoryRules = const [],
 }) {
   var n = 0;
   for (final t in txs) {
@@ -35,6 +52,7 @@ int uncategorizedTransactionCount(
       t,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+      categoryRules: categoryRules,
     );
     if (label.trim().toLowerCase() == 'uncategorized') n++;
   }
@@ -47,14 +65,21 @@ Map<String, double> _spendByCategoryInMonth(
   DateTime month,
   Map<String, String> categoryOverrides,
   Map<String, String> categoryDisplayRenamesLower,
+  List<CategoryRule> categoryRules,
 ) {
   final map = <String, double>{};
   for (final t in txs) {
     if (t.amount >= 0) continue;
     if (!_inMonth(t.date, month)) continue;
-    final base = spendGroupLabel(t, categoryOverrides: categoryOverrides);
+    final base = spendGroupLabel(
+      t,
+      categoryOverrides: categoryOverrides,
+      categoryRules: categoryRules,
+    );
     if (isIncomeCategoryLabel(base)) continue;
+    if (isIgnoredCategoryLabel(base)) continue;
     final name = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
+    if (isIgnoredCategoryLabel(name)) continue;
     map[name] = (map[name] ?? 0) + (-t.amount);
   }
   return map;
@@ -72,12 +97,14 @@ List<CategoryLeakStat> biggestCategoryLeaks(
   int limit = 3,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
+  List<CategoryRule> categoryRules = const [],
 }) {
   final thisMonth = _spendByCategoryInMonth(
     txs,
     reference,
     categoryOverrides,
     categoryDisplayRenamesLower,
+    categoryRules,
   );
   final prevRef = _firstDayOfPreviousMonth(reference);
   final lastMonth = _spendByCategoryInMonth(
@@ -85,6 +112,7 @@ List<CategoryLeakStat> biggestCategoryLeaks(
     prevRef,
     categoryOverrides,
     categoryDisplayRenamesLower,
+    categoryRules,
   );
 
   final sorted =

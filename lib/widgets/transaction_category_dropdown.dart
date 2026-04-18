@@ -1,8 +1,123 @@
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../category_description_normalize.dart';
 import '../models.dart';
 import '../spend_categories.dart';
+
+/// Minimum length for a saved description rule pattern (after normalization).
+const int kMinCategoryRulePatternLength = 3;
+
+/// After assigning an outflow category, offers to persist a contains-rule.
+Future<void> showSaveCategoryRuleDialogIfOutflow({
+  required BuildContext context,
+  required AppState appState,
+  required Transaction transaction,
+  required String categoryCanonical,
+}) async {
+  if (!transaction.isOutflow) return;
+  if (!context.mounted) return;
+
+  final suggested = suggestedPatternFromDescription(transaction.description);
+
+  final raw = await showDialog<String?>(
+    context: context,
+    builder: (ctx) => _SaveCategoryRuleDialog(
+      suggested: suggested,
+      categoryCanonical: categoryCanonical,
+    ),
+  );
+
+  if (raw == null || !context.mounted) return;
+
+  if (raw.length < kMinCategoryRulePatternLength) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Pattern must be at least $kMinCategoryRulePatternLength characters.',
+        ),
+      ),
+    );
+    return;
+  }
+
+  final ok = await appState.addOrUpdateCategoryRuleByPattern(
+    raw,
+    categoryCanonical,
+  );
+  if (!context.mounted) return;
+  if (!ok) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Could not save rule. Try again.')),
+    );
+  }
+}
+
+class _SaveCategoryRuleDialog extends StatefulWidget {
+  const _SaveCategoryRuleDialog({
+    required this.suggested,
+    required this.categoryCanonical,
+  });
+
+  final String suggested;
+  final String categoryCanonical;
+
+  @override
+  State<_SaveCategoryRuleDialog> createState() =>
+      _SaveCategoryRuleDialogState();
+}
+
+class _SaveCategoryRuleDialogState extends State<_SaveCategoryRuleDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.suggested);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Save a rule?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Apply "${widget.categoryCanonical}" to future outflows whose description contains:',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _controller,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              hintText: 'e.g. nero',
+            ),
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, null),
+          child: const Text('Not now'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text.trim()),
+          child: const Text('Save rule'),
+        ),
+      ],
+    );
+  }
+}
 
 /// Inline category menu below the chip: no dimming modal, transparent outside tap to close.
 class TransactionCategoryField extends StatefulWidget {
@@ -42,6 +157,7 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
     _overlayEntry = OverlayEntry(
       builder: (ctx) => _CategoryMenuOverlay(
         layerLink: _layerLink,
+        dialogContext: context,
         appState: widget.appState,
         transaction: widget.transaction,
         onClose: _removeOverlay,
@@ -97,12 +213,15 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
 class _CategoryMenuOverlay extends StatefulWidget {
   const _CategoryMenuOverlay({
     required this.layerLink,
+    required this.dialogContext,
     required this.appState,
     required this.transaction,
     required this.onClose,
   });
 
   final LayerLink layerLink;
+  /// Context for dialogs after the overlay is removed (e.g. parent [TransactionCategoryField]).
+  final BuildContext dialogContext;
   final AppState appState;
   final Transaction transaction;
   final VoidCallback onClose;
@@ -187,15 +306,38 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
   void _selectCategoryAndClose(String canonical) {
     _commitPendingEditIfAny();
     widget.appState.setCategoryOverride(widget.transaction, canonical);
+    final dc = widget.dialogContext;
+    final t = widget.transaction;
+    final app = widget.appState;
     widget.onClose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showSaveCategoryRuleDialogIfOutflow(
+        context: dc,
+        appState: app,
+        transaction: t,
+        categoryCanonical: canonical,
+      );
+    });
   }
 
   void _submitNew() {
     final raw = _newController.text;
     if (raw.trim().isEmpty) return;
+    final name = raw.trim();
     widget.appState.createCategoryAndAssign(widget.transaction, raw);
     _newController.clear();
+    final dc = widget.dialogContext;
+    final t = widget.transaction;
+    final app = widget.appState;
     widget.onClose();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showSaveCategoryRuleDialogIfOutflow(
+        context: dc,
+        appState: app,
+        transaction: t,
+        categoryCanonical: name,
+      );
+    });
   }
 
   void _confirmDelete(BuildContext context, String canonical) {
