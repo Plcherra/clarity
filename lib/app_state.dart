@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 
+import 'account_storage.dart';
 import 'balance_resolve.dart';
 import 'bank_statement_monthly.dart';
 import 'budget_keys.dart';
 import 'budget_storage.dart';
+import 'category_catalog_storage.dart';
 import 'category_description_normalize.dart';
 import 'category_rule.dart';
 import 'category_rules_storage.dart';
@@ -11,6 +13,7 @@ import 'csv_parser.dart';
 import 'dashboard_metrics.dart';
 import 'models.dart';
 import 'spend_categories.dart';
+import 'transaction_category_storage.dart';
 
 /// Holds parsed statement data and derived aggregates.
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
@@ -33,13 +36,18 @@ class AppState extends ChangeNotifier {
   /// Manual category by [transactionCategoryKey]; cleared when a new CSV is loaded.
   Map<String, String> categoryOverrides = const {};
 
+  /// Persisted manual categories by [transactionCategoryKey]; survives restarts and re-import.
+  Map<String, String> transactionCategoryAssignments = const {};
+
   /// User-created category names (shown in the assignment sheet alongside built-ins).
   List<String> customCategories = const [];
 
   /// Lowercase base label -> user display name (renamed built-ins / display tweaks).
+  /// Not cleared by [loadFromCsv] (persisted with the category catalog).
   Map<String, String> categoryDisplayRenames = const {};
 
   /// Lowercase canonical labels removed from the picker (deleted built-ins).
+  /// Not cleared by [loadFromCsv] (persisted with the category catalog).
   Set<String> categoriesHiddenFromPicker = {};
 
   /// Monthly budget amounts keyed by [budgetDisplayKey] of the **display** label
@@ -52,6 +60,9 @@ class AppState extends ChangeNotifier {
   /// Description match rules (v1: contains, outflow-only). List order = first match wins.
   /// Not cleared by [loadFromCsv] or [clear] (user intent, like budgets).
   List<CategoryRule> categoryRules = const [];
+
+  /// User-defined bank / card accounts (persisted separately from CSV rows).
+  List<Account> accounts = const [];
 
   /// Reference month for "spent this month" / top categories (set in [loadFromCsv]).
   DateTime _spendReference = DateTime.now();
@@ -79,7 +90,69 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Single entry for effective spend grouping (override → rules → built-ins / CSV).
+  /// Loads custom category names and picker metadata from disk (call once before [runApp]).
+  Future<void> hydratePersistedCategoryCatalog() async {
+    try {
+      final snap = await loadCategoryCatalog();
+      customCategories = List<String>.from(snap.customCategories);
+      categoryDisplayRenames = Map<String, String>.from(snap.categoryDisplayRenames);
+      categoriesHiddenFromPicker = Set<String>.from(snap.categoriesHiddenFromPicker);
+    } on Object {
+      customCategories = const [];
+      categoryDisplayRenames = const {};
+      categoriesHiddenFromPicker = {};
+    }
+    notifyListeners();
+  }
+
+  /// Loads persisted accounts from disk (call once before [runApp]).
+  Future<void> hydratePersistedAccounts() async {
+    try {
+      accounts = await loadAccounts();
+    } on Object {
+      accounts = const [];
+    }
+    notifyListeners();
+  }
+
+  /// Appends [account], persists, and notifies. Returns false if save fails.
+  Future<bool> addAccount(Account account) async {
+    final next = [...accounts, account];
+    try {
+      await saveAccounts(next);
+    } on Object {
+      return false;
+    }
+    accounts = next;
+    notifyListeners();
+    return true;
+  }
+
+  void _persistCategoryCatalog() {
+    saveCategoryCatalog(
+      customCategories: customCategories,
+      categoryDisplayRenames: categoryDisplayRenames,
+      categoriesHiddenFromPicker: categoriesHiddenFromPicker,
+    ).catchError((_) {});
+  }
+
+  void _persistTransactionCategoryAssignments() {
+    saveTransactionCategoryAssignments(transactionCategoryAssignments)
+        .catchError((_) {});
+  }
+
+  /// Loads persisted per-transaction category picks (call once before [runApp]).
+  Future<void> hydrateTransactionCategoryAssignments() async {
+    try {
+      transactionCategoryAssignments =
+          await loadTransactionCategoryAssignments();
+    } on Object {
+      transactionCategoryAssignments = {};
+    }
+    notifyListeners();
+  }
+
+  /// Single entry for effective spend grouping (saved categoryId → override map → rules → CSV / keywords).
   String effectiveSpendGroupLabel(Transaction t) {
     return spendGroupLabel(
       t,
@@ -90,10 +163,14 @@ class AppState extends ChangeNotifier {
 
   /// Normalized pattern must be at least 3 characters. Same pattern updates category.
   /// Persist-then-commit; returns false if validation or save fails.
+  ///
+  /// [sourceForNewRule] applies only when inserting a new rule; updates by same
+  /// pattern preserve the existing rule’s [CategoryRule.source].
   Future<bool> addOrUpdateCategoryRuleByPattern(
     String patternRaw,
-    String categoryCanonical,
-  ) async {
+    String categoryCanonical, {
+    CategoryRuleSource sourceForNewRule = CategoryRuleSource.learnedFromTransaction,
+  }) async {
     final cat = categoryCanonical.trim();
     if (cat.isEmpty) return false;
     final p = normalizeDescriptionForMatching(patternRaw);
@@ -111,9 +188,67 @@ class AppState extends ChangeNotifier {
           matchType: CategoryRule.matchTypeContains,
           categoryCanonical: cat,
           createdAt: DateTime.now().toUtc(),
+          source: sourceForNewRule,
         ),
       );
     }
+    try {
+      await saveCategoryRules(next);
+    } on Object {
+      return false;
+    }
+    categoryRules = next;
+    _recomputeDerived(transactions, null);
+    notifyListeners();
+    return true;
+  }
+
+  /// Updates pattern and category for an existing rule by [id]. Sets
+  /// [CategoryRuleSource.manualFromRules]. Fails if another rule already uses
+  /// the normalized pattern.
+  Future<bool> updateCategoryRuleById({
+    required String id,
+    required String patternRaw,
+    required String categoryCanonical,
+  }) async {
+    final trimmedId = id.trim();
+    if (trimmedId.isEmpty) return false;
+    final cat = categoryCanonical.trim();
+    if (cat.isEmpty) return false;
+    final p = normalizeDescriptionForMatching(patternRaw);
+    if (p.length < 3) return false;
+
+    final next = List<CategoryRule>.from(categoryRules);
+    final idx = next.indexWhere((r) => r.id == trimmedId);
+    if (idx < 0) return false;
+
+    final conflict = next.any(
+      (r) => r.id != trimmedId && r.pattern == p,
+    );
+    if (conflict) return false;
+
+    next[idx] = next[idx].copyWith(
+      pattern: p,
+      categoryCanonical: cat,
+      source: CategoryRuleSource.manualFromRules,
+    );
+    try {
+      await saveCategoryRules(next);
+    } on Object {
+      return false;
+    }
+    categoryRules = next;
+    _recomputeDerived(transactions, null);
+    notifyListeners();
+    return true;
+  }
+
+  /// Removes one rule by [id], persists, and recomputes aggregates.
+  Future<bool> deleteCategoryRule(String id) async {
+    final trimmed = id.trim();
+    if (trimmed.isEmpty) return false;
+    final next = categoryRules.where((r) => r.id != trimmed).toList();
+    if (next.length == categoryRules.length) return false;
     try {
       await saveCategoryRules(next);
     } on Object {
@@ -160,25 +295,84 @@ class AppState extends ChangeNotifier {
   }
 
   /// Loads and aggregates using [reference] for "this month" (defaults to now, local).
-  void loadFromCsv(String utf8Text, {DateTime? reference}) {
+  ///
+  /// [accountId] must match a persisted [accounts] entry (set after [hydratePersistedAccounts]).
+  void loadFromCsv(
+    String utf8Text, {
+    required String accountId,
+    DateTime? reference,
+  }) {
+    final id = accountId.trim();
+    if (id.isEmpty) {
+      throw const FormatException('An account must be selected.');
+    }
+    if (!accounts.any((a) => a.id == id)) {
+      throw const FormatException('Unknown account.');
+    }
     final ref = reference ?? DateTime.now();
     _spendReference = ref;
     categoryOverrides = const {};
-    categoryDisplayRenames = const {};
-    categoriesHiddenFromPicker = <String>{};
+    // Keep [categoryDisplayRenames] and [categoriesHiddenFromPicker] across imports
+    // so built-in display renames and picker preferences persist (same as budgets/rules).
     final result = parseBankCsv(utf8Text);
-    transactions = List.unmodifiable(result.transactions);
+    transactions = List.unmodifiable(
+      result.transactions.map((t) {
+        final stamped = Transaction(
+          date: t.date,
+          description: t.description,
+          amount: t.amount,
+          accountId: id,
+          category: t.category,
+          balanceAfter: t.balanceAfter,
+          categoryId: null,
+        );
+        final key = transactionCategoryKey(stamped);
+        final persisted = transactionCategoryAssignments[key]?.trim();
+        final cid =
+            (persisted != null && persisted.isNotEmpty) ? persisted : null;
+        return Transaction(
+          date: stamped.date,
+          description: stamped.description,
+          amount: stamped.amount,
+          accountId: stamped.accountId,
+          category: stamped.category,
+          balanceAfter: stamped.balanceAfter,
+          categoryId: cid,
+        );
+      }).toList(),
+    );
     totalBalance = resolveTotalBalance(transactions, result.totalBalance);
-    _recomputeDerived(result.transactions, result.diagnostics);
+    _recomputeDerived(transactions, result.diagnostics);
     notifyListeners();
+    _persistCategoryCatalog();
   }
 
   /// Assigns a category to a transaction and refreshes aggregates.
   void setCategoryOverride(Transaction t, String category) {
     final key = transactionCategoryKey(t);
+    final cat = category.trim();
+    transactionCategoryAssignments = {
+      ...transactionCategoryAssignments,
+      key: cat,
+    };
     final next = Map<String, String>.from(categoryOverrides);
-    next[key] = category;
+    next[key] = cat;
     categoryOverrides = next;
+    transactions = List.unmodifiable(
+      transactions.map((x) {
+        if (transactionCategoryKey(x) != key) return x;
+        return Transaction(
+          date: x.date,
+          description: x.description,
+          amount: x.amount,
+          accountId: x.accountId,
+          category: x.category,
+          balanceAfter: x.balanceAfter,
+          categoryId: cat,
+        );
+      }).toList(),
+    );
+    _persistTransactionCategoryAssignments();
     _recomputeDerived(transactions, null);
     notifyListeners();
   }
@@ -191,6 +385,7 @@ class AppState extends ChangeNotifier {
     if (isIgnoredCategoryLabel(name)) return;
     if (!isBuiltInSpendCategory(name) && !customCategories.contains(name)) {
       customCategories = [...customCategories, name];
+      _persistCategoryCatalog();
     }
     setCategoryOverride(t, name);
   }
@@ -219,8 +414,35 @@ class AppState extends ChangeNotifier {
       }
     }
     categoryOverrides = next;
+
+    final nextAssign = <String, String>{};
+    for (final e in transactionCategoryAssignments.entries) {
+      if (e.value.trim().toLowerCase() != k) {
+        nextAssign[e.key] = e.value;
+      }
+    }
+    transactionCategoryAssignments = nextAssign;
+    transactions = List.unmodifiable(
+      transactions.map((x) {
+        final cid = x.categoryId?.trim();
+        if (cid != null && cid.toLowerCase() == k) {
+          return Transaction(
+            date: x.date,
+            description: x.description,
+            amount: x.amount,
+            accountId: x.accountId,
+            category: x.category,
+            balanceAfter: x.balanceAfter,
+            categoryId: null,
+          );
+        }
+        return x;
+      }).toList(),
+    );
+    _persistTransactionCategoryAssignments();
     _recomputeDerived(transactions, null);
     notifyListeners();
+    _persistCategoryCatalog();
   }
 
   /// Renames a category. Built-ins: display-only map (overrides stay canonical). Custom: text + overrides.
@@ -233,10 +455,7 @@ class AppState extends ChangeNotifier {
       (c) => c.toLowerCase() == oldK,
     );
     if (isBuiltIn) {
-      categoryDisplayRenames = {
-        ...categoryDisplayRenames,
-        oldK: newN,
-      };
+      categoryDisplayRenames = {...categoryDisplayRenames, oldK: newN};
     } else {
       final nextOv = <String, String>{};
       for (final e in categoryOverrides.entries) {
@@ -248,13 +467,43 @@ class AppState extends ChangeNotifier {
       }
       categoryOverrides = nextOv;
 
+      final nextAssign = <String, String>{};
+      for (final e in transactionCategoryAssignments.entries) {
+        if (e.value.trim().toLowerCase() == oldK) {
+          nextAssign[e.key] = newN;
+        } else {
+          nextAssign[e.key] = e.value;
+        }
+      }
+      transactionCategoryAssignments = nextAssign;
+
       customCategories = customCategories
           .map((c) => c.trim().toLowerCase() == oldK ? newN : c)
           .toList();
+
+      transactions = List.unmodifiable(
+        transactions.map((x) {
+          final cid = x.categoryId?.trim();
+          if (cid != null && cid.toLowerCase() == oldK) {
+            return Transaction(
+              date: x.date,
+              description: x.description,
+              amount: x.amount,
+              accountId: x.accountId,
+              category: x.category,
+              balanceAfter: x.balanceAfter,
+              categoryId: newN,
+            );
+          }
+          return x;
+        }).toList(),
+      );
+      _persistTransactionCategoryAssignments();
     }
 
     _recomputeDerived(transactions, null);
     notifyListeners();
+    _persistCategoryCatalog();
   }
 
   void _recomputeDerived(
@@ -314,11 +563,7 @@ class AppState extends ChangeNotifier {
     );
     monthlyGroups = List.unmodifiable(grouped.reversed.toList());
     if (kDebugMode && diag != null) {
-      _debugPrintCsvImportDiagnostics(
-        transactions,
-        grouped,
-        diag,
-      );
+      _debugPrintCsvImportDiagnostics(transactions, grouped, diag);
     }
   }
 
@@ -338,6 +583,7 @@ class AppState extends ChangeNotifier {
     categoryDisplayRenames = const {};
     categoriesHiddenFromPicker = <String>{};
     notifyListeners();
+    _persistCategoryCatalog();
   }
 }
 

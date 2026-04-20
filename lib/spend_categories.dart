@@ -38,7 +38,7 @@ bool isReturnedOrReversedDescription(String description) {
 /// Stable key for [Transaction] rows when applying manual category overrides.
 String transactionCategoryKey(Transaction t) {
   final ba = t.balanceAfter;
-  return '${t.date.toIso8601String()}|${t.amount}|${t.description}|${ba ?? ''}';
+  return '${t.accountId}|${t.date.toIso8601String()}|${t.amount}|${t.description}|${ba ?? ''}';
 }
 
 /// All built-in categories users can assign (excludes `Uncategorized`; order is pick-list order).
@@ -57,6 +57,206 @@ const List<String> kSelectableSpendCategories = [
   'Transfer Out',
   'Transportation',
 ];
+
+// --- suggestCategoryFromDescription needles (lowercase substrings) ---
+
+const List<String> incomePayrollKeywords = [
+  'bom dough',
+  'indn:martins pedro',
+  'payroll',
+  'des:payroll',
+];
+
+const List<String> appleBillKeywords = ['apple com bill', 'apple.com/bill'];
+
+const List<String> shoesKeywords = ['dsw'];
+
+const List<String> pharmacyHeadKeywords = ['cvs'];
+
+const List<String> groceryHeadKeywords = ['pearl market'];
+
+const List<String> coffeeQuickFoodKeywords = ['quick food mart', 'food mart'];
+
+const List<String> housingKeywords = ['rent', 'mortgage', 'landlord', 'lease'];
+
+const List<String> foodDeliveryAndChainKeywords = [
+  'uber eats',
+  'doordash',
+  'grubhub',
+  'starbucks',
+  'dunkin',
+  'chipotle',
+  'mcdonald',
+  'dominos',
+  "domino's",
+  'popeyes',
+  'papa john',
+  'pizzahut',
+  'taco bell',
+  'kfc',
+  'wendys',
+  "wendy's",
+  'burger king',
+  'subway',
+];
+
+const List<String> transportRideKeywords = ['lyft', 'bolt', 'taxi'];
+
+const List<String> shoppingBigBoxKeywords = [
+  'amazon',
+  'walmart',
+  'target',
+  'costco',
+  'temu',
+  'shein',
+  'fragrancenet',
+];
+
+const List<String> foodGenericKeywords = [
+  'starbucks',
+  'coffee',
+  'restaurant',
+  'cafe',
+];
+
+const List<String> groceryKeywords = [
+  'stop and shop',
+  'stop&shop',
+  'market basket',
+  "shaw's",
+  'shaws',
+  'big y',
+  'trader joe',
+  'traderjoes',
+  'whole foods',
+  'star market',
+];
+
+const List<String> pharmacyTailKeywords = ['walgreens', 'rite aid', 'riteaid'];
+
+const List<String> subscriptionKeywords = [
+  'netflix',
+  'disney',
+  'hulu',
+  'spotify',
+  'apple com bill',
+  'apple.com/bill',
+  'paramount',
+  'max.com',
+  'youtube premium',
+  'suno',
+  'landr',
+];
+
+const List<String> transportFuelAndTransitKeywords = [
+  'mbta',
+  't-pass',
+  'shell',
+  'exxon',
+  'mobil',
+];
+
+const List<String> shoppingFashionDiscountKeywords = ['tj maxx', 'marshalls'];
+
+const List<String> billsUtilitiesKeywords = [
+  'verizon',
+  'tmobile',
+  'comcast',
+  'xfinity',
+  'spectrum',
+];
+
+bool _haystackContainsAny(String haystackLower, List<String> needles) {
+  for (final n in needles) {
+    if (haystackLower.contains(n)) return true;
+  }
+  return false;
+}
+
+String? _trySuggestIncomeTransfersAndPayments(String haystackLower) {
+  bool has(String needle) => haystackLower.contains(needle);
+  if (_haystackContainsAny(haystackLower, incomePayrollKeywords)) {
+    return 'Income / Payroll';
+  }
+  if (has('zelle') && (has('payment from') || has('transfer from'))) {
+    return 'Income / Zelle Received';
+  }
+  if (has('online banking payment to crd') || has('payment to crd')) {
+    return 'Credit Card Payment';
+  }
+  if ((has('zelle') && has('payment to')) ||
+      has('remitly') ||
+      has('verso')) {
+    return 'Transfer Out';
+  }
+  return null;
+}
+
+String? _trySuggestMerchantAnchors(String haystackLower) {
+  if (_haystackContainsAny(haystackLower, appleBillKeywords)) {
+    return 'Subscriptions';
+  }
+  if (_haystackContainsAny(haystackLower, shoesKeywords)) {
+    return 'Shoes / Clothing';
+  }
+  if (_haystackContainsAny(haystackLower, pharmacyHeadKeywords)) {
+    return 'Pharmacy / Health';
+  }
+  if (_haystackContainsAny(haystackLower, groceryHeadKeywords)) {
+    return 'Grocery / Supermarket';
+  }
+  if (_haystackContainsAny(haystackLower, coffeeQuickFoodKeywords)) {
+    return 'Coffee / Quick Food';
+  }
+  return null;
+}
+
+String? _trySuggestHousing(String haystackLower) {
+  if (_haystackContainsAny(haystackLower, housingKeywords)) {
+    return 'Housing';
+  }
+  return null;
+}
+
+String? _trySuggestFoodTransportShoppingMid(String haystackLower) {
+  bool has(String needle) => haystackLower.contains(needle);
+  if (_haystackContainsAny(haystackLower, foodDeliveryAndChainKeywords)) {
+    return 'Food & Drink';
+  }
+  if ((has('uber') && !has('uber eats')) ||
+      _haystackContainsAny(haystackLower, transportRideKeywords)) {
+    return 'Transportation';
+  }
+  if (_haystackContainsAny(haystackLower, shoppingBigBoxKeywords)) {
+    return 'Shopping';
+  }
+  if (_haystackContainsAny(haystackLower, foodGenericKeywords)) {
+    return 'Food & Drink';
+  }
+  return null;
+}
+
+String? _trySuggestRemainingBuckets(String haystackLower) {
+  if (_haystackContainsAny(haystackLower, groceryKeywords)) {
+    return 'Grocery / Supermarket';
+  }
+  if (_haystackContainsAny(haystackLower, pharmacyTailKeywords)) {
+    return 'Pharmacy / Health';
+  }
+  if (_haystackContainsAny(haystackLower, subscriptionKeywords)) {
+    return 'Subscriptions';
+  }
+  if (_haystackContainsAny(haystackLower, transportFuelAndTransitKeywords)) {
+    return 'Transportation';
+  }
+  if (_haystackContainsAny(haystackLower, shoppingFashionDiscountKeywords)) {
+    return 'Shopping';
+  }
+  if (_haystackContainsAny(haystackLower, billsUtilitiesKeywords)) {
+    return 'Bills & Utilities';
+  }
+  return null;
+}
 
 bool isBuiltInSpendCategory(String name) =>
     kSelectableSpendCategories.contains(name);
@@ -117,77 +317,99 @@ String spendGroupLabelForDisplay(
 }
 
 /// Simple keyword-based category from free-text (e.g. merchant / description).
+///
+/// Resolution order matches the private `_trySuggest…` helpers (income/transfers
+/// first, then merchant anchors, housing, food/transport/shopping mid-tier,
+/// then remaining grocery/pharmacy/subscription/bills buckets).
 String suggestCategoryFromDescription(String description) {
   final h = description.toLowerCase();
-
-  bool has(String needle) => h.contains(needle);
-
-  // Payroll / employer ACH (check first; matches real bank description text).
-  if (has('bom dough') || has('indn:martins pedro')) {
-    return 'Income / Payroll';
-  }
-  if (has('payroll') || has('des:payroll')) {
-    return 'Income / Payroll';
-  }
-  if (has('zelle') && (has('payment from') || has('transfer from'))) {
-    return 'Income / Zelle Received';
-  }
-  if (has('online banking payment to crd') || has('payment to crd')) {
-    return 'Credit Card Payment';
-  }
-  if (has('zelle') && has('payment to')) {
-    return 'Transfer Out';
-  }
-  if (has('apple com bill') || has('apple.com/bill')) {
-    return 'Subscriptions';
-  }
-  if (has('dsw')) {
-    return 'Shoes / Clothing';
-  }
-  if (has('cvs')) {
-    return 'Pharmacy / Health';
-  }
-  if (has('pearl market')) {
-    return 'Grocery / Supermarket';
-  }
-  if (has('quick food mart') || has('food mart')) {
-    return 'Coffee / Quick Food';
-  }
-
-  if (has('rent') || has('mortgage') || has('landlord') || has('lease')) {
-    return 'Housing';
-  }
-  if (has('uber') || has('lyft') || has('bolt') || has('taxi')) {
-    return 'Transportation';
-  }
-  if (has('amazon') || has('walmart') || has('target') || has('costco')) {
-    return 'Shopping';
-  }
-  if (has('starbucks') ||
-      has('coffee') ||
-      has('restaurant') ||
-      has('cafe')) {
-    return 'Food & Drink';
-  }
-  return 'Uncategorized';
+  return _trySuggestIncomeTransfersAndPayments(h) ??
+      _trySuggestMerchantAnchors(h) ??
+      _trySuggestHousing(h) ??
+      _trySuggestFoodTransportShoppingMid(h) ??
+      _trySuggestRemainingBuckets(h) ??
+      'Uncategorized';
 }
 
 /// True for spend buckets that represent money in, not spending (case-insensitive).
 bool isIncomeCategoryLabel(String label) =>
     label.trimLeft().toLowerCase().startsWith('income');
 
+bool _categoryRuleWholeWord(String haystackLower, String tokenLower) {
+  return RegExp(
+    '\\b${RegExp.escape(tokenLower)}\\b',
+    caseSensitive: false,
+  ).hasMatch(haystackLower);
+}
+
+/// True if [description] matches a persisted category rule [pattern].
+///
+/// [pattern] must already be normalized like stored rules ([normalizeDescriptionForMatching]).
+/// Comma-separated segments are **OR** alternatives. Each alternative matches if:
+/// - the haystack contains it as a substring (legacy), or
+/// - it has 2+ whitespace-separated tokens and **every** token appears as a whole word
+///   (any order), or
+/// - it is a single token of length ≥3 and its alphanumeric-only form is contained in the
+///   alphanumeric-only haystack (e.g. `cashback` vs `cash back rewards`).
+bool descriptionMatchesCategoryRule(String description, String pattern) {
+  final haystack = normalizeDescriptionForMatching(description);
+  final trimmed = pattern.trim();
+  if (trimmed.isEmpty) return false;
+  for (final rawAlt in trimmed.split(',')) {
+    final alt = rawAlt.trim();
+    if (alt.isEmpty) continue;
+    if (_categoryRuleAlternativeMatches(haystack, alt)) return true;
+  }
+  return false;
+}
+
+bool _categoryRuleAlternativeMatches(String haystack, String alt) {
+  if (haystack.contains(alt)) return true;
+  final tokens = alt.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+  if (tokens.length >= 2) {
+    return tokens.every((t) => _categoryRuleWholeWord(haystack, t));
+  }
+  if (tokens.length == 1) {
+    final altCompact = tokens[0].replaceAll(RegExp(r'[^a-z0-9]'), '');
+    final hayCompact = haystack.replaceAll(RegExp(r'[^a-z0-9]'), '');
+    return altCompact.length >= 3 && hayCompact.contains(altCompact);
+  }
+  return false;
+}
+
+String? _firstMatchingCategoryRuleCanonical(
+  String description,
+  List<CategoryRule> rules,
+) {
+  for (final r in rules) {
+    if (r.matchType != CategoryRule.matchTypeContains) continue;
+    if (descriptionMatchesCategoryRule(description, r.pattern)) {
+      return r.categoryCanonical;
+    }
+  }
+  return null;
+}
+
 /// Resolves the label used for grouping spending (CSV category or keyword bucket).
 ///
-/// [categoryOverrides] maps [transactionCategoryKey] to a chosen label (manual categorization).
+/// Order: [Transaction.categoryId] (persisted manual choice), then [categoryOverrides]
+/// for the same row key, then description rules, then heuristics / CSV category.
 ///
-/// [categoryRules]: first list-order match on normalized description wins; only applied
-/// to outflow rows ([Transaction.isOutflow]). Prefer [AppState.effectiveSpendGroupLabel]
-/// at call sites that have app state.
+/// [categoryRules]: first list-order match on normalized description wins (see
+/// [descriptionMatchesCategoryRule] for OR / multi-token / compact semantics). On **outflows**,
+/// rules run before keyword suggestion so user rules override heuristics. On **inflows**,
+/// rules run only after keyword suggestion and only when that suggestion is not an
+/// [isIncomeCategoryLabel] (so payroll-style inflows stay income). Prefer
+/// [AppState.effectiveSpendGroupLabel] at call sites that have app state.
 String spendGroupLabel(
   Transaction t, {
   Map<String, String>? categoryOverrides,
   List<CategoryRule>? categoryRules,
 }) {
+  final saved = t.categoryId?.trim();
+  if (saved != null && saved.isNotEmpty) {
+    return saved;
+  }
   final key = transactionCategoryKey(t);
   final manual = categoryOverrides?[key];
   if (manual != null && manual.trim().isNotEmpty) {
@@ -196,22 +418,20 @@ String spendGroupLabel(
   if (isReturnedOrReversedDescription(t.description)) {
     return kIgnoredCategoryLabel;
   }
-  if (categoryRules != null &&
-      categoryRules.isNotEmpty &&
-      t.isOutflow) {
-    final haystack = normalizeDescriptionForMatching(t.description);
-    for (final r in categoryRules) {
-      if (r.matchType != CategoryRule.matchTypeContains) continue;
-      if (haystack.contains(r.pattern)) {
-        return r.categoryCanonical;
-      }
-    }
+  final rules = categoryRules;
+  if (rules != null && rules.isNotEmpty && t.isOutflow) {
+    final fromRule = _firstMatchingCategoryRuleCanonical(t.description, rules);
+    if (fromRule != null) return fromRule;
   }
   final suggested = suggestCategoryFromDescription(t.description);
   // Income from description always wins over generic bank CSV categories
-  // (e.g. "Deposit", "Transfer", "Uncategorized").
+  // (e.g. "Deposit", "Transfer", "Uncategorized") and over inflow-only rules below.
   if (isIncomeCategoryLabel(suggested)) {
     return suggested;
+  }
+  if (rules != null && rules.isNotEmpty && !t.isOutflow) {
+    final fromRule = _firstMatchingCategoryRuleCanonical(t.description, rules);
+    if (fromRule != null) return fromRule;
   }
   final raw = t.category?.trim();
   if (raw != null && raw.isNotEmpty) {

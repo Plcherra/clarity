@@ -8,6 +8,9 @@ Future<void> main() async {
   final appState = AppState();
   await appState.hydratePersistedBudgets();
   await appState.hydrateCategoryRules();
+  await appState.hydratePersistedCategoryCatalog();
+  await appState.hydratePersistedAccounts();
+  await appState.hydrateTransactionCategoryAssignments();
   runApp(ClarityApp(appState: appState));
 }
 

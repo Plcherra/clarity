@@ -1,3 +1,40 @@
+/// How the rule was first recorded (or unknown for legacy data).
+enum CategoryRuleSource {
+  /// Created from the post-assignment “save pattern” flow on a transaction.
+  learnedFromTransaction,
+
+  /// Created or last saved from the Rules Management screen.
+  manualFromRules,
+
+  /// Persisted JSON had no `source` field (rules from before this metadata).
+  unknown,
+}
+
+CategoryRuleSource _categoryRuleSourceFromJson(Object? raw) {
+  if (raw is! String) return CategoryRuleSource.unknown;
+  switch (raw) {
+    case 'learned':
+      return CategoryRuleSource.learnedFromTransaction;
+    case 'manual':
+      return CategoryRuleSource.manualFromRules;
+    case 'unknown':
+      return CategoryRuleSource.unknown;
+    default:
+      return CategoryRuleSource.unknown;
+  }
+}
+
+String _categoryRuleSourceToJson(CategoryRuleSource s) {
+  switch (s) {
+    case CategoryRuleSource.learnedFromTransaction:
+      return 'learned';
+    case CategoryRuleSource.manualFromRules:
+      return 'manual';
+    case CategoryRuleSource.unknown:
+      return 'unknown';
+  }
+}
+
 /// User-defined description match → category (v1: [matchTypeContains] only).
 class CategoryRule {
   CategoryRule({
@@ -6,6 +43,7 @@ class CategoryRule {
     required this.matchType,
     required this.categoryCanonical,
     required this.createdAt,
+    this.source = CategoryRuleSource.unknown,
   });
 
   static const String matchTypeContains = 'contains';
@@ -19,12 +57,16 @@ class CategoryRule {
   final String categoryCanonical;
   final DateTime createdAt;
 
+  /// Provenance for UI; persisted when not [CategoryRuleSource.unknown].
+  final CategoryRuleSource source;
+
   CategoryRule copyWith({
     String? id,
     String? pattern,
     String? matchType,
     String? categoryCanonical,
     DateTime? createdAt,
+    CategoryRuleSource? source,
   }) {
     return CategoryRule(
       id: id ?? this.id,
@@ -32,6 +74,7 @@ class CategoryRule {
       matchType: matchType ?? this.matchType,
       categoryCanonical: categoryCanonical ?? this.categoryCanonical,
       createdAt: createdAt ?? this.createdAt,
+      source: source ?? this.source,
     );
   }
 
@@ -41,6 +84,7 @@ class CategoryRule {
     'matchType': matchType,
     'categoryCanonical': categoryCanonical,
     'createdAt': createdAt.toIso8601String(),
+    'source': _categoryRuleSourceToJson(source),
   };
 
   static CategoryRule? fromJson(Object? json) {
@@ -58,16 +102,20 @@ class CategoryRule {
     }
     DateTime createdAt;
     if (createdAtRaw is String) {
-      createdAt = DateTime.tryParse(createdAtRaw) ?? DateTime.fromMillisecondsSinceEpoch(0);
+      createdAt =
+          DateTime.tryParse(createdAtRaw) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
     } else {
       createdAt = DateTime.fromMillisecondsSinceEpoch(0);
     }
+    final source = _categoryRuleSourceFromJson(json['source']);
     return CategoryRule(
       id: id,
       pattern: pattern,
       matchType: matchType,
       categoryCanonical: categoryCanonical,
       createdAt: createdAt,
+      source: source,
     );
   }
 }

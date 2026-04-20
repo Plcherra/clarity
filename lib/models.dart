@@ -1,10 +1,42 @@
+enum AccountType {
+  checking,
+  savings,
+  creditCard,
+}
+
+extension AccountTypeDisplay on AccountType {
+  String get displayLabel => switch (this) {
+        AccountType.checking => 'Checking',
+        AccountType.savings => 'Savings',
+        AccountType.creditCard => 'Credit Card',
+      };
+}
+
+class Account {
+  const Account({
+    required this.id,
+    required this.name,
+    required this.type,
+    this.currentBalance,
+  });
+
+  final String id;
+  final String name;
+  final AccountType type;
+
+  /// Optional running balance for the account (not required for CSV import v1).
+  final double? currentBalance;
+}
+
 class Transaction {
   const Transaction({
     required this.date,
     required this.description,
     required this.amount,
+    required this.accountId,
     this.category,
     this.balanceAfter,
+    this.categoryId,
   });
 
   /// Parsed calendar date in local terms (time set to noon to avoid DST edge cases).
@@ -15,6 +47,12 @@ class Transaction {
   final double amount;
   final String? category;
   final double? balanceAfter;
+
+  /// Set in [AppState.loadFromCsv] after [parseBankCsv] (parser rows use empty id).
+  final String accountId;
+
+  /// User-chosen spend category (canonical label), persisted across imports and restarts.
+  final String? categoryId;
 
   bool get isOutflow => amount < 0;
 }

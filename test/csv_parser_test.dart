@@ -8,6 +8,16 @@ import 'package:clarity/models.dart';
 import 'package:clarity/spend_categories.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+const _kTestAccountId = 'test-acct';
+
+AppState _appStateForCsvImport() {
+  final s = AppState();
+  s.accounts = [
+    Account(id: _kTestAccountId, name: 'Test', type: AccountType.checking),
+  ];
+  return s;
+}
+
 void main() {
   test('parseBankCsv reads balance from last row', () async {
     final csv = await File('test/fixtures/sample.csv').readAsString();
@@ -18,8 +28,12 @@ void main() {
 
   test('AppState aggregates April 2024 spend and categories', () async {
     final csv = await File('test/fixtures/sample.csv').readAsString();
-    final state = AppState();
-    state.loadFromCsv(csv, reference: DateTime(2024, 4, 15));
+    final state = _appStateForCsvImport();
+    state.loadFromCsv(
+      csv,
+      accountId: _kTestAccountId,
+      reference: DateTime(2024, 4, 15),
+    );
 
     expect(
       state.spentThisMonth,
@@ -63,12 +77,14 @@ void main() {
       date: DateTime(2024, 4, 1),
       description: 'Uber ride',
       amount: -5,
+      accountId: 'a1',
     );
     expect(spendGroupLabel(uber), 'Transportation');
     final rent = Transaction(
       date: DateTime(2024, 4, 1),
       description: 'Monthly rent',
       amount: -800,
+      accountId: 'a1',
     );
     expect(spendGroupLabel(rent), 'Housing');
   });
@@ -80,6 +96,7 @@ void main() {
           date: DateTime(2024, 4, 1),
           description: 'ACH NSF fee for payment',
           amount: -35,
+          accountId: 'a1',
         ),
       ),
       kIgnoredCategoryLabel,
@@ -90,6 +107,7 @@ void main() {
           date: DateTime(2024, 4, 1),
           description: 'Payment RETURNED',
           amount: -20,
+          accountId: 'a1',
         ),
       ),
       kIgnoredCategoryLabel,
@@ -100,6 +118,7 @@ void main() {
           date: DateTime(2024, 4, 1),
           description: 'Transfer to savings',
           amount: -200,
+          accountId: 'a1',
         ),
       ),
       isNot(kIgnoredCategoryLabel),
@@ -111,6 +130,7 @@ void main() {
       date: DateTime(2024, 4, 1),
       description: 'NSF fee',
       amount: -10,
+      accountId: 'a1',
     );
     final key = transactionCategoryKey(t);
     expect(
@@ -122,14 +142,41 @@ void main() {
     );
   });
 
+  test('categoryId on transaction wins over category rules', () {
+    final t = Transaction(
+      date: DateTime(2024, 4, 1),
+      description: 'Capital One payment thank you',
+      amount: -25,
+      accountId: 'a1',
+      categoryId: 'Grocery / Supermarket',
+    );
+    final rules = [
+      CategoryRule(
+        id: '1',
+        pattern: 'capital one',
+        matchType: CategoryRule.matchTypeContains,
+        categoryCanonical: 'Credit Card Payment',
+        createdAt: DateTime.utc(2020),
+      ),
+    ];
+    expect(
+      spendGroupLabel(t, categoryRules: rules),
+      'Grocery / Supermarket',
+    );
+  });
+
   test('Ignored excluded from spentThisMonth income and topCategories', () async {
     const csv = '''
 Date,Description,Amount
 2024-04-01,Normal shop,-50.00
 2024-04-02,ACH NSF RETURN,-25.00
 2024-04-03,Merchant refund REVERSAL,40.00''';
-    final state = AppState();
-    state.loadFromCsv(csv, reference: DateTime(2024, 4, 15));
+    final state = _appStateForCsvImport();
+    state.loadFromCsv(
+      csv,
+      accountId: _kTestAccountId,
+      reference: DateTime(2024, 4, 15),
+    );
     expect(state.spentThisMonth, closeTo(50, 0.01));
     expect(state.incomeThisMonth, closeTo(0, 0.01));
     expect(
@@ -143,6 +190,7 @@ Date,Description,Amount
       date: DateTime(2024, 4, 1),
       description: 'NERO CAMBRIDGE MA',
       amount: -12,
+      accountId: 'a1',
     );
     final rules = [
       CategoryRule(
@@ -161,6 +209,7 @@ Date,Description,Amount
       date: DateTime(2024, 4, 1),
       description: 'Zelle payment from Alice',
       amount: 50,
+      accountId: 'a1',
     );
     expect(
       spendGroupLabel(zelleIn, categoryRules: rules),
@@ -222,6 +271,7 @@ Date,Description,Amount
       date: DateTime(2025, 4, 9),
       description: 'Bom Dough LLC DES:payroll INDN:Martins Pedro PPD',
       amount: 544.63,
+      accountId: 'a1',
       category: 'Uncategorized',
     );
     expect(spendGroupLabel(payroll), 'Income / Payroll');
@@ -232,6 +282,7 @@ Date,Description,Amount
       date: DateTime(2026, 4, 2),
       description: 'Bom Dough LLC DES:PAYROLL ID:1047 INDN:Martins Pedro CO ID:XXXXX30473 PPD',
       amount: 544.63,
+      accountId: 'a1',
       category: 'Deposit',
     );
     expect(spendGroupLabel(payroll), 'Income / Payroll');
@@ -245,8 +296,12 @@ Date,Description,Amount
 2026-04-14,Zelle payment to Patrick Ferreira Conf# c3jm9dxct,-50.00
 2026-04-15,APPLE COM BILL 04/15 PURCHASE CUPERTINO CA,-64.78
 ''';
-    final state = AppState();
-    state.loadFromCsv(csv, reference: DateTime(2026, 4, 15));
+    final state = _appStateForCsvImport();
+    state.loadFromCsv(
+      csv,
+      accountId: _kTestAccountId,
+      reference: DateTime(2026, 4, 15),
+    );
     expect(
       state.topCategories.any((c) => c.name == 'Uncategorized'),
       false,
@@ -259,8 +314,12 @@ Date,Description,Amount
 2026-04-01,Bom Dough LLC payroll,-500.00
 2026-04-01,Uber ride,-100.00
 ''';
-    final state = AppState();
-    state.loadFromCsv(csv, reference: DateTime(2026, 4, 15));
+    final state = _appStateForCsvImport();
+    state.loadFromCsv(
+      csv,
+      accountId: _kTestAccountId,
+      reference: DateTime(2026, 4, 15),
+    );
     expect(
       state.topCategories.any(
         (c) => c.name.trimLeft().toLowerCase().startsWith('income'),
@@ -280,8 +339,12 @@ Date,Description,Amount
 2026-04-01,April first,-5.00
 2025-12-01,December old,-999.00
 ''';
-      final state = AppState();
-      state.loadFromCsv(csv, reference: DateTime(2026, 4, 16));
+      final state = _appStateForCsvImport();
+      state.loadFromCsv(
+        csv,
+        accountId: _kTestAccountId,
+        reference: DateTime(2026, 4, 16),
+      );
       expect(state.monthlyGroups.length, 2);
       expect(state.monthlyGroups.first.yearMonth, '2026-04');
       expect(state.monthlyGroups.first.transactions.length, 2);

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:clarity/app_state.dart';
+import 'package:clarity/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Imports the real bank CSV from Downloads (same path used for local debugging).
@@ -15,6 +16,14 @@ void main() {
       fail('Missing CSV at $path — set CLARITY_STMT_CSV or add stmt.csv');
     }
     final text = await file.readAsString();
-    AppState().loadFromCsv(text, reference: DateTime(2025, 1, 15));
+    final state = AppState();
+    state.accounts = [
+      Account(id: 'debug', name: 'Debug', type: AccountType.checking),
+    ];
+    state.loadFromCsv(
+      text,
+      accountId: 'debug',
+      reference: DateTime(2025, 1, 15),
+    );
   });
 }

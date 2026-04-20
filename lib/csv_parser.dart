@@ -176,8 +176,10 @@ ParseResult parseBankCsv(String input) {
         date: date,
         description: desc.isEmpty ? 'Transaction' : desc,
         amount: amount,
+        accountId: '',
         category: categoryOrNull,
         balanceAfter: balanceAfter,
+        categoryId: null,
       ),
     );
   }

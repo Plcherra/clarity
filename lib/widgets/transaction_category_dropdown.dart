@@ -2,11 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../category_description_normalize.dart';
+import '../category_rule.dart';
 import '../models.dart';
 import '../spend_categories.dart';
 
 /// Minimum length for a saved description rule pattern (after normalization).
 const int kMinCategoryRulePatternLength = 3;
+
+/// Fixed viewport height for the anchored category list + “new category” row.
+const double _kCategoryPickerPanelHeight = 280;
+
+// --- Overlay layout ------------------------------------------------------------
+// [TransactionCategoryField] uses [OverlayPortal] + [OverlayPortalController]
+// rather than inserting a raw [OverlayEntry]. That keeps [CompositedTransformFollower]
+// in Flutter’s overlay layout pass (stable paint transforms when other overlays—
+// tooltips, dialogs—participate in the same frame).
 
 /// After assigning an outflow category, offers to persist a contains-rule.
 Future<void> showSaveCategoryRuleDialogIfOutflow({
@@ -44,6 +54,7 @@ Future<void> showSaveCategoryRuleDialogIfOutflow({
   final ok = await appState.addOrUpdateCategoryRuleByPattern(
     raw,
     categoryCanonical,
+    sourceForNewRule: CategoryRuleSource.learnedFromTransaction,
   );
   if (!context.mounted) return;
   if (!ok) {
@@ -138,38 +149,23 @@ class TransactionCategoryField extends StatefulWidget {
 }
 
 class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
-  final LayerLink _layerLink = LayerLink();
-  OverlayEntry? _overlayEntry;
-
-  void _removeOverlay() {
-    _overlayEntry?.remove();
-    _overlayEntry = null;
-  }
-
-  void _openOverlay() {
-    if (_overlayEntry != null) {
-      _removeOverlay();
-      return;
-    }
-    final overlayState = Overlay.maybeOf(context);
-    if (overlayState == null) return;
-
-    _overlayEntry = OverlayEntry(
-      builder: (ctx) => _CategoryMenuOverlay(
-        layerLink: _layerLink,
-        dialogContext: context,
-        appState: widget.appState,
-        transaction: widget.transaction,
-        onClose: _removeOverlay,
-      ),
-    );
-    overlayState.insert(_overlayEntry!);
-  }
+  final LayerLink _categoryAnchorLink = LayerLink();
+  final OverlayPortalController _categoryMenuPortal = OverlayPortalController();
 
   @override
   void dispose() {
-    _removeOverlay();
+    // Do not call [OverlayPortalController.hide] here: during tree finalization the
+    // controller can already be detached from [OverlayPortal], and [hide] then asserts
+    // ([OverlayPortalController] detached path). Unmounting the portal drops the overlay.
     super.dispose();
+  }
+
+  void _toggleCategoryMenu() {
+    if (_categoryMenuPortal.isShowing) {
+      _categoryMenuPortal.hide();
+    } else {
+      _categoryMenuPortal.show();
+    }
   }
 
   @override
@@ -180,7 +176,7 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
     final chip = Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _openOverlay,
+        onTap: _toggleCategoryMenu,
         borderRadius: BorderRadius.circular(999),
         child: Container(
           padding: const EdgeInsets.symmetric(
@@ -203,9 +199,83 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
       ),
     );
 
-    return CompositedTransformTarget(
-      link: _layerLink,
-      child: chip,
+    return OverlayPortal(
+      controller: _categoryMenuPortal,
+      overlayChildBuilder: (BuildContext _) {
+        return _CategoryMenuOverlay(
+          layerLink: _categoryAnchorLink,
+          dialogContext: context,
+          appState: widget.appState,
+          transaction: widget.transaction,
+          onClose: () => _categoryMenuPortal.hide(),
+        );
+      },
+      child: CompositedTransformTarget(
+        link: _categoryAnchorLink,
+        child: chip,
+      ),
+    );
+  }
+}
+
+/// Full-screen tap target behind the panel; closes the menu without dimming.
+class _BackdropDismissLayer extends StatelessWidget {
+  const _BackdropDismissLayer({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: onDismiss,
+        child: const ColoredBox(color: Colors.transparent),
+      ),
+    );
+  }
+}
+
+/// [CompositedTransformFollower] shell: fixed size, keyboard inset padding only.
+class _AnchoredCategoryPanel extends StatelessWidget {
+  const _AnchoredCategoryPanel({
+    required this.anchorLink,
+    required this.panelWidth,
+    required this.colorScheme,
+    required this.sheetBody,
+  });
+
+  final LayerLink anchorLink;
+  final double panelWidth;
+  final ColorScheme colorScheme;
+  final Widget sheetBody;
+
+  @override
+  Widget build(BuildContext context) {
+    return CompositedTransformFollower(
+      link: anchorLink,
+      showWhenUnlinked: false,
+      offset: const Offset(0, 6),
+      child: Material(
+        elevation: 6,
+        shadowColor: Colors.black26,
+        borderRadius: BorderRadius.circular(16),
+        color: colorScheme.surface,
+        child: Container(
+          width: panelWidth,
+          height: _kCategoryPickerPanelHeight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE4E0D8)),
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: sheetBody,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -470,123 +540,99 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
 
     return Stack(
       children: [
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onTap: () {
-              _commitPendingEditIfAny();
-              widget.onClose();
-            },
-            child: const ColoredBox(color: Colors.transparent),
-          ),
+        _BackdropDismissLayer(
+          onDismiss: () {
+            _commitPendingEditIfAny();
+            widget.onClose();
+          },
         ),
-        CompositedTransformFollower(
-          link: widget.layerLink,
-          showWhenUnlinked: false,
-          offset: const Offset(0, 6),
-          child: Material(
-            elevation: 6,
-            shadowColor: Colors.black26,
-            borderRadius: BorderRadius.circular(16),
-            color: cs.surface,
-            child: Container(
-              width: width,
-              height: 280,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFE4E0D8)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
+        _AnchoredCategoryPanel(
+          anchorLink: widget.layerLink,
+          panelWidth: width,
+          colorScheme: cs,
+          sheetBody: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: widget.appState,
+                  builder: (context, _) {
+                    final names = categoryPickerCanonicals(
+                      customCategories: widget.appState.customCategories,
+                      hiddenLower: widget.appState.categoriesHiddenFromPicker,
+                    );
+                    if (names.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No categories',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: names.length,
+                      separatorBuilder: (_, _) => Divider(
+                        height: 1,
+                        thickness: 1,
+                        color: cs.outlineVariant.withValues(alpha: 0.35),
+                      ),
+                      itemBuilder: (context, i) {
+                        final canonical = names[i];
+                        final label = applyCategoryDisplayRenames(
+                          canonical,
+                          widget.appState.categoryDisplayRenames,
+                        );
+                        return _categoryRow(
+                          theme: theme,
+                          cs: cs,
+                          canonical: canonical,
+                          label: label,
+                        );
+                      },
+                    );
+                  },
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),
+                child: Row(
                   children: [
                     Expanded(
-                      child: ListenableBuilder(
-                        listenable: widget.appState,
-                        builder: (context, _) {
-                          final names = categoryPickerCanonicals(
-                            customCategories: widget.appState.customCategories,
-                            hiddenLower: widget.appState.categoriesHiddenFromPicker,
-                          );
-                          if (names.isEmpty) {
-                            return Center(
-                              child: Text(
-                                'No categories',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: cs.onSurface.withValues(alpha: 0.45),
-                                ),
-                              ),
-                            );
-                          }
-                          return ListView.separated(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: names.length,
-                            separatorBuilder: (_, _) => Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: cs.outlineVariant.withValues(alpha: 0.35),
-                            ),
-                            itemBuilder: (context, i) {
-                              final canonical = names[i];
-                              final label = applyCategoryDisplayRenames(
-                                canonical,
-                                widget.appState.categoryDisplayRenames,
-                              );
-                              return _categoryRow(
-                                theme: theme,
-                                cs: cs,
-                                canonical: canonical,
-                                label: label,
-                              );
-                            },
-                          );
-                        },
+                      child: TextField(
+                        controller: _newController,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _submitNew(),
+                        decoration: InputDecoration(
+                          hintText: 'New category',
+                          isDense: true,
+                          filled: true,
+                          fillColor: const Color(0xFFF0EDE8),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 10,
+                          ),
+                        ),
                       ),
                     ),
-                    const Divider(height: 1),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 8, 4, 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _newController,
-                              textInputAction: TextInputAction.done,
-                              onSubmitted: (_) => _submitNew(),
-                              decoration: InputDecoration(
-                                hintText: 'New category',
-                                isDense: true,
-                                filled: true,
-                                fillColor: const Color(0xFFF0EDE8),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 10,
-                                ),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Add and assign',
-                            onPressed: _submitNew,
-                            icon: Icon(
-                              Icons.add_rounded,
-                              color: cs.onSurface.withValues(alpha: 0.65),
-                            ),
-                          ),
-                        ],
+                    IconButton(
+                      onPressed: _submitNew,
+                      icon: Icon(
+                        Icons.add_rounded,
+                        color: cs.onSurface.withValues(alpha: 0.65),
                       ),
                     ),
                   ],
                 ),
               ),
-            ),
+            ],
           ),
         ),
       ],

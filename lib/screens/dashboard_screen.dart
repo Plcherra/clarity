@@ -6,7 +6,8 @@ import '../formatting.dart';
 import '../models.dart';
 import 'budgets_screen.dart';
 import 'month_detail_screen.dart';
-import 'uncategorized_transactions_screen.dart';
+import 'rules_management_screen.dart';
+import 'transaction_review_screen.dart';
 
 Color _balanceColor(double v) {
   if (v > 0) return const Color(0xFF1B7A4C);
@@ -42,6 +43,31 @@ class DashboardScreen extends StatelessWidget {
               ),
               onPressed: () => Navigator.of(context).pop(),
             ),
+            actions: [
+              PopupMenuButton<String>(
+                tooltip: 'More',
+                icon: Icon(
+                  Icons.more_horiz_rounded,
+                  color: cs.onSurface.withValues(alpha: 0.55),
+                ),
+                onSelected: (value) {
+                  if (value == 'rules') {
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (context) =>
+                            RulesManagementScreen(appState: appState),
+                      ),
+                    );
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem<String>(
+                    value: 'rules',
+                    child: Text('Rules'),
+                  ),
+                ],
+              ),
+            ],
           ),
           body: DecoratedBox(
             decoration: BoxDecoration(
@@ -86,10 +112,9 @@ class DashboardScreen extends StatelessWidget {
                             onTap: () {
                               Navigator.of(context).push<void>(
                                 MaterialPageRoute<void>(
-                                  builder: (context) =>
-                                      UncategorizedTransactionsScreen(
-                                        appState: appState,
-                                      ),
+                                  builder: (context) => TransactionReviewScreen(
+                                    appState: appState,
+                                  ),
                                 ),
                               );
                             },
@@ -100,7 +125,9 @@ class DashboardScreen extends StatelessWidget {
                           label: 'Available this month',
                           value: formatMoney(appState.availableThisMonth),
                           large: true,
-                          valueColor: _balanceColor(appState.availableThisMonth),
+                          valueColor: _balanceColor(
+                            appState.availableThisMonth,
+                          ),
                           footnote:
                               'Income ${formatMoney(appState.incomeThisMonth)} · '
                               'Spending ${formatMoney(appState.spentThisMonth)}',
@@ -118,7 +145,9 @@ class DashboardScreen extends StatelessWidget {
                           title: 'Biggest leaks this month',
                         ),
                         const SizedBox(height: 16),
-                        _BiggestLeaksCard(leaks: appState.biggestLeaksThisMonth),
+                        _BiggestLeaksCard(
+                          leaks: appState.biggestLeaksThisMonth,
+                        ),
                         const SizedBox(height: _sectionGap),
                         _BurnRateCard(
                           runwayDays: appState.burnRunwayDays,
@@ -126,7 +155,10 @@ class DashboardScreen extends StatelessWidget {
                           spentThisMonth: appState.spentThisMonth,
                         ),
                         const SizedBox(height: _sectionGap),
-                        _SectionTitle(theme: theme, title: 'Statement by month'),
+                        _SectionTitle(
+                          theme: theme,
+                          title: 'Statement by month',
+                        ),
                         const SizedBox(height: 8),
                         Text(
                           'Tap a month for transactions',
@@ -155,10 +187,7 @@ class DashboardScreen extends StatelessWidget {
 }
 
 class _UncategorizedAttentionCard extends StatelessWidget {
-  const _UncategorizedAttentionCard({
-    required this.count,
-    required this.onTap,
-  });
+  const _UncategorizedAttentionCard({required this.count, required this.onTap});
 
   final int count;
   final VoidCallback onTap;
@@ -309,12 +338,15 @@ class _LeakRow extends StatelessWidget {
         ),
       );
     } else {
-      final pctLabel = '${pct >= 0 ? '+' : ''}${(pct * 100).abs().toStringAsFixed(0)}%';
+      final pctLabel =
+          '${pct >= 0 ? '+' : ''}${(pct * 100).abs().toStringAsFixed(0)}%';
       trendWidget = Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            pct >= 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+            pct >= 0
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded,
             size: 18,
             color: trendColor,
           ),

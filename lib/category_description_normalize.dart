@@ -1,6 +1,8 @@
 /// Normalizes bank transaction descriptions for substring rule matching.
 ///
 /// Lowercase, trim, collapse internal whitespace to a single space.
+/// Category rules may use comma-separated alternatives in the stored pattern; commas
+/// are preserved (see [descriptionMatchesCategoryRule] in `spend_categories.dart`).
 String normalizeDescriptionForMatching(String s) {
   return s
       .trim()

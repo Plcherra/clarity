@@ -11,7 +11,8 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
 
   final AppState appState;
 
-  static List<BankStatementLine> _lines(AppState state) {
+  /// Uncategorized rows from current [AppState.monthlyGroups], newest first.
+  static List<BankStatementLine> uncategorizedLines(AppState state) {
     final out = <BankStatementLine>[];
     for (final g in state.monthlyGroups) {
       for (final line in g.transactions) {
@@ -32,7 +33,7 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        final lines = _lines(appState);
+        final lines = uncategorizedLines(appState);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),
@@ -87,7 +88,9 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
                               Divider(
                                 height: 1,
                                 thickness: 1,
-                                color: cs.outlineVariant.withValues(alpha: 0.35),
+                                color: cs.outlineVariant.withValues(
+                                  alpha: 0.35,
+                                ),
                               ),
                             _LineTile(line: lines[i], appState: appState),
                           ],

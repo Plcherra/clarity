@@ -1,4 +1,5 @@
 import 'package:clarity/app_state.dart';
+import 'package:clarity/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Runs import so [AppState] emits kDebugMode CSV diagnostics to the console.
@@ -12,6 +13,14 @@ Date,Description,Amount
 2025-01-31,Gamma,-3.00
 2026-12-31,Odd future row,-9.00
 ''';
-    AppState().loadFromCsv(csv, reference: DateTime(2025, 1, 15));
+    final state = AppState();
+    state.accounts = [
+      Account(id: 'debug', name: 'Debug', type: AccountType.checking),
+    ];
+    state.loadFromCsv(
+      csv,
+      accountId: 'debug',
+      reference: DateTime(2025, 1, 15),
+    );
   });
 }

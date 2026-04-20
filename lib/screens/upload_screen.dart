@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../file_reader.dart';
-import 'dashboard_screen.dart';
+import 'account_selection_screen.dart';
 
 class UploadScreen extends StatefulWidget {
   const UploadScreen({super.key, required this.appState});
@@ -34,11 +34,13 @@ class _UploadScreenState extends State<UploadScreen> {
 
       final file = result.files.single;
       final text = await readPickedFileContents(file);
-      widget.appState.loadFromCsv(text);
       if (!mounted) return;
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
-          builder: (context) => DashboardScreen(appState: widget.appState),
+          builder: (context) => AccountSelectionScreen(
+            appState: widget.appState,
+            pendingCsvText: text,
+          ),
         ),
       );
     } on FormatException catch (e) {
