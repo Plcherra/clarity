@@ -1,5 +1,6 @@
 import 'bank_statement_monthly.dart';
 import 'category_rule.dart';
+import 'financial_role.dart';
 import 'models.dart';
 import 'spend_categories.dart';
 
@@ -17,11 +18,13 @@ DateTime _firstDayOfPreviousMonth(DateTime ref) {
 /// Rows whose effective category is [kIgnoredCategoryLabel] (e.g. reversals) are omitted.
 double totalIncomeInMonth(
   List<Transaction> txs,
+  List<Account> accounts,
   DateTime reference, {
   Map<String, String> categoryOverrides = const {},
   Map<String, String> categoryDisplayRenamesLower = const {},
   List<CategoryRule> categoryRules = const [],
 }) {
+  final accountsById = {for (final a in accounts) a.id: a};
   var sum = 0.0;
   for (final t in txs) {
     if (t.amount <= 0 || !_inMonth(t.date, reference)) continue;
@@ -33,6 +36,13 @@ double totalIncomeInMonth(
     if (isIgnoredCategoryLabel(base)) continue;
     final display = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
     if (isIgnoredCategoryLabel(display)) continue;
+    final role = effectiveFinancialRole(
+      t: t,
+      effectiveCategoryLabel: base,
+      accountsById: accountsById,
+      allTransactions: txs,
+    );
+    if (role != FinancialRole.income) continue;
     sum += t.amount;
   }
   return sum;
@@ -62,11 +72,13 @@ int uncategorizedTransactionCount(
 /// Spending by category (outflows, non-income labels), same rules as dashboard top categories.
 Map<String, double> _spendByCategoryInMonth(
   List<Transaction> txs,
+  List<Account> accounts,
   DateTime month,
   Map<String, String> categoryOverrides,
   Map<String, String> categoryDisplayRenamesLower,
   List<CategoryRule> categoryRules,
 ) {
+  final accountsById = {for (final a in accounts) a.id: a};
   final map = <String, double>{};
   for (final t in txs) {
     if (t.amount >= 0) continue;
@@ -76,8 +88,14 @@ Map<String, double> _spendByCategoryInMonth(
       categoryOverrides: categoryOverrides,
       categoryRules: categoryRules,
     );
-    if (isIncomeCategoryLabel(base)) continue;
     if (isIgnoredCategoryLabel(base)) continue;
+    final role = effectiveFinancialRole(
+      t: t,
+      effectiveCategoryLabel: base,
+      accountsById: accountsById,
+      allTransactions: txs,
+    );
+    if (role != FinancialRole.expense) continue;
     final name = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
     if (isIgnoredCategoryLabel(name)) continue;
     map[name] = (map[name] ?? 0) + (-t.amount);
@@ -93,6 +111,7 @@ double? _percentChange(double prev, double current) {
 /// Top [limit] spending categories for [reference] month with change vs previous month.
 List<CategoryLeakStat> biggestCategoryLeaks(
   List<Transaction> txs,
+  List<Account> accounts,
   DateTime reference, {
   int limit = 3,
   required Map<String, String> categoryOverrides,
@@ -101,6 +120,7 @@ List<CategoryLeakStat> biggestCategoryLeaks(
 }) {
   final thisMonth = _spendByCategoryInMonth(
     txs,
+    accounts,
     reference,
     categoryOverrides,
     categoryDisplayRenamesLower,
@@ -109,6 +129,7 @@ List<CategoryLeakStat> biggestCategoryLeaks(
   final prevRef = _firstDayOfPreviousMonth(reference);
   final lastMonth = _spendByCategoryInMonth(
     txs,
+    accounts,
     prevRef,
     categoryOverrides,
     categoryDisplayRenamesLower,

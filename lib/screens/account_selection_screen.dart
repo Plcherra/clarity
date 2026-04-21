@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import 'ai_category_review_screen.dart';
 import 'dashboard_screen.dart';
 
 /// Shown after the user picks a CSV; they must pick or create an account before import runs.
@@ -44,6 +45,19 @@ class AccountSelectionScreen extends StatelessWidget {
   Future<void> _importForAccount(BuildContext context, Account account) async {
     try {
       appState.loadFromCsv(pendingCsvText, accountId: account.id);
+      if (!context.mounted) return;
+      final unc = appState.uncategorizedImportedRowsForAccount(account.id);
+      if (unc.isNotEmpty) {
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute<void>(
+            builder: (context) => AiCategorizationFlowScreen(
+              appState: appState,
+              accountId: account.id,
+              onFinished: () => Navigator.of(context).pop(),
+            ),
+          ),
+        );
+      }
       if (!context.mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(

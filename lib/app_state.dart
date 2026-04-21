@@ -11,15 +11,38 @@ import 'category_rule.dart';
 import 'category_rules_storage.dart';
 import 'csv_parser.dart';
 import 'dashboard_metrics.dart';
+import 'financial_role.dart';
 import 'models.dart';
+import 'profile_storage.dart';
 import 'spend_categories.dart';
 import 'transaction_category_storage.dart';
+import 'transaction_fingerprint.dart';
+import 'transaction_storage.dart';
+import 'uncategorized_for_ai.dart';
 
 /// Holds parsed statement data and derived aggregates.
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
 /// and description rules ([hydrateCategoryRules] / [addOrUpdateCategoryRuleByPattern])
 /// are persisted separately from CSV data.
 class AppState extends ChangeNotifier {
+  LocalProfile? localProfile;
+
+  /// The account currently being viewed/reviewed in UI flows.
+  String? activeAccountId;
+
+  /// All persisted transactions keyed by accountId (append-only by import).
+  Map<String, List<Transaction>> transactionsByAccount = const {};
+
+  /// Convenience: flattened across accounts, used for global dashboard metrics.
+  List<Transaction> get allTransactions {
+    if (transactionsByAccount.isEmpty) return const [];
+    final out = <Transaction>[];
+    for (final e in transactionsByAccount.entries) {
+      out.addAll(e.value);
+    }
+    return out;
+  }
+
   List<Transaction> transactions = const [];
   double totalBalance = 0;
   double spentThisMonth = 0;
@@ -115,6 +138,41 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Loads persisted transactions across all accounts (call once before [runApp]).
+  Future<void> hydratePersistedTransactions() async {
+    try {
+      transactionsByAccount = await loadTransactionsByAccount();
+    } on Object {
+      transactionsByAccount = {};
+    }
+    // Keep current active account selection, but refresh derived metrics.
+    final active = activeAccountId;
+    if (active != null) {
+      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
+    }
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+  }
+
+  Future<void> hydrateLocalProfile() async {
+    try {
+      localProfile = await loadLocalProfile();
+    } on Object {
+      localProfile = null;
+    }
+    notifyListeners();
+  }
+
+  Future<void> setLocalProfile(LocalProfile profile) async {
+    await saveLocalProfile(profile);
+    localProfile = profile;
+    notifyListeners();
+  }
+
   /// Appends [account], persists, and notifies. Returns false if save fails.
   Future<bool> addAccount(Account account) async {
     final next = [...accounts, account];
@@ -161,6 +219,25 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Built-in + custom categories shown in pickers (for AI allow-lists and review UI).
+  List<String> get allowedCategoryPickerLabels => categoryPickerCanonicals(
+        customCategories: customCategories,
+        hiddenLower: categoriesHiddenFromPicker,
+      );
+
+  /// Uncategorized statement rows for [accountId] using the same rules as the dashboard.
+  List<Transaction> uncategorizedImportedRowsForAccount(String accountId) {
+    final id = accountId.trim();
+    if (id.isEmpty) return const [];
+    final list = transactionsByAccount[id] ?? const [];
+    return uncategorizedDataRowsForImport(
+      accountTransactions: list,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenamesLower: categoryDisplayRenames,
+      categoryRules: categoryRules,
+    );
+  }
+
   /// Normalized pattern must be at least 3 characters. Same pattern updates category.
   /// Persist-then-commit; returns false if validation or save fails.
   ///
@@ -198,7 +275,11 @@ class AppState extends ChangeNotifier {
       return false;
     }
     categoryRules = next;
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
     return true;
   }
@@ -238,7 +319,11 @@ class AppState extends ChangeNotifier {
       return false;
     }
     categoryRules = next;
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
     return true;
   }
@@ -255,7 +340,11 @@ class AppState extends ChangeNotifier {
       return false;
     }
     categoryRules = next;
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
     return true;
   }
@@ -311,40 +400,84 @@ class AppState extends ChangeNotifier {
     }
     final ref = reference ?? DateTime.now();
     _spendReference = ref;
+    activeAccountId = id;
     categoryOverrides = const {};
     // Keep [categoryDisplayRenames] and [categoriesHiddenFromPicker] across imports
     // so built-in display renames and picker preferences persist (same as budgets/rules).
     final result = parseBankCsv(utf8Text);
-    transactions = List.unmodifiable(
-      result.transactions.map((t) {
-        final stamped = Transaction(
-          date: t.date,
-          description: t.description,
-          amount: t.amount,
-          accountId: id,
-          category: t.category,
-          balanceAfter: t.balanceAfter,
-          categoryId: null,
-        );
-        final key = transactionCategoryKey(stamped);
-        final persisted = transactionCategoryAssignments[key]?.trim();
-        final cid =
-            (persisted != null && persisted.isNotEmpty) ? persisted : null;
-        return Transaction(
-          date: stamped.date,
-          description: stamped.description,
-          amount: stamped.amount,
-          accountId: stamped.accountId,
-          category: stamped.category,
-          balanceAfter: stamped.balanceAfter,
-          categoryId: cid,
-        );
-      }).toList(),
-    );
+    final importId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+
+    final existing = List<Transaction>.from(transactionsByAccount[id] ?? const []);
+    final existingFingerprints = <String>{};
+    for (final t in existing) {
+      final fp = t.fingerprint;
+      if (fp != null && fp.isNotEmpty) existingFingerprints.add(fp);
+    }
+
+    final stampedNew = <Transaction>[];
+    for (final t in result.transactions) {
+      final base = Transaction(
+        date: t.date,
+        description: t.description,
+        amount: t.amount,
+        accountId: id,
+        category: t.category,
+        balanceAfter: t.balanceAfter,
+        categoryId: null,
+        importId: importId,
+      );
+      final key = transactionCategoryKey(base);
+      final persisted = transactionCategoryAssignments[key]?.trim();
+      final cid = (persisted != null && persisted.isNotEmpty) ? persisted : null;
+      final withCid = Transaction(
+        date: base.date,
+        description: base.description,
+        amount: base.amount,
+        accountId: base.accountId,
+        category: base.category,
+        balanceAfter: base.balanceAfter,
+        categoryId: cid,
+        importId: base.importId,
+      );
+      final fp = transactionFingerprint(withCid);
+      if (existingFingerprints.contains(fp)) continue;
+      existingFingerprints.add(fp);
+      stampedNew.add(
+        Transaction(
+          date: withCid.date,
+          description: withCid.description,
+          amount: withCid.amount,
+          accountId: withCid.accountId,
+          category: withCid.category,
+          balanceAfter: withCid.balanceAfter,
+          categoryId: withCid.categoryId,
+          importId: withCid.importId,
+          fingerprint: fp,
+        ),
+      );
+    }
+
+    final merged = [...existing, ...stampedNew];
+    transactionsByAccount = {...transactionsByAccount, id: List.unmodifiable(merged)};
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+
+    transactions = List.unmodifiable(merged);
     totalBalance = resolveTotalBalance(transactions, result.totalBalance);
-    _recomputeDerived(transactions, result.diagnostics);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: result.diagnostics,
+    );
     notifyListeners();
     _persistCategoryCatalog();
+  }
+
+  void _persistActiveAccountTransactionsIfAny() {
+    final id = activeAccountId;
+    if (id == null || id.trim().isEmpty) return;
+    if (!transactionsByAccount.containsKey(id)) return;
+    transactionsByAccount = {...transactionsByAccount, id: transactions};
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
   }
 
   /// Assigns a category to a transaction and refreshes aggregates.
@@ -369,11 +502,77 @@ class AppState extends ChangeNotifier {
           category: x.category,
           balanceAfter: x.balanceAfter,
           categoryId: cat,
+          importId: x.importId,
+          fingerprint: x.fingerprint,
+          financialRole: x.financialRole,
         );
       }).toList(),
     );
+    _persistActiveAccountTransactionsIfAny();
     _persistTransactionCategoryAssignments();
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+  }
+
+  /// Assigns categories for many [transactionCategoryKey]s at once (persists [categoryId] on each row).
+  void bulkSetCategoryOverrides(Map<String, String> keyToCanonicalCategory) {
+    if (keyToCanonicalCategory.isEmpty) return;
+    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
+    final nextOv = Map<String, String>.from(categoryOverrides);
+    for (final e in keyToCanonicalCategory.entries) {
+      final k = e.key.trim();
+      final v = e.value.trim();
+      if (k.isEmpty || v.isEmpty) continue;
+      nextAssign[k] = v;
+      nextOv[k] = v;
+    }
+    transactionCategoryAssignments = nextAssign;
+    categoryOverrides = nextOv;
+
+    Transaction applyCategory(Transaction x) {
+      final k = transactionCategoryKey(x);
+      final cat = keyToCanonicalCategory[k];
+      if (cat == null) return x;
+      final c = cat.trim();
+      if (c.isEmpty) return x;
+      return Transaction(
+        date: x.date,
+        description: x.description,
+        amount: x.amount,
+        accountId: x.accountId,
+        category: x.category,
+        balanceAfter: x.balanceAfter,
+        categoryId: c,
+        importId: x.importId,
+        fingerprint: x.fingerprint,
+        financialRole: x.financialRole,
+      );
+    }
+
+    final nextByAccount = <String, List<Transaction>>{};
+    for (final e in transactionsByAccount.entries) {
+      nextByAccount[e.key] =
+          List.unmodifiable(e.value.map(applyCategory).toList());
+    }
+    transactionsByAccount = nextByAccount;
+
+    final active = activeAccountId;
+    if (active != null) {
+      transactions =
+          List.unmodifiable(transactionsByAccount[active] ?? const []);
+    }
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
   }
 
@@ -434,13 +633,21 @@ class AppState extends ChangeNotifier {
             category: x.category,
             balanceAfter: x.balanceAfter,
             categoryId: null,
+            importId: x.importId,
+            fingerprint: x.fingerprint,
+            financialRole: x.financialRole,
           );
         }
         return x;
       }).toList(),
     );
+    _persistActiveAccountTransactionsIfAny();
     _persistTransactionCategoryAssignments();
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
     _persistCategoryCatalog();
   }
@@ -493,31 +700,42 @@ class AppState extends ChangeNotifier {
               category: x.category,
               balanceAfter: x.balanceAfter,
               categoryId: newN,
+              importId: x.importId,
+              fingerprint: x.fingerprint,
+              financialRole: x.financialRole,
             );
           }
           return x;
         }).toList(),
       );
+      _persistActiveAccountTransactionsIfAny();
       _persistTransactionCategoryAssignments();
     }
 
-    _recomputeDerived(transactions, null);
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
     notifyListeners();
     _persistCategoryCatalog();
   }
 
-  void _recomputeDerived(
-    List<Transaction> txsForGrouping,
-    CsvParseDiagnostics? diag,
-  ) {
+  void _recomputeDerived({
+    required List<Transaction> activeAccountTransactions,
+    required List<Transaction> allTransactionsForMetrics,
+    required CsvParseDiagnostics? diag,
+  }) {
     spentThisMonth = _spentThisMonth(
-      transactions,
+      allTransactionsForMetrics,
+      accounts,
       _spendReference,
       categoryOverrides,
       categoryRules,
     );
     incomeThisMonth = totalIncomeInMonth(
-      transactions,
+      allTransactionsForMetrics,
+      accounts,
       _spendReference,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
@@ -525,14 +743,15 @@ class AppState extends ChangeNotifier {
     );
     availableThisMonth = incomeThisMonth - spentThisMonth;
     uncategorizedCount = uncategorizedTransactionCount(
-      transactions,
+      activeAccountTransactions,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
       categoryRules: categoryRules,
     );
     biggestLeaksThisMonth = List.unmodifiable(
       biggestCategoryLeaks(
-        transactions,
+        allTransactionsForMetrics,
+        accounts,
         _spendReference,
         limit: 3,
         categoryOverrides: categoryOverrides,
@@ -547,7 +766,8 @@ class AppState extends ChangeNotifier {
     );
     topCategories = List.unmodifiable(
       _topCategoriesThisMonth(
-        transactions,
+        allTransactionsForMetrics,
+        accounts,
         _spendReference,
         5,
         categoryOverrides,
@@ -556,7 +776,7 @@ class AppState extends ChangeNotifier {
       ),
     );
     final grouped = monthlyGroupsFromTransactions(
-      txsForGrouping,
+      activeAccountTransactions,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
       categoryRules: categoryRules,
@@ -569,6 +789,8 @@ class AppState extends ChangeNotifier {
 
   void clear() {
     transactions = const [];
+    transactionsByAccount = const {};
+    activeAccountId = null;
     totalBalance = 0;
     spentThisMonth = 0;
     incomeThisMonth = 0;
@@ -592,10 +814,12 @@ class AppState extends ChangeNotifier {
 /// Omits rows whose effective spend group is [kIgnoredCategoryLabel].
 double _spentThisMonth(
   List<Transaction> txs,
+  List<Account> accounts,
   DateTime reference,
   Map<String, String> categoryOverrides,
   List<CategoryRule> categoryRules,
 ) {
+  final accountsById = {for (final a in accounts) a.id: a};
   final y = reference.year;
   final m = reference.month;
   var sum = 0.0;
@@ -608,6 +832,13 @@ double _spentThisMonth(
       categoryRules: categoryRules,
     );
     if (isIgnoredCategoryLabel(base)) continue;
+    final role = effectiveFinancialRole(
+      t: t,
+      effectiveCategoryLabel: base,
+      accountsById: accountsById,
+      allTransactions: txs,
+    );
+    if (role != FinancialRole.expense) continue;
     sum += -t.amount;
   }
   return sum;
@@ -619,12 +850,14 @@ bool _inMonth(DateTime d, DateTime reference) {
 
 List<CategorySpend> _topCategoriesThisMonth(
   List<Transaction> txs,
+  List<Account> accounts,
   DateTime reference,
   int limit,
   Map<String, String> categoryOverrides,
   Map<String, String> categoryDisplayRenamesLower,
   List<CategoryRule> categoryRules,
 ) {
+  final accountsById = {for (final a in accounts) a.id: a};
   final map = <String, double>{};
   for (final t in txs) {
     if (t.amount >= 0) continue;
@@ -634,8 +867,14 @@ List<CategorySpend> _topCategoriesThisMonth(
       categoryOverrides: categoryOverrides,
       categoryRules: categoryRules,
     );
-    if (isIncomeCategoryLabel(base)) continue;
     if (isIgnoredCategoryLabel(base)) continue;
+    final role = effectiveFinancialRole(
+      t: t,
+      effectiveCategoryLabel: base,
+      accountsById: accountsById,
+      allTransactions: txs,
+    );
+    if (role != FinancialRole.expense) continue;
     final name = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
     if (isIgnoredCategoryLabel(name)) continue;
     map[name] = (map[name] ?? 0) + (-t.amount);

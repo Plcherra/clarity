@@ -1,16 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'app_state.dart';
-import 'screens/upload_screen.dart';
+import 'screens/home_shell.dart';
+import 'screens/onboarding_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: '.env', isOptional: true);
+
   final appState = AppState();
   await appState.hydratePersistedBudgets();
   await appState.hydrateCategoryRules();
   await appState.hydratePersistedCategoryCatalog();
   await appState.hydratePersistedAccounts();
+  await appState.hydratePersistedTransactions();
   await appState.hydrateTransactionCategoryAssignments();
+  await appState.hydrateLocalProfile();
   runApp(ClarityApp(appState: appState));
 }
 
@@ -60,7 +66,9 @@ final class ClarityApp extends StatelessWidget {
           title: 'Clarity',
           debugShowCheckedModeBanner: false,
           theme: _buildTheme(),
-          home: UploadScreen(appState: appState),
+          home: appState.localProfile == null
+              ? OnboardingScreen(appState: appState)
+              : HomeShell(appState: appState),
         );
       },
     );

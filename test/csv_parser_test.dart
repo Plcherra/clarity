@@ -386,6 +386,18 @@ Date,Description,Amount
     expect(r.transactions[1].amount, closeTo(100, 0.01));
   });
 
+  test('parseBankCsv infers sign from Transaction Type (Capital One 360)', () {
+    const csv = '''
+Transaction Date,Transaction Description,Transaction Type,Transaction Amount,Running Balance
+04/15/26,Debit Card Purchase - TST BOM DOUGH CAMBRIDGE MA,Debit,4.14,20.24
+04/16/26,Deposit from Bom Dough LLC PAYROLL,Credit,197.64,217.88
+''';
+    final r = parseBankCsv(csv);
+    expect(r.transactions.length, 2);
+    expect(r.transactions[0].amount, closeTo(-4.14, 0.001));
+    expect(r.transactions[1].amount, closeTo(197.64, 0.001));
+  });
+
   test('parseBankCsv recognizes Data and Valor (PT) with DD.MM.YYYY', () {
     const csv = 'Data\tDescrição\tValor\n16.04.2026\tShop\t-12,50';
     final r = parseBankCsv(csv);

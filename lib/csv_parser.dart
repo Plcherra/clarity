@@ -150,7 +150,22 @@ ParseResult parseBankCsv(String input) {
 
     double? amount;
     if (col.amount != null) {
-      amount = parseMoney(cells[col.amount!].toString());
+      final rawAmount = parseMoney(cells[col.amount!].toString());
+      if (rawAmount == null) {
+        amount = null;
+      } else {
+        final typeStr = col.transactionType != null
+            ? cells[col.transactionType!].toString().trim()
+            : '';
+        final t = typeStr.toLowerCase();
+        if (t == 'debit') {
+          amount = -rawAmount.abs();
+        } else if (t == 'credit') {
+          amount = rawAmount.abs();
+        } else {
+          amount = rawAmount;
+        }
+      }
     } else if (col.debit != null || col.credit != null) {
       final d = col.debit != null
           ? parseMoney(cells[col.debit!].toString())
@@ -457,6 +472,7 @@ class _ColumnMap {
     this.amount,
     this.debit,
     this.credit,
+    this.transactionType,
     this.description,
     this.category,
     this.balance,
@@ -635,13 +651,40 @@ class _ColumnMap {
       'buchungstext',
     ]);
 
-    final catIdx = find(['category', 'type', 'classification']);
+    int? transactionTypeIdx = find([
+      'transaction type',
+      'tran type',
+      'trans type',
+      'transaction_type',
+    ]);
+    // Some Capital One exports use `Type` for Debit/Credit; only accept it when
+    // the file also contains `Transaction Amount` (avoids confusing with category/type).
+    transactionTypeIdx ??=
+        (amountIdx != null &&
+                _foldHeader(headers[amountIdx]).contains('transaction amount'))
+            ? _findExactHeaderIndex(headers, {'type'})
+            : null;
+
+    int? catIdx = find(
+      ['category', 'type', 'classification'],
+      extra: (h) {
+        // Avoid treating `Transaction Type` (Debit/Credit) as the category column.
+        if (h.contains('transaction type')) return false;
+        if (h.contains('transaction_type')) return false;
+        return true;
+      },
+    );
+    // If we still collided (rare), prefer `transactionType`.
+    if (transactionTypeIdx != null && transactionTypeIdx == catIdx) {
+      catIdx = null;
+    }
 
     return _ColumnMap(
       date: dateIdx,
       amount: amountIdx,
       debit: debitIdx,
       credit: creditIdx,
+      transactionType: transactionTypeIdx,
       description: descIdx,
       category: catIdx,
       balance: balanceIdx,
@@ -652,6 +695,7 @@ class _ColumnMap {
   final int? amount;
   final int? debit;
   final int? credit;
+  final int? transactionType;
   final int? description;
   final int? category;
   final int? balance;

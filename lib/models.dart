@@ -12,17 +12,28 @@ extension AccountTypeDisplay on AccountType {
       };
 }
 
+enum FinancialRole {
+  expense,
+  income,
+  transfer,
+  creditCardPayment,
+  refund,
+  adjustment,
+}
+
 class Account {
   const Account({
     required this.id,
     required this.name,
     required this.type,
+    this.institution,
     this.currentBalance,
   });
 
   final String id;
   final String name;
   final AccountType type;
+  final String? institution;
 
   /// Optional running balance for the account (not required for CSV import v1).
   final double? currentBalance;
@@ -37,6 +48,9 @@ class Transaction {
     this.category,
     this.balanceAfter,
     this.categoryId,
+    this.importId,
+    this.fingerprint,
+    this.financialRole,
   });
 
   /// Parsed calendar date in local terms (time set to noon to avoid DST edge cases).
@@ -53,6 +67,15 @@ class Transaction {
 
   /// User-chosen spend category (canonical label), persisted across imports and restarts.
   final String? categoryId;
+
+  /// Import batch identifier (helps debug and undo imports; v1 may be timestamp-based).
+  final String? importId;
+
+  /// Stable-ish fingerprint for dedupe within an account.
+  final String? fingerprint;
+
+  /// Optional stored role; when null, role is derived from heuristics + matcher.
+  final FinancialRole? financialRole;
 
   bool get isOutflow => amount < 0;
 }

@@ -39,6 +39,7 @@ Future<List<Account>> loadAccounts() async {
     final id = e['id'];
     final name = e['name'];
     final typeRaw = e['type'];
+    final instRaw = e['institution'];
     if (id is! String || id.trim().isEmpty) continue;
     if (name is! String || name.trim().isEmpty) continue;
     final type = _accountTypeFromWire(typeRaw is String ? typeRaw : null);
@@ -56,6 +57,9 @@ Future<List<Account>> loadAccounts() async {
         id: id.trim(),
         name: name.trim(),
         type: type,
+        institution: instRaw is String && instRaw.trim().isNotEmpty
+            ? instRaw.trim()
+            : null,
         currentBalance: balance,
       ),
     );
@@ -71,6 +75,8 @@ Future<void> saveAccounts(List<Account> accounts) async {
       'id': a.id,
       'name': a.name,
       'type': _accountTypeToWire(a.type),
+      if (a.institution != null && a.institution!.trim().isNotEmpty)
+        'institution': a.institution!.trim(),
       if (a.currentBalance != null) 'currentBalance': a.currentBalance,
     });
   }

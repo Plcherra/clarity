@@ -1,11 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:clarity/app_state.dart';
 import 'package:clarity/main.dart';
 
 void main() {
-  testWidgets('Upload screen shows import button', (tester) async {
+  testWidgets('First run shows onboarding', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(ClarityApp(appState: AppState()));
-    expect(find.text('Import Bank Statement (CSV only)'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome to Clarity'), findsOneWidget);
   });
 }

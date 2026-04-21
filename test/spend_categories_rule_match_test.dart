@@ -95,6 +95,23 @@ void main() {
         isFalse,
       );
     });
+
+    test('Capital One prefixes are stripped for matching', () {
+      expect(
+        descriptionMatchesCategoryRule(
+          'Digital Card Purchase - MARKET BASKET SOMERVILLE MA',
+          _p('market basket'),
+        ),
+        isTrue,
+      );
+      expect(
+        descriptionMatchesCategoryRule(
+          'MARKET BASKET SOMERVILLE MA',
+          _p('market basket'),
+        ),
+        isTrue,
+      );
+    });
   });
 
   group('spendGroupLabel with rules', () {
