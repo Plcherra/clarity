@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../bank_statement_monthly.dart';
+import '../dashboard_queries.dart';
+import '../dashboard_snapshot.dart';
 import '../formatting.dart';
 import '../widgets/transaction_category_dropdown.dart';
 
@@ -11,18 +13,12 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
 
   final AppState appState;
 
-  /// Uncategorized rows from current [AppState.monthlyGroups], newest first.
+  /// Uncategorized rows for global Overview (all accounts), newest first.
   static List<BankStatementLine> uncategorizedLines(AppState state) {
-    final out = <BankStatementLine>[];
-    for (final g in state.monthlyGroups) {
-      for (final line in g.transactions) {
-        if (line.suggestedCategory.trim().toLowerCase() == 'uncategorized') {
-          out.add(line);
-        }
-      }
-    }
-    out.sort((a, b) => b.transaction.date.compareTo(a.transaction.date));
-    return out;
+    return uncategorizedTransactionsForDashboardScope(
+      state,
+      const GlobalDashboardScope(),
+    );
   }
 
   @override

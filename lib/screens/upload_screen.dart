@@ -105,7 +105,15 @@ class _UploadScreenState extends State<UploadScreen> {
                                 color: theme.colorScheme.onPrimary,
                               ),
                             )
-                          : const Text('Import Bank Statement (CSV only)'),
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.upload_file_rounded, size: 22),
+                                SizedBox(width: 10),
+                                Text('Import bank statement (CSV)'),
+                              ],
+                            ),
                     ),
                   ),
                 ],

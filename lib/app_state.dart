@@ -11,6 +11,7 @@ import 'category_rule.dart';
 import 'category_rules_storage.dart';
 import 'csv_parser.dart';
 import 'dashboard_metrics.dart';
+import 'dashboard_snapshot.dart';
 import 'financial_role.dart';
 import 'models.dart';
 import 'profile_storage.dart';
@@ -53,7 +54,10 @@ class AppState extends ChangeNotifier {
   List<CategoryLeakStat> biggestLeaksThisMonth = const [];
   int? burnRunwayDays;
 
-  /// Newest calendar month first (from [monthlyGroupsFromTransactions]).
+  /// Newest calendar month first for the **active account only** (see [_recomputeDerived]).
+  ///
+  /// Do **not** use for global Overview / [GlobalDashboardScope] UI — use
+  /// [monthlyGroupsForDashboardScope] or [buildDashboardSnapshot].monthlyGroups instead.
   List<MonthlyBankGroup> monthlyGroups = const [];
 
   /// Manual category by [transactionCategoryKey]; cleared when a new CSV is loaded.
@@ -219,11 +223,31 @@ class AppState extends ChangeNotifier {
     );
   }
 
+  /// Display label after renames — use for UI and "is Uncategorized?" checks on this app’s state.
+  String effectiveCategoryDisplayLabel(Transaction t) {
+    return spendGroupLabelForDisplay(
+      t,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenamesLower: categoryDisplayRenames,
+      categoryRules: categoryRules,
+    );
+  }
+
   /// Built-in + custom categories shown in pickers (for AI allow-lists and review UI).
   List<String> get allowedCategoryPickerLabels => categoryPickerCanonicals(
         customCategories: customCategories,
         hiddenLower: categoriesHiddenFromPicker,
       );
+
+  /// Rows for [buildDashboardSnapshot] / Overview vs account-scoped views.
+  List<Transaction> transactionsForDashboardScope(DashboardScope scope) {
+    return switch (scope) {
+      GlobalDashboardScope() => allTransactions,
+      AccountDashboardScope(:final accountId) => List<Transaction>.from(
+          transactionsByAccount[accountId] ?? const [],
+        ),
+    };
+  }
 
   /// Uncategorized statement rows for [accountId] using the same rules as the dashboard.
   List<Transaction> uncategorizedImportedRowsForAccount(String accountId) {
@@ -520,22 +544,27 @@ class AppState extends ChangeNotifier {
 
   /// Assigns categories for many [transactionCategoryKey]s at once (persists [categoryId] on each row).
   void bulkSetCategoryOverrides(Map<String, String> keyToCanonicalCategory) {
-    if (keyToCanonicalCategory.isEmpty) return;
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryOverrides);
+    final normalized = <String, String>{};
     for (final e in keyToCanonicalCategory.entries) {
       final k = e.key.trim();
       final v = e.value.trim();
       if (k.isEmpty || v.isEmpty) continue;
-      nextAssign[k] = v;
-      nextOv[k] = v;
+      normalized[k] = v;
+    }
+    if (normalized.isEmpty) return;
+
+    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
+    final nextOv = Map<String, String>.from(categoryOverrides);
+    for (final e in normalized.entries) {
+      nextAssign[e.key] = e.value;
+      nextOv[e.key] = e.value;
     }
     transactionCategoryAssignments = nextAssign;
     categoryOverrides = nextOv;
 
     Transaction applyCategory(Transaction x) {
       final k = transactionCategoryKey(x);
-      final cat = keyToCanonicalCategory[k];
+      final cat = normalized[k];
       if (cat == null) return x;
       final c = cat.trim();
       if (c.isEmpty) return x;
@@ -743,7 +772,7 @@ class AppState extends ChangeNotifier {
     );
     availableThisMonth = incomeThisMonth - spentThisMonth;
     uncategorizedCount = uncategorizedTransactionCount(
-      activeAccountTransactions,
+      allTransactionsForMetrics,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
       categoryRules: categoryRules,

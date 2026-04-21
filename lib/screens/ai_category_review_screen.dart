@@ -92,18 +92,51 @@ class _AiCategorizationFlowScreenState extends State<AiCategorizationFlowScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI categories'),
-        backgroundColor: theme.colorScheme.surface,
-        surfaceTintColor: Colors.transparent,
+        actions: [
+          if (_phase == _FlowPhase.review)
+            IconButton(
+              tooltip: 'Close',
+              onPressed: _finish,
+              icon: Icon(
+                Icons.close_rounded,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+        ],
       ),
       body: switch (_phase) {
-        _FlowPhase.loading => const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 24),
-                Text('Fetching suggestions…'),
-              ],
+        _FlowPhase.loading => Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: theme.colorScheme.primary.withValues(alpha: 0.85),
+                    ),
+                  ),
+                  const SizedBox(height: 28),
+                  Text(
+                    'Fetching suggestions',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This may take a moment for larger statements.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         _FlowPhase.error => _ErrorBody(
@@ -133,22 +166,46 @@ class _ErrorBody extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onSkip;
 
+  String _message() {
+    if (error is MissingOpenAiApiKeyException) return error.toString();
+    if (error is FormatException) {
+      final m = (error as FormatException).message;
+      if (m.isNotEmpty) return m;
+    }
+    return 'Could not reach AI or parse the response. Check your network and API key.';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final msg = error is MissingOpenAiApiKeyException
-        ? error.toString()
-        : 'Could not reach AI or parse the response. Check your network and API key.';
-    return Padding(
+    final msg = _message();
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(msg, style: theme.textTheme.bodyLarge),
-          const SizedBox(height: 24),
-          FilledButton(onPressed: onRetry, child: const Text('Retry')),
+          Icon(
+            Icons.cloud_off_outlined,
+            size: 44,
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            msg,
+            style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
+          ),
+          const SizedBox(height: 28),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 20),
+            label: const Text('Try again'),
+          ),
           const SizedBox(height: 12),
-          OutlinedButton(onPressed: onSkip, child: const Text('Skip')),
+          OutlinedButton.icon(
+            onPressed: onSkip,
+            icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+            label: const Text('Skip for now'),
+          ),
         ],
       ),
     );
@@ -213,9 +270,25 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
         toSave[k] = s;
       }
     }
-    if (toSave.isNotEmpty) {
-      widget.appState.bulkSetCategoryOverrides(toSave);
+    if (toSave.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No AI suggestions to apply. Pick categories below or Cancel.'),
+        ),
+      );
+      return;
     }
+    widget.appState.bulkSetCategoryOverrides(toSave);
+    if (!mounted) return;
+    final n = toSave.length;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Saved $n AI ${n == 1 ? 'category' : 'categories'}.',
+        ),
+      ),
+    );
     widget.onSkip();
   }
 
@@ -228,9 +301,25 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
         toSave[k] = c;
       }
     }
-    if (toSave.isNotEmpty) {
-      widget.appState.bulkSetCategoryOverrides(toSave);
+    if (toSave.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No categories selected. Choose one per row or tap Cancel.'),
+        ),
+      );
+      return;
     }
+    widget.appState.bulkSetCategoryOverrides(toSave);
+    if (!mounted) return;
+    final n = toSave.length;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Saved $n ${n == 1 ? 'category' : 'categories'}.',
+        ),
+      ),
+    );
     widget.onSkip();
   }
 
@@ -243,24 +332,42 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-          child: Text(
-            'Review ${widget.transactions.length} suggestion${widget.transactions.length == 1 ? '' : 's'}',
-            style: theme.textTheme.titleMedium,
+          child: Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                size: 22,
+                color: cs.primary.withValues(alpha: 0.9),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Review ${widget.transactions.length} suggestion${widget.transactions.length == 1 ? '' : 's'}',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
           child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 10,
+            runSpacing: 10,
+            alignment: WrapAlignment.start,
             children: [
-              FilledButton(
+              FilledButton.icon(
                 onPressed: _saveAllAiSuggestions,
-                child: const Text('Accept all AI & save'),
+                icon: const Icon(Icons.done_all_rounded, size: 20),
+                label: const Text('Accept all & save'),
               ),
-              OutlinedButton(
+              OutlinedButton.icon(
                 onPressed: _acceptAllFromAi,
-                child: const Text('Reset to AI'),
+                icon: const Icon(Icons.restart_alt_rounded, size: 20),
+                label: const Text('Reset to AI'),
               ),
             ],
           ),
@@ -276,9 +383,15 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
               final selected = _choice[k];
               return Material(
                 color: cs.surfaceContainerLowest,
-                borderRadius: BorderRadius.circular(12),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: cs.outline.withValues(alpha: 0.12),
+                  ),
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -298,8 +411,14 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
                       const SizedBox(height: 8),
                       DropdownButton<String?>(
                         isExpanded: true,
+                        borderRadius: BorderRadius.circular(12),
                         value: _validDropdownValue(selected),
-                        hint: const Text('Category'),
+                        hint: Text(
+                          'Category',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.45),
+                          ),
+                        ),
                         items: [
                           const DropdownMenuItem<String?>(
                             value: null,
@@ -325,32 +444,40 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
         ),
         SafeArea(
           top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: widget.onSkip,
-                    child: const Text('Cancel'),
-                  ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Divider(height: 1, color: cs.outline.withValues(alpha: 0.18)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: widget.onSkip,
+                        icon: const Icon(Icons.close_rounded, size: 20),
+                        label: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _saveFromChoices,
+                        icon: const Icon(Icons.check_rounded, size: 20),
+                        label: const Text('Save'),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _saveFromChoices,
-                    child: const Text('Save'),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  /// [DropdownButtonFormField] requires value to be null or one of the items.
+  /// Value must be null or match an item (invalid AI labels map to null).
   String? _validDropdownValue(String? selected) {
     if (selected == null) return null;
     for (final a in _allowed) {

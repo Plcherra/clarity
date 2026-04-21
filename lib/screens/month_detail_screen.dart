@@ -9,11 +9,13 @@ class MonthDetailScreen extends StatelessWidget {
   const MonthDetailScreen({
     super.key,
     required this.appState,
-    required this.yearMonth,
+    required this.group,
   });
 
   final AppState appState;
-  final String yearMonth;
+
+  /// Month block from the same [DashboardSnapshot.monthlyGroups] list the user tapped.
+  final MonthlyBankGroup group;
 
   @override
   Widget build(BuildContext context) {
@@ -23,40 +25,6 @@ class MonthDetailScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        MonthlyBankGroup? group;
-        for (final g in appState.monthlyGroups) {
-          if (g.yearMonth == yearMonth) {
-            group = g;
-            break;
-          }
-        }
-
-        if (group == null) {
-          return Scaffold(
-            backgroundColor: const Color(0xFFF7F5F2),
-            appBar: AppBar(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              scrolledUnderElevation: 0,
-              leading: IconButton(
-                icon: Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: cs.onSurface.withValues(alpha: 0.55),
-                ),
-                onPressed: () => Navigator.of(context).pop(),
-              ),
-            ),
-            body: Center(
-              child: Text(
-                'No transactions for this month.',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: cs.onSurface.withValues(alpha: 0.45),
-                ),
-              ),
-            ),
-          );
-        }
-
         final title = formatYearMonthLabel(group.yearMonth);
         final totalColor = group.totalAmount < 0
             ? const Color(0xFFC41E3A)

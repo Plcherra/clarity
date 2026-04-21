@@ -2,6 +2,17 @@ import 'package:clarity/ai_categorization_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('unwrapOpenAiMessageContent', () {
+    test('strips markdown code fence', () {
+      const raw = '```json\n{"suggestions":[]}\n```';
+      expect(unwrapOpenAiMessageContent(raw), '{"suggestions":[]}');
+    });
+
+    test('returns trim when no fence', () {
+      expect(unwrapOpenAiMessageContent('  {"a":1}  '), '{"a":1}');
+    });
+  });
+
   group('normalizeSuggestionToAllowed', () {
     test('matches case-insensitively', () {
       const allowed = ['Shopping', 'Food & Drink'];

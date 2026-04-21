@@ -32,7 +32,11 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(index: _idx, children: pages),
       bottomNavigationBar: NavigationBar(
         backgroundColor: cs.surface,
-        indicatorColor: cs.surfaceContainerHighest.withValues(alpha: 0.65),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        height: 68,
+        indicatorColor: cs.surfaceContainerHighest.withValues(alpha: 0.7),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         selectedIndex: _idx,
         onDestinationSelected: (i) => setState(() => _idx = i),
         destinations: const [

@@ -113,7 +113,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                   color: cs.onPrimary,
                                 ),
                               )
-                            : const Text('Continue'),
+                            : const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('Continue'),
+                                  SizedBox(width: 8),
+                                  Icon(
+                                    Icons.arrow_forward_rounded,
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
                       ),
                     ),
                   ],

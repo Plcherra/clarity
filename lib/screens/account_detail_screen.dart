@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
+import '../constants.dart';
 import '../file_reader.dart';
 import '../models.dart';
 import '../dashboard_snapshot.dart';
@@ -35,15 +36,37 @@ class AccountDetailScreen extends StatelessWidget {
       if (!context.mounted) return;
       final unc = appState.uncategorizedImportedRowsForAccount(accountId);
       if (unc.isNotEmpty) {
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (ctx) => AiCategorizationFlowScreen(
-              appState: appState,
-              accountId: accountId,
-              onFinished: () => Navigator.of(ctx).pop(),
+        if (Constants.openAIKey.isEmpty) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Add OPENAI_API_KEY to your .env file to use AI categorization.',
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'AI review: ${unc.length} '
+                  'uncategorized transaction${unc.length == 1 ? '' : 's'}',
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (ctx) => AiCategorizationFlowScreen(
+                appState: appState,
+                accountId: accountId,
+                onFinished: () => Navigator.of(ctx).pop(),
+              ),
+            ),
+          );
+        }
       }
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

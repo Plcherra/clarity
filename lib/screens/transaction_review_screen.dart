@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../bank_statement_monthly.dart';
+import '../dashboard_queries.dart';
+import '../dashboard_snapshot.dart';
 import '../formatting.dart';
 import '../widgets/transaction_category_dropdown.dart';
-import 'uncategorized_transactions_screen.dart';
-
 const double _kReviewHorizontalPadding = 24;
 const double _kReviewScrollTopPadding = 8;
 const double _kReviewScrollBottomPadding = 32;
@@ -13,10 +13,18 @@ const double _kReviewScrollBottomPadding = 32;
 /// Full-screen flow: one uncategorized transaction at a time (always the next
 /// in queue as [AppState] updates). Category picker and save-rule behavior
 /// match the list view — only presentation differs.
+///
+/// [scope] must match the dashboard that opened this screen ([GlobalDashboardScope]
+/// for Overview, [AccountDashboardScope] for an account).
 class TransactionReviewScreen extends StatelessWidget {
-  const TransactionReviewScreen({super.key, required this.appState});
+  const TransactionReviewScreen({
+    super.key,
+    required this.appState,
+    required this.scope,
+  });
 
   final AppState appState;
+  final DashboardScope scope;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +35,7 @@ class TransactionReviewScreen extends StatelessWidget {
       listenable: appState,
       builder: (context, _) {
         final uncategorizedQueue =
-            UncategorizedTransactionsScreen.uncategorizedLines(appState);
+            uncategorizedTransactionsForDashboardScope(appState, scope);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),

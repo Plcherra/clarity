@@ -1,13 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
 import '../bank_statement_monthly.dart';
+import '../dashboard_queries.dart';
 import '../dashboard_snapshot.dart';
 import '../formatting.dart';
 import '../models.dart';
 import 'budgets_screen.dart';
 import 'month_detail_screen.dart';
-import 'rules_management_screen.dart';
 import 'transaction_review_screen.dart';
 
 typedef SnapshotBuilder =
@@ -50,6 +51,9 @@ class FinancialDashboardView extends StatelessWidget {
       listenable: appState,
       builder: (context, _) {
         final snap = buildSnapshot(appState, scope);
+        final uncategorizedQueue =
+            uncategorizedTransactionsForDashboardScope(appState, scope);
+        final attentionCount = uncategorizedQueue.length;
         return Scaffold(
           extendBodyBehindAppBar: true,
           appBar: AppBar(
@@ -65,31 +69,6 @@ class FinancialDashboardView extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(),
                   )
                 : null,
-            actions: [
-              PopupMenuButton<String>(
-                tooltip: 'More',
-                icon: Icon(
-                  Icons.more_horiz_rounded,
-                  color: cs.onSurface.withValues(alpha: 0.55),
-                ),
-                onSelected: (value) {
-                  if (value == 'rules') {
-                    Navigator.of(context).push<void>(
-                      MaterialPageRoute<void>(
-                        builder: (context) =>
-                            RulesManagementScreen(appState: appState),
-                      ),
-                    );
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem<String>(
-                    value: 'rules',
-                    child: Text('Rules'),
-                  ),
-                ],
-              ),
-            ],
           ),
           body: DecoratedBox(
             decoration: BoxDecoration(
@@ -115,6 +94,17 @@ class FinancialDashboardView extends StatelessWidget {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
+                        if (kDebugMode) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'debug: reviewQueue=$attentionCount · '
+                            'snapUncat=${snap.uncategorizedCount}',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              fontFamily: 'monospace',
+                              color: cs.onSurface.withValues(alpha: 0.42),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         if (onUploadTransactions != null) ...[
                           _UploadTransactionsButton(
@@ -134,14 +124,15 @@ class FinancialDashboardView extends StatelessWidget {
                           child: const Text('Set Budgets'),
                         ),
                         const SizedBox(height: 20),
-                        if (snap.uncategorizedCount > 0) ...[
+                        if (attentionCount > 0) ...[
                           _UncategorizedAttentionCard(
-                            count: snap.uncategorizedCount,
+                            count: attentionCount,
                             onTap: () {
                               Navigator.of(context).push<void>(
                                 MaterialPageRoute<void>(
                                   builder: (context) => TransactionReviewScreen(
                                     appState: appState,
+                                    scope: scope,
                                   ),
                                 ),
                               );
@@ -600,7 +591,7 @@ class _MonthCard extends StatelessWidget {
             MaterialPageRoute<void>(
               builder: (context) => MonthDetailScreen(
                 appState: appState,
-                yearMonth: group.yearMonth,
+                group: group,
               ),
             ),
           );

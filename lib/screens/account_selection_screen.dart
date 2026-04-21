@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../app_state.dart';
+import '../constants.dart';
 import '../models.dart';
 import 'ai_category_review_screen.dart';
 import 'dashboard_screen.dart';
@@ -48,15 +49,37 @@ class AccountSelectionScreen extends StatelessWidget {
       if (!context.mounted) return;
       final unc = appState.uncategorizedImportedRowsForAccount(account.id);
       if (unc.isNotEmpty) {
-        await Navigator.of(context).push<void>(
-          MaterialPageRoute<void>(
-            builder: (context) => AiCategorizationFlowScreen(
-              appState: appState,
-              accountId: account.id,
-              onFinished: () => Navigator.of(context).pop(),
+        if (Constants.openAIKey.isEmpty) {
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Add OPENAI_API_KEY to your .env file to use AI categorization.',
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'AI review: ${unc.length} '
+                  'uncategorized transaction${unc.length == 1 ? '' : 's'}',
+                ),
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (context) => AiCategorizationFlowScreen(
+                appState: appState,
+                accountId: account.id,
+                onFinished: () => Navigator.of(context).pop(),
+              ),
+            ),
+          );
+        }
       }
       if (!context.mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
@@ -120,9 +143,10 @@ class AccountSelectionScreen extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 24),
-                          FilledButton(
+                          FilledButton.icon(
                             onPressed: () => _showAddAccountDialog(context),
-                            child: const Text('Add account'),
+                            icon: const Icon(Icons.add_rounded, size: 22),
+                            label: const Text('Add account'),
                           ),
                         ],
                       ),
@@ -151,10 +175,50 @@ class AccountSelectionScreen extends StatelessWidget {
                             final a = accounts[i];
                             return Material(
                               color: theme.colorScheme.surfaceContainerLowest,
-                              borderRadius: BorderRadius.circular(16),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: theme.colorScheme.outline
+                                      .withValues(alpha: 0.1),
+                                ),
+                              ),
                               child: ListTile(
-                                title: Text(a.name),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 4,
+                                ),
+                                leading: CircleAvatar(
+                                  radius: 22,
+                                  backgroundColor: theme.colorScheme
+                                      .surfaceContainerHighest
+                                      .withValues(alpha: 0.65),
+                                  child: Icon(
+                                    switch (a.type) {
+                                      AccountType.checking =>
+                                        Icons.account_balance_wallet_outlined,
+                                      AccountType.savings =>
+                                        Icons.savings_outlined,
+                                      AccountType.creditCard =>
+                                        Icons.credit_card_rounded,
+                                    },
+                                    size: 22,
+                                    color: theme.colorScheme.onSurface
+                                        .withValues(alpha: 0.65),
+                                  ),
+                                ),
+                                title: Text(
+                                  a.name,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
                                 subtitle: Text(a.type.displayLabel),
+                                trailing: Icon(
+                                  Icons.chevron_right_rounded,
+                                  color: theme.colorScheme.onSurface
+                                      .withValues(alpha: 0.35),
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),

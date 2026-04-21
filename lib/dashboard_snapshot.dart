@@ -19,6 +19,23 @@ final class AccountDashboardScope extends DashboardScope {
   final String accountId;
 }
 
+/// Statement months for [scopedTransactions], newest calendar month first.
+/// Matches [DashboardSnapshot.monthlyGroups] from [buildDashboardSnapshot].
+List<MonthlyBankGroup> monthlyBankGroupsNewestFirstForScopedTransactions(
+  List<Transaction> scopedTransactions, {
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+  required List<CategoryRule> categoryRules,
+}) {
+  final grouped = monthlyGroupsFromTransactions(
+    scopedTransactions,
+    categoryOverrides: categoryOverrides,
+    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+    categoryRules: categoryRules,
+  );
+  return grouped.reversed.toList();
+}
+
 class DashboardSnapshot {
   const DashboardSnapshot({
     required this.totalBalance,
@@ -135,13 +152,12 @@ DashboardSnapshot buildDashboardSnapshot({
     categoryRules: categoryRules,
   );
 
-  final grouped = monthlyGroupsFromTransactions(
+  final monthsNewestFirst = monthlyBankGroupsNewestFirstForScopedTransactions(
     scopedTransactions,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
     categoryRules: categoryRules,
   );
-  final monthsNewestFirst = grouped.reversed.toList();
 
   final balance = switch (scope) {
     GlobalDashboardScope() =>

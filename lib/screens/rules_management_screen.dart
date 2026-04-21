@@ -95,7 +95,7 @@ class _RulesManagementScreenState extends State<RulesManagementScreen> {
             backgroundColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 0,
-            title: const Text('Rules'),
+            title: const Text('Auto-categorization rules'),
             leading: IconButton(
               icon: Icon(
                 Icons.arrow_back_ios_new_rounded,
@@ -110,6 +110,15 @@ class _RulesManagementScreenState extends State<RulesManagementScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text(
+                    'Rules run before keyword suggestions. They do not delete your '
+                    'transaction data.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: cs.onSurface.withValues(alpha: 0.5),
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(

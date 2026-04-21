@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -12,6 +14,9 @@ const String _openAiChatCompletionsUrl =
 const String openAiModel = 'gpt-4o-mini';
 
 const int _defaultBatchSize = 32;
+
+/// Wall-clock limit per OpenAI HTTP request (large batches can be slow).
+const Duration _openAiRequestTimeout = Duration(seconds: 120);
 
 /// Thrown when `OPENAI_API_KEY` from `.env` is missing or empty.
 class MissingOpenAiApiKeyException implements Exception {
@@ -66,6 +71,21 @@ Map<String, String?> parseSuggestionsFromResponseContent(
   return out;
 }
 
+/// Strips optional ```json … ``` wrappers some models emit around JSON.
+String unwrapOpenAiMessageContent(String raw) {
+  var s = raw.trim();
+  if (s.startsWith('```')) {
+    final nl = s.indexOf('\n');
+    if (nl != -1) {
+      s = s.substring(nl + 1);
+    }
+    if (s.endsWith('```')) {
+      s = s.substring(0, s.lastIndexOf('```')).trim();
+    }
+  }
+  return s;
+}
+
 class AICategorizationService {
   AICategorizationService({http.Client? httpClient})
       : _client = httpClient ?? http.Client();
@@ -82,6 +102,11 @@ class AICategorizationService {
       throw MissingOpenAiApiKeyException();
     }
     if (transactions.isEmpty) return {};
+    if (allowedCategoryIds.isEmpty) {
+      throw const FormatException(
+        'No categories are available to assign. Check category settings in the app.',
+      );
+    }
     final allowed = List<String>.from(allowedCategoryIds);
     final batches = <List<Transaction>>[];
     for (var i = 0; i < transactions.length; i += _defaultBatchSize) {
@@ -151,14 +176,27 @@ class AICategorizationService {
       ],
     });
 
-    final res = await _client.post(
-      Uri.parse(_openAiChatCompletionsUrl),
-      headers: {
-        'Authorization': 'Bearer ${Constants.openAIKey}',
-        'Content-Type': 'application/json',
-      },
-      body: body,
-    );
+    http.Response res;
+    try {
+      res = await _client
+          .post(
+            Uri.parse(_openAiChatCompletionsUrl),
+            headers: {
+              'Authorization': 'Bearer ${Constants.openAIKey}',
+              'Content-Type': 'application/json',
+            },
+            body: body,
+          )
+          .timeout(_openAiRequestTimeout);
+    } on TimeoutException {
+      throw const FormatException(
+        'OpenAI request timed out. Try again with fewer transactions or check your connection.',
+      );
+    } on SocketException catch (e) {
+      throw FormatException('Network error: ${e.message}');
+    } on http.ClientException catch (e) {
+      throw FormatException('Network error: ${e.message}');
+    }
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw FormatException(
@@ -166,7 +204,12 @@ class AICategorizationService {
       );
     }
 
-    final outer = jsonDecode(res.body);
+    dynamic outer;
+    try {
+      outer = jsonDecode(res.body);
+    } on FormatException catch (e) {
+      throw FormatException('OpenAI response was not valid JSON: ${e.message}');
+    }
     if (outer is! Map<String, dynamic>) {
       throw const FormatException('OpenAI envelope is not a JSON object.');
     }
@@ -182,16 +225,22 @@ class AICategorizationService {
     if (msg is! Map) {
       throw const FormatException('OpenAI message is not an object.');
     }
-    final content = msg['content'];
-    if (content is! String || content.isEmpty) {
+    final contentRaw = msg['content'];
+    if (contentRaw is! String || contentRaw.isEmpty) {
       throw const FormatException('OpenAI message content is empty.');
     }
+    final content = unwrapOpenAiMessageContent(contentRaw);
 
-    final parsed = parseSuggestionsFromResponseContent(
-      content,
-      allowedCategoryIds,
-      expectedKeys,
-    );
+    Map<String, String?> parsed;
+    try {
+      parsed = parseSuggestionsFromResponseContent(
+        content,
+        allowedCategoryIds,
+        expectedKeys,
+      );
+    } on FormatException catch (e) {
+      throw FormatException('Could not parse AI category JSON: ${e.message}');
+    }
     final out = <String, String?>{};
     for (final t in batch) {
       final k = transactionCategoryKey(t);
