@@ -6,7 +6,7 @@ import '../../models/models.dart';
 
 const String kTransactionsByAccountPrefsKey = 'transactions_by_account_v1';
 const String kTransactionsDedupeMigrationPrefsKey =
-    'transactions_dedupe_migration_v1_done';
+    'transactions_dedupe_migration_v2_done';
 
 Future<bool> getTransactionsDedupeMigrationDone() async {
   final prefs = await SharedPreferences.getInstance();

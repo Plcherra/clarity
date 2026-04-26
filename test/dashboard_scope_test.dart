@@ -1,6 +1,5 @@
 import 'package:clarity/app_state.dart';
 import 'package:clarity/bank_statement_monthly.dart';
-import 'package:clarity/category_rule.dart';
 import 'package:clarity/dashboard_metrics.dart';
 import 'package:clarity/dashboard_snapshot.dart';
 import 'package:clarity/models.dart';
@@ -44,7 +43,6 @@ void main() {
         txs,
         categoryOverrides: const {},
         categoryDisplayRenamesLower: const {},
-        categoryRules: const [],
       );
       expect(lines.length, 2);
       expect(
@@ -97,13 +95,11 @@ void main() {
         globalTxs,
         categoryOverrides: state.categoryOverrides,
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
-        categoryRules: state.categoryRules,
       );
       final aUncat = uncategorizedBankStatementLines(
         accountATxs,
         categoryOverrides: state.categoryOverrides,
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
-        categoryRules: state.categoryRules,
       );
 
       expect(globalUncat.length, greaterThan(0));
@@ -127,18 +123,15 @@ void main() {
       ];
       const overrides = <String, String>{};
       const renames = <String, String>{};
-      const rules = <CategoryRule>[];
       final n = uncategorizedTransactionCount(
         txs,
         categoryOverrides: overrides,
         categoryDisplayRenamesLower: renames,
-        categoryRules: rules,
       );
       final lines = uncategorizedBankStatementLines(
         txs,
         categoryOverrides: overrides,
         categoryDisplayRenamesLower: renames,
-        categoryRules: rules,
       );
       expect(n, lines.length);
     });

@@ -111,40 +111,54 @@ class FinancialDashboardView extends StatelessWidget {
                     barrierDismissible: false,
                     builder: (context) => const _AiRunningDialog(),
                   );
-                  final res = await appState.autoCategorizeGlobalUncategorized(
-                    service: service,
-                  );
-                  service.close();
-                  if (nav.canPop()) nav.pop(); // close dialog
+                  try {
+                    final res = await appState.autoCategorizeGlobalUncategorized(
+                      service: service,
+                    );
+                    if (nav.canPop()) nav.pop(); // close dialog
 
-                  messenger.showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'AI applied ${res.applied} categor${res.applied == 1 ? 'y' : 'ies'}. '
-                        '${res.queuedForReview} need review.',
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'AI applied ${res.applied} categor${res.applied == 1 ? 'y' : 'ies'}. '
+                          '${res.queuedForReview} need review.',
+                        ),
+                        action: res.queuedForReview > 0
+                            ? SnackBarAction(
+                                label: 'Review',
+                                onPressed: () {
+                                  Navigator.of(context).push<void>(
+                                    MaterialPageRoute<void>(
+                                      builder: (context) =>
+                                          AiLowConfidenceReviewScreen(
+                                            appState: appState,
+                                          ),
+                                    ),
+                                  );
+                                },
+                              )
+                            : SnackBarAction(
+                                label: 'Undo',
+                                onPressed: () async {
+                                  await appState.undoLastAiAutoApply();
+                                },
+                              ),
                       ),
-                      action: res.queuedForReview > 0
-                          ? SnackBarAction(
-                              label: 'Review',
-                              onPressed: () {
-                                Navigator.of(context).push<void>(
-                                  MaterialPageRoute<void>(
-                                    builder: (context) =>
-                                        AiLowConfidenceReviewScreen(
-                                          appState: appState,
-                                        ),
-                                  ),
-                                );
-                              },
-                            )
-                          : SnackBarAction(
-                              label: 'Undo',
-                              onPressed: () async {
-                                await appState.undoLastAiAutoApply();
-                              },
-                            ),
-                    ),
-                  );
+                    );
+                  } catch (e) {
+                    if (nav.canPop()) nav.pop(); // close dialog
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('AI failed: $e'),
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          onPressed: () {},
+                        ),
+                      ),
+                    );
+                  } finally {
+                    service.close();
+                  }
                 },
                 icon: Icon(
                   Icons.auto_awesome_rounded,

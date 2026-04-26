@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:clarity/app_state.dart';
 import 'package:clarity/balance_resolve.dart';
-import 'package:clarity/category_rule.dart';
 import 'package:clarity/csv_parser.dart';
 import 'package:clarity/models.dart';
 import 'package:clarity/spend_categories.dart';
@@ -142,7 +141,7 @@ void main() {
     );
   });
 
-  test('categoryId on transaction wins over category rules', () {
+  test('categoryId on transaction wins over keyword inference', () {
     final t = Transaction(
       date: DateTime(2024, 4, 1),
       description: 'Capital One payment thank you',
@@ -150,19 +149,7 @@ void main() {
       accountId: 'a1',
       categoryId: 'Grocery / Supermarket',
     );
-    final rules = [
-      CategoryRule(
-        id: '1',
-        pattern: 'capital one',
-        matchType: CategoryRule.matchTypeContains,
-        categoryCanonical: 'Credit Card Payment',
-        createdAt: DateTime.utc(2020),
-      ),
-    ];
-    expect(
-      spendGroupLabel(t, categoryRules: rules),
-      'Grocery / Supermarket',
-    );
+    expect(spendGroupLabel(t), 'Grocery / Supermarket');
   });
 
   test('Ignored excluded from spentThisMonth income and topCategories', () async {
@@ -185,37 +172,7 @@ Date,Description,Amount
     );
   });
 
-  test('spendGroupLabel user rules match outflow descriptions only', () {
-    final nero = Transaction(
-      date: DateTime(2024, 4, 1),
-      description: 'NERO CAMBRIDGE MA',
-      amount: -12,
-      accountId: 'a1',
-    );
-    final rules = [
-      CategoryRule(
-        id: '1',
-        pattern: 'nero',
-        matchType: CategoryRule.matchTypeContains,
-        categoryCanonical: 'Coffee / Quick Food',
-        createdAt: DateTime.utc(2020),
-      ),
-    ];
-    expect(
-      spendGroupLabel(nero, categoryRules: rules),
-      'Coffee / Quick Food',
-    );
-    final zelleIn = Transaction(
-      date: DateTime(2024, 4, 1),
-      description: 'Zelle payment from Alice',
-      amount: 50,
-      accountId: 'a1',
-    );
-    expect(
-      spendGroupLabel(zelleIn, categoryRules: rules),
-      'Income / Zelle Received',
-    );
-  });
+  // Rules feature removed; no dedicated rule-matching test.
 
   test('suggestCategoryFromDescription catches payroll and Zelle received', () {
     expect(

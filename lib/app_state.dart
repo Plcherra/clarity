@@ -6,9 +6,6 @@ import 'bank_statement_monthly.dart';
 import 'core/storage/budgets/budget_keys.dart';
 import 'core/storage/budgets/budget_storage.dart';
 import 'core/storage/categories/category_catalog_storage.dart';
-import 'category_description_normalize.dart';
-import 'category_rule.dart';
-import 'core/storage/rules/category_rules_storage.dart';
 import 'csv_parser.dart';
 import 'dashboard_metrics.dart';
 import 'dashboard_snapshot.dart';
@@ -25,7 +22,6 @@ import 'ai_categorization_service.dart';
 
 /// Holds parsed statement data and derived aggregates.
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
-/// and description rules ([hydrateCategoryRules] / [addOrUpdateCategoryRuleByPattern])
 /// are persisted separately from CSV data.
 class AppState extends ChangeNotifier {
   LocalProfile? localProfile;
@@ -70,7 +66,8 @@ class AppState extends ChangeNotifier {
 
   Map<String, AiCategorySuggestion> aiCategorySuggestions = const {};
 
-  static const int _aiPromptVersion = 1;
+  // Bump to invalidate cached "empty" suggestions from earlier prompt iterations.
+  static const int _aiPromptVersion = 2;
 
   /// User-created category names (shown in the assignment sheet alongside built-ins).
   List<String> customCategories = const [];
@@ -90,9 +87,7 @@ class AppState extends ChangeNotifier {
   /// [clear] / [loadFromCsv] do **not** clear this map.
   Map<String, double> categoryMonthlyBudgetsByDisplayLower = {};
 
-  /// Description match rules (v1: contains, outflow-only). List order = first match wins.
-  /// Not cleared by [loadFromCsv] or [clear] (user intent, like budgets).
-  List<CategoryRule> categoryRules = const [];
+  // Rules feature removed: no persisted categorization rules.
 
   /// User-defined bank / card accounts (persisted separately from CSV rows).
   List<Account> accounts = const [];
@@ -113,15 +108,7 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Loads persisted category rules (call once before [runApp], after [AppState] exists).
-  Future<void> hydrateCategoryRules() async {
-    try {
-      categoryRules = await loadCategoryRules();
-    } on Object {
-      categoryRules = const [];
-    }
-    notifyListeners();
-  }
+  // Rules feature removed.
 
   /// Loads custom category names and picker metadata from disk (call once before [runApp]).
   Future<void> hydratePersistedCategoryCatalog() async {
@@ -313,7 +300,6 @@ class AppState extends ChangeNotifier {
       kept,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
       accountsById: accountsById,
       allTransactions: all,
     );
@@ -341,24 +327,33 @@ class AppState extends ChangeNotifier {
       if (alreadyAssigned != null && alreadyAssigned.isNotEmpty) continue;
 
       final cached = aiCategorySuggestions[k];
-      if (cached != null && cached.promptVersion == _aiPromptVersion) continue;
+      if (cached != null && cached.promptVersion == _aiPromptVersion) {
+        final cat = cached.suggestedCanonical?.trim();
+        final hasUsefulSuggestion = cat != null && cat.isNotEmpty && cached.confidence > 0.0;
+        if (hasUsefulSuggestion) continue;
+      }
       toFetch.add(t);
     }
 
+    if (kDebugMode) {
+      debugPrint(
+        '[Clarity][AI] uncategorized=${unc.length} toFetch=${toFetch.length} '
+        'allowed=${allowed.length} promptV=$_aiPromptVersion',
+      );
+    }
+
     if (toFetch.isNotEmpty) {
-      Map<String, AiCategorySuggestion> fetched = {};
-      try {
-        fetched = await service.suggestCategoriesWithConfidence(
-          transactions: toFetch,
-          allowedCategoryIds: allowed,
-          promptVersion: _aiPromptVersion,
-        );
-      } on Object {
-        fetched = {};
-      }
+      final fetched = await service.suggestCategoriesWithConfidence(
+        transactions: toFetch,
+        allowedCategoryIds: allowed,
+        promptVersion: _aiPromptVersion,
+      );
       if (fetched.isNotEmpty) {
         aiCategorySuggestions = {...aiCategorySuggestions, ...fetched};
         await _persistAiCategorySuggestions();
+      }
+      if (kDebugMode) {
+        debugPrint('[Clarity][AI] fetched=${fetched.length}');
       }
     }
 
@@ -489,7 +484,6 @@ class AppState extends ChangeNotifier {
       t: t,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
       accountsById: accountsById,
       allTransactions: allTransactionsContext,
     );
@@ -504,7 +498,6 @@ class AppState extends ChangeNotifier {
       txs,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
       accountsById: accountsById,
       allTransactions: allTransactionsContext,
     );
@@ -535,120 +528,10 @@ class AppState extends ChangeNotifier {
       accountTransactions: list,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
     );
   }
 
-  /// Normalized pattern must be at least 3 characters. Same pattern updates category.
-  /// Persist-then-commit; returns false if validation or save fails.
-  ///
-  /// [sourceForNewRule] applies only when inserting a new rule; updates by same
-  /// pattern preserve the existing rule’s [CategoryRule.source].
-  Future<bool> addOrUpdateCategoryRuleByPattern(
-    String patternRaw,
-    String categoryCanonical, {
-    CategoryRuleSource sourceForNewRule = CategoryRuleSource.learnedFromTransaction,
-  }) async {
-    final cat = categoryCanonical.trim();
-    if (cat.isEmpty) return false;
-    final p = normalizeDescriptionForMatching(patternRaw);
-    if (p.length < 3) return false;
-
-    final next = List<CategoryRule>.from(categoryRules);
-    final i = next.indexWhere((r) => r.pattern == p);
-    if (i >= 0) {
-      next[i] = next[i].copyWith(categoryCanonical: cat);
-    } else {
-      next.add(
-        CategoryRule(
-          id: '${DateTime.now().microsecondsSinceEpoch}',
-          pattern: p,
-          matchType: CategoryRule.matchTypeContains,
-          categoryCanonical: cat,
-          createdAt: DateTime.now().toUtc(),
-          source: sourceForNewRule,
-        ),
-      );
-    }
-    try {
-      await saveCategoryRules(next);
-    } on Object {
-      return false;
-    }
-    categoryRules = next;
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
-    return true;
-  }
-
-  /// Updates pattern and category for an existing rule by [id]. Sets
-  /// [CategoryRuleSource.manualFromRules]. Fails if another rule already uses
-  /// the normalized pattern.
-  Future<bool> updateCategoryRuleById({
-    required String id,
-    required String patternRaw,
-    required String categoryCanonical,
-  }) async {
-    final trimmedId = id.trim();
-    if (trimmedId.isEmpty) return false;
-    final cat = categoryCanonical.trim();
-    if (cat.isEmpty) return false;
-    final p = normalizeDescriptionForMatching(patternRaw);
-    if (p.length < 3) return false;
-
-    final next = List<CategoryRule>.from(categoryRules);
-    final idx = next.indexWhere((r) => r.id == trimmedId);
-    if (idx < 0) return false;
-
-    final conflict = next.any(
-      (r) => r.id != trimmedId && r.pattern == p,
-    );
-    if (conflict) return false;
-
-    next[idx] = next[idx].copyWith(
-      pattern: p,
-      categoryCanonical: cat,
-      source: CategoryRuleSource.manualFromRules,
-    );
-    try {
-      await saveCategoryRules(next);
-    } on Object {
-      return false;
-    }
-    categoryRules = next;
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
-    return true;
-  }
-
-  /// Removes one rule by [id], persists, and recomputes aggregates.
-  Future<bool> deleteCategoryRule(String id) async {
-    final trimmed = id.trim();
-    if (trimmed.isEmpty) return false;
-    final next = categoryRules.where((r) => r.id != trimmed).toList();
-    if (next.length == categoryRules.length) return false;
-    try {
-      await saveCategoryRules(next);
-    } on Object {
-      return false;
-    }
-    categoryRules = next;
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
-    return true;
-  }
+  // Rules feature removed.
 
   double? monthlyBudgetForDisplayLabel(String displayLabel) =>
       categoryMonthlyBudgetsByDisplayLower[budgetDisplayKey(displayLabel)];
@@ -711,14 +594,13 @@ class AppState extends ChangeNotifier {
     final existing = List<Transaction>.from(transactionsByAccount[id] ?? const []);
     final existingFingerprints = <String>{};
     for (final t in existing) {
-      // Older persisted rows may not have a fingerprint; fall back to current key.
-      final fp = (t.fingerprint != null && t.fingerprint!.isNotEmpty)
-          ? t.fingerprint!
-          : transactionFingerprint(t);
-      existingFingerprints.add(fp);
+      // Always use the current stable identity key for dedupe, regardless of
+      // what might have been stored historically in [fingerprint].
+      existingFingerprints.add(transactionFingerprint(t));
     }
 
     final stampedNew = <Transaction>[];
+    var skipped = 0;
     for (final t in result.transactions) {
       final base = Transaction(
         date: t.date,
@@ -744,7 +626,10 @@ class AppState extends ChangeNotifier {
         importId: base.importId,
       );
       final fp = transactionFingerprint(withCid);
-      if (existingFingerprints.contains(fp)) continue;
+      if (existingFingerprints.contains(fp)) {
+        skipped += 1;
+        continue;
+      }
       existingFingerprints.add(fp);
       stampedNew.add(
         Transaction(
@@ -758,6 +643,15 @@ class AppState extends ChangeNotifier {
           importId: withCid.importId,
           fingerprint: fp,
         ),
+      );
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+        '[Clarity][Import dedupe] existing=${existing.length}, '
+        'parsed=${result.transactions.length}, '
+        'added=${stampedNew.length}, '
+        'skipped=$skipped',
       );
     }
 
@@ -1040,7 +934,6 @@ class AppState extends ChangeNotifier {
       accounts,
       _spendReference,
       categoryOverrides,
-      categoryRules,
     );
     incomeThisMonth = totalIncomeInMonth(
       allTransactionsForMetrics,
@@ -1048,7 +941,6 @@ class AppState extends ChangeNotifier {
       _spendReference,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
     );
     availableThisMonth = incomeThisMonth - spentThisMonth;
     uncategorizedCount = resolveTransactions(
@@ -1063,7 +955,6 @@ class AppState extends ChangeNotifier {
         limit: 3,
         categoryOverrides: categoryOverrides,
         categoryDisplayRenamesLower: categoryDisplayRenames,
-        categoryRules: categoryRules,
       ),
     );
     burnRunwayDays = runwayDaysFromBurnRate(
@@ -1079,14 +970,12 @@ class AppState extends ChangeNotifier {
         5,
         categoryOverrides,
         categoryDisplayRenames,
-        categoryRules,
       ),
     );
     final grouped = monthlyGroupsFromTransactions(
       activeAccountTransactions,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
     );
     monthlyGroups = List.unmodifiable(grouped.reversed.toList());
     if (kDebugMode && diag != null) {
@@ -1124,14 +1013,12 @@ double _spentThisMonth(
   List<Account> accounts,
   DateTime reference,
   Map<String, String> categoryOverrides,
-  List<CategoryRule> categoryRules,
 ) {
   final accountsById = {for (final a in accounts) a.id: a};
   final resolved = transaction_resolution.resolveTransactions(
     txs,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: const {},
-    categoryRules: categoryRules,
     accountsById: accountsById,
     allTransactions: txs,
   );
@@ -1159,14 +1046,12 @@ List<CategorySpend> _topCategoriesThisMonth(
   int limit,
   Map<String, String> categoryOverrides,
   Map<String, String> categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules,
 ) {
   final accountsById = {for (final a in accounts) a.id: a};
   final resolved = transaction_resolution.resolveTransactions(
     txs,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: accountsById,
     allTransactions: txs,
   );

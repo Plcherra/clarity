@@ -26,7 +26,6 @@ class DashboardScreen extends StatelessWidget {
           scopedTransactions: s.allTransactions,
           categoryOverrides: s.categoryOverrides,
           categoryDisplayRenamesLower: s.categoryDisplayRenames,
-          categoryRules: s.categoryRules,
           scopedBalanceFromStatement: null,
         );
       },

@@ -4,10 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('importing same CSV twice is idempotent', () {
-    const csv = '''
+    const csvA = '''
 Date,Description,Amount,Running Bal.
 2026-04-10,Market Basket,-12.34,100.00
 2026-04-11,Uber ride,-9.87,90.13
+''';
+    const csvB = '''
+Date,Description,Amount,Running Bal.
+2026-04-10,Market Basket,-12.34,999.99
+2026-04-11,Uber ride,-9.87,888.88
 ''';
 
     final state = AppState();
@@ -16,7 +21,7 @@ Date,Description,Amount,Running Bal.
     ];
 
     state.loadFromCsv(
-      csv,
+      csvA,
       accountId: 'acct',
       reference: DateTime(2026, 4, 1),
     );
@@ -25,7 +30,7 @@ Date,Description,Amount,Running Bal.
     final firstSum = first.fold<double>(0, (a, t) => a + t.amount);
 
     state.loadFromCsv(
-      csv,
+      csvB,
       accountId: 'acct',
       reference: DateTime(2026, 4, 1),
     );

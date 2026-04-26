@@ -62,7 +62,6 @@ void main() {
           scopedTransactions: state.transactionsForDashboardScope(scope),
           categoryOverrides: state.categoryOverrides,
           categoryDisplayRenamesLower: state.categoryDisplayRenames,
-          categoryRules: state.categoryRules,
           scopedBalanceFromStatement: null,
         );
         expect(snap.uncategorizedCount, expected);

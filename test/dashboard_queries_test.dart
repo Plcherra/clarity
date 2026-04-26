@@ -33,7 +33,6 @@ void main() {
         scopedTransactions: state.transactionsForDashboardScope(scope),
         categoryOverrides: state.categoryOverrides,
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
-        categoryRules: state.categoryRules,
         scopedBalanceFromStatement: null,
       );
       final fromQueries = monthlyGroupsForDashboardScope(state, scope);
@@ -72,7 +71,6 @@ void main() {
         scopedTransactions: state.transactionsForDashboardScope(scope),
         categoryOverrides: state.categoryOverrides,
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
-        categoryRules: state.categoryRules,
         scopedBalanceFromStatement: null,
       );
       expect(
@@ -109,7 +107,6 @@ void main() {
         scopedTransactions: state.transactionsForDashboardScope(scope),
         categoryOverrides: state.categoryOverrides,
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
-        categoryRules: state.categoryRules,
         scopedBalanceFromStatement: null,
       );
 
@@ -132,7 +129,6 @@ void main() {
           t,
           categoryOverrides: state.categoryOverrides,
           categoryDisplayRenamesLower: state.categoryDisplayRenames,
-          categoryRules: state.categoryRules,
         ),
       );
     });

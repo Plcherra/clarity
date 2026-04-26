@@ -17,7 +17,6 @@ List<MonthlyBankGroup> monthlyGroupsForDashboardScope(
     scoped,
     categoryOverrides: appState.categoryOverrides,
     categoryDisplayRenamesLower: appState.categoryDisplayRenames,
-    categoryRules: appState.categoryRules,
   );
 }
 
@@ -33,7 +32,6 @@ List<BankStatementLine> uncategorizedTransactionsForDashboardScope(
     appState.transactionsForDashboardScope(scope),
     categoryOverrides: appState.categoryOverrides,
     categoryDisplayRenamesLower: appState.categoryDisplayRenames,
-    categoryRules: appState.categoryRules,
   );
 }
 

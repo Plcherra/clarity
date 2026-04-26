@@ -1,6 +1,4 @@
 import '../../../core/models/models.dart';
-import '../../../category_description_normalize.dart';
-import '../../../category_rule.dart';
 
 /// System category for returned / reversed / NSF lines (not in normal picker or budgets).
 const String kIgnoredCategoryLabel = 'Ignored';
@@ -303,12 +301,10 @@ String spendGroupLabelForDisplay(
   Transaction t, {
   Map<String, String>? categoryOverrides,
   Map<String, String>? categoryDisplayRenamesLower,
-  List<CategoryRule>? categoryRules,
 }) {
   final base = spendGroupLabel(
     t,
     categoryOverrides: categoryOverrides,
-    categoryRules: categoryRules,
   );
   return applyCategoryDisplayRenames(base, categoryDisplayRenamesLower ?? {});
 }
@@ -332,75 +328,16 @@ String suggestCategoryFromDescription(String description) {
 bool isIncomeCategoryLabel(String label) =>
     label.trimLeft().toLowerCase().startsWith('income');
 
-bool _categoryRuleWholeWord(String haystackLower, String tokenLower) {
-  return RegExp(
-    '\\b${RegExp.escape(tokenLower)}\\b',
-    caseSensitive: false,
-  ).hasMatch(haystackLower);
-}
-
-/// True if [description] matches a persisted category rule [pattern].
-///
-/// [pattern] must already be normalized like stored rules ([normalizeDescriptionForMatching]).
-/// Comma-separated segments are **OR** alternatives. Each alternative matches if:
-/// - the haystack contains it as a substring (legacy), or
-/// - it has 2+ whitespace-separated tokens and **every** token appears as a whole word
-///   (any order), or
-/// - it is a single token of length ≥3 and its alphanumeric-only form is contained in the
-///   alphanumeric-only haystack (e.g. `cashback` vs `cash back rewards`).
-bool descriptionMatchesCategoryRule(String description, String pattern) {
-  final haystack = normalizeDescriptionForMatching(description);
-  final trimmed = pattern.trim();
-  if (trimmed.isEmpty) return false;
-  for (final rawAlt in trimmed.split(',')) {
-    final alt = rawAlt.trim();
-    if (alt.isEmpty) continue;
-    if (_categoryRuleAlternativeMatches(haystack, alt)) return true;
-  }
-  return false;
-}
-
-bool _categoryRuleAlternativeMatches(String haystack, String alt) {
-  if (haystack.contains(alt)) return true;
-  final tokens = alt.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
-  if (tokens.length >= 2) {
-    return tokens.every((t) => _categoryRuleWholeWord(haystack, t));
-  }
-  if (tokens.length == 1) {
-    final altCompact = tokens[0].replaceAll(RegExp(r'[^a-z0-9]'), '');
-    final hayCompact = haystack.replaceAll(RegExp(r'[^a-z0-9]'), '');
-    return altCompact.length >= 3 && hayCompact.contains(altCompact);
-  }
-  return false;
-}
-
-String? _firstMatchingCategoryRuleCanonical(
-  String description,
-  List<CategoryRule> rules,
-) {
-  for (final r in rules) {
-    if (r.matchType != CategoryRule.matchTypeContains) continue;
-    if (descriptionMatchesCategoryRule(description, r.pattern)) {
-      return r.categoryCanonical;
-    }
-  }
-  return null;
-}
-
 /// Resolves the label used for grouping spending (CSV category or keyword bucket).
 ///
 /// Order: [Transaction.categoryId] (persisted manual choice), then [categoryOverrides]
 /// for the same row key, then description rules, then heuristics / CSV category.
 ///
-/// [categoryRules]: first list-order match on normalized description wins (see
-/// [descriptionMatchesCategoryRule] for OR / multi-token / compact semantics). On **outflows**,
-/// rules run before keyword suggestion so user rules override heuristics. On **inflows**,
-/// rules run only after keyword suggestion and only when that suggestion is not an
-/// [isIncomeCategoryLabel] (so payroll-style inflows stay income).
+/// Rules are intentionally not supported; only manual per-transaction picks and
+/// built-in keyword inference are used.
 String spendGroupLabel(
   Transaction t, {
   Map<String, String>? categoryOverrides,
-  List<CategoryRule>? categoryRules,
 }) {
   final saved = t.categoryId?.trim();
   if (saved != null && saved.isNotEmpty) {
@@ -414,20 +351,11 @@ String spendGroupLabel(
   if (isReturnedOrReversedDescription(t.description)) {
     return kIgnoredCategoryLabel;
   }
-  final rules = categoryRules;
-  if (rules != null && rules.isNotEmpty && t.isOutflow) {
-    final fromRule = _firstMatchingCategoryRuleCanonical(t.description, rules);
-    if (fromRule != null) return fromRule;
-  }
   final suggested = suggestCategoryFromDescription(t.description);
   // Income from description always wins over generic bank CSV categories
   // (e.g. "Deposit", "Transfer", "Uncategorized") and over inflow-only rules below.
   if (isIncomeCategoryLabel(suggested)) {
     return suggested;
-  }
-  if (rules != null && rules.isNotEmpty && !t.isOutflow) {
-    final fromRule = _firstMatchingCategoryRuleCanonical(t.description, rules);
-    if (fromRule != null) return fromRule;
   }
   final raw = t.category?.trim();
   if (raw != null && raw.isNotEmpty) {

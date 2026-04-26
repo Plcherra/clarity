@@ -1,6 +1,5 @@
 import 'balance_resolve.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
-import '../../../category_rule.dart';
 import 'dashboard_metrics.dart';
 import '../../../core/models/models.dart';
 import '../../transactions/domain/spend_categories.dart';
@@ -25,13 +24,11 @@ List<MonthlyBankGroup> monthlyBankGroupsNewestFirstForScopedTransactions(
   List<Transaction> scopedTransactions, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  required List<CategoryRule> categoryRules,
 }) {
   final grouped = monthlyGroupsFromTransactions(
     scopedTransactions,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
   );
   return grouped.reversed.toList();
 }
@@ -68,7 +65,6 @@ DashboardSnapshot buildDashboardSnapshot({
   required List<Transaction> scopedTransactions,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  required List<CategoryRule> categoryRules,
   required double? scopedBalanceFromStatement,
 }) {
   final accountsById = {for (final a in accounts) a.id: a};
@@ -76,7 +72,6 @@ DashboardSnapshot buildDashboardSnapshot({
     scopedTransactions,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: accountsById,
     allTransactions: allTransactions,
   );
@@ -126,14 +121,12 @@ DashboardSnapshot buildDashboardSnapshot({
     limit: 3,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
   );
 
   final monthsNewestFirst = monthlyBankGroupsNewestFirstForScopedTransactions(
     scopedTransactions,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
   );
 
   final balance = switch (scope) {

@@ -1,5 +1,4 @@
 import '../../../core/models/models.dart';
-import '../../../category_rule.dart';
 import '../../../csv_parser.dart';
 import 'spend_categories.dart';
 import 'transaction_resolution.dart';
@@ -60,7 +59,6 @@ List<MonthlyBankGroup> monthlyGroupsFromTransactions(
   List<Transaction> transactions, {
   Map<String, String>? categoryOverrides,
   Map<String, String>? categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules = const [],
 }) {
   final kept = transactions.where(isBankStatementDataRow).toList();
 
@@ -68,7 +66,6 @@ List<MonthlyBankGroup> monthlyGroupsFromTransactions(
     kept,
     categoryOverrides: categoryOverrides ?? const {},
     categoryDisplayRenamesLower: categoryDisplayRenamesLower ?? const {},
-    categoryRules: categoryRules,
     accountsById: const {},
     allTransactions: transactions,
   );
@@ -107,14 +104,12 @@ List<BankStatementLine> uncategorizedBankStatementLines(
   List<Transaction> transactions, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules = const [],
 }) {
   final kept = transactions.where(isBankStatementDataRow).toList();
   final resolved = resolveTransactions(
     kept,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: const {},
     allTransactions: transactions,
   );

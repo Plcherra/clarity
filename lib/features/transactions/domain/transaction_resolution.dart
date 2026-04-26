@@ -1,5 +1,4 @@
 import '../../../core/models/models.dart';
-import '../../../category_rule.dart';
 import 'bank_statement_monthly.dart';
 import 'financial_role.dart';
 import 'spend_categories.dart';
@@ -37,14 +36,12 @@ ResolvedTransaction resolveTransaction({
   required Transaction t,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  required List<CategoryRule> categoryRules,
   required Map<String, Account> accountsById,
   required List<Transaction> allTransactions,
 }) {
   final canonical = spendGroupLabel(
     t,
     categoryOverrides: categoryOverrides,
-    categoryRules: categoryRules,
   );
   final display = applyCategoryDisplayRenames(canonical, categoryDisplayRenamesLower);
 
@@ -81,7 +78,6 @@ List<ResolvedTransaction> resolveTransactions(
   List<Transaction> txs, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  required List<CategoryRule> categoryRules,
   required Map<String, Account> accountsById,
   required List<Transaction> allTransactions,
 }) {
@@ -91,7 +87,6 @@ List<ResolvedTransaction> resolveTransactions(
           t: t,
           categoryOverrides: categoryOverrides,
           categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-          categoryRules: categoryRules,
           accountsById: accountsById,
           allTransactions: allTransactions,
         ),

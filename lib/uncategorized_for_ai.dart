@@ -1,5 +1,4 @@
 import 'bank_statement_monthly.dart';
-import 'category_rule.dart';
 import 'core/models/models.dart';
 import 'transaction_resolution.dart';
 
@@ -8,14 +7,12 @@ List<Transaction> uncategorizedDataRowsForImport({
   required List<Transaction> accountTransactions,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  required List<CategoryRule> categoryRules,
 }) {
   final kept = accountTransactions.where(isBankStatementDataRow).toList();
   final resolved = resolveTransactions(
     kept,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: const {},
     allTransactions: accountTransactions,
   );

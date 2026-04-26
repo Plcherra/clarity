@@ -97,7 +97,6 @@ class AccountDetailScreen extends StatelessWidget {
       scopedTransactions: txs,
       categoryOverrides: s.categoryOverrides,
       categoryDisplayRenamesLower: s.categoryDisplayRenames,
-      categoryRules: s.categoryRules,
       scopedBalanceFromStatement: null,
     );
   }

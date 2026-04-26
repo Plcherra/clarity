@@ -1,5 +1,4 @@
 import '../../../core/models/models.dart';
-import '../../../category_rule.dart';
 import '../../transactions/domain/spend_categories.dart';
 import '../../transactions/domain/transaction_resolution.dart';
 
@@ -21,14 +20,12 @@ double totalIncomeInMonth(
   DateTime reference, {
   Map<String, String> categoryOverrides = const {},
   Map<String, String> categoryDisplayRenamesLower = const {},
-  List<CategoryRule> categoryRules = const [],
 }) {
   final accountsById = {for (final a in accounts) a.id: a};
   final resolved = resolveTransactions(
     txs,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: accountsById,
     allTransactions: txs,
   );
@@ -47,13 +44,11 @@ int uncategorizedTransactionCount(
   List<Transaction> txs, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules = const [],
 }) {
   final resolved = resolveTransactions(
     txs,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: const {},
     allTransactions: txs,
   );
@@ -67,14 +62,12 @@ Map<String, double> _spendByCategoryInMonth(
   DateTime month,
   Map<String, String> categoryOverrides,
   Map<String, String> categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules,
 ) {
   final accountsById = {for (final a in accounts) a.id: a};
   final resolved = resolveTransactions(
     txs,
     categoryOverrides: categoryOverrides,
     categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    categoryRules: categoryRules,
     accountsById: accountsById,
     allTransactions: txs,
   );
@@ -103,7 +96,6 @@ List<CategoryLeakStat> biggestCategoryLeaks(
   int limit = 3,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
-  List<CategoryRule> categoryRules = const [],
 }) {
   final thisMonth = _spendByCategoryInMonth(
     txs,
@@ -111,7 +103,6 @@ List<CategoryLeakStat> biggestCategoryLeaks(
     reference,
     categoryOverrides,
     categoryDisplayRenamesLower,
-    categoryRules,
   );
   final prevRef = _firstDayOfPreviousMonth(reference);
   final lastMonth = _spendByCategoryInMonth(
@@ -120,7 +111,6 @@ List<CategoryLeakStat> biggestCategoryLeaks(
     prevRef,
     categoryOverrides,
     categoryDisplayRenamesLower,
-    categoryRules,
   );
 
   final sorted =

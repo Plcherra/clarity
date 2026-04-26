@@ -32,7 +32,6 @@ void main() {
       scopedTransactions: all,
       categoryOverrides: const {},
       categoryDisplayRenamesLower: const {},
-      categoryRules: const [],
       scopedBalanceFromStatement: null,
     );
     expect(global.spentThisMonth, closeTo(15, 0.01));
@@ -45,7 +44,6 @@ void main() {
       scopedTransactions: [t1],
       categoryOverrides: const {},
       categoryDisplayRenamesLower: const {},
-      categoryRules: const [],
       scopedBalanceFromStatement: null,
     );
     expect(a1.spentThisMonth, closeTo(10, 0.01));
@@ -58,7 +56,6 @@ void main() {
       scopedTransactions: [t2],
       categoryOverrides: const {},
       categoryDisplayRenamesLower: const {},
-      categoryRules: const [],
       scopedBalanceFromStatement: null,
     );
     expect(a2.spentThisMonth, closeTo(5, 0.01));
