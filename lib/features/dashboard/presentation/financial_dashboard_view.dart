@@ -16,6 +16,8 @@ import '../../../ai_categorization_service.dart';
 typedef SnapshotBuilder =
     DashboardSnapshot Function(AppState appState, DashboardScope scope);
 
+const double _sectionGap = 32.0;
+
 Color _balanceColor(double v) {
   if (v > 0) return const Color(0xFF1B7A4C);
   if (v < 0) return const Color(0xFFC41E3A);
@@ -50,7 +52,7 @@ class _AiRunningDialog extends StatelessWidget {
   }
 }
 
-class FinancialDashboardView extends StatelessWidget {
+class FinancialDashboardView extends StatefulWidget {
   const FinancialDashboardView({
     super.key,
     required this.appState,
@@ -70,7 +72,12 @@ class FinancialDashboardView extends StatelessWidget {
   /// When set (per-account dashboard only), shows a prominent CSV import control.
   final Future<void> Function()? onUploadTransactions;
 
-  static const _sectionGap = 32.0;
+  @override
+  State<FinancialDashboardView> createState() => _FinancialDashboardViewState();
+}
+
+class _FinancialDashboardViewState extends State<FinancialDashboardView> {
+  var _aiRunning = false;
 
   @override
   Widget build(BuildContext context) {
@@ -78,9 +85,11 @@ class FinancialDashboardView extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: appState,
+      listenable: widget.appState,
       builder: (context, _) {
-        final snap = buildSnapshot(appState, scope);
+        final appState = widget.appState;
+        final scope = widget.scope;
+        final snap = widget.buildSnapshot(appState, scope);
         final uncategorizedQueue =
             uncategorizedTransactionsForDashboardScope(appState, scope);
         final attentionCount = uncategorizedQueue.length;
@@ -90,7 +99,7 @@ class FinancialDashboardView extends StatelessWidget {
             backgroundColor: Colors.transparent,
             elevation: 0,
             scrolledUnderElevation: 0,
-            leading: showBackButton
+            leading: widget.showBackButton
                 ? IconButton(
                     icon: Icon(
                       Icons.arrow_back_ios_new_rounded,
@@ -102,10 +111,13 @@ class FinancialDashboardView extends StatelessWidget {
             actions: [
               IconButton(
                 tooltip: 'Auto-categorize (AI)',
-                onPressed: () async {
+                onPressed: _aiRunning
+                    ? null
+                    : () async {
                   final nav = Navigator.of(context);
                   final messenger = ScaffoldMessenger.of(context);
                   final service = AICategorizationService();
+                  setState(() => _aiRunning = true);
                   showDialog<void>(
                     context: context,
                     barrierDismissible: false,
@@ -158,6 +170,7 @@ class FinancialDashboardView extends StatelessWidget {
                     );
                   } finally {
                     service.close();
+                    if (mounted) setState(() => _aiRunning = false);
                   }
                 },
                 icon: Icon(
@@ -184,7 +197,7 @@ class FinancialDashboardView extends StatelessWidget {
                     sliver: SliverList(
                       delegate: SliverChildListDelegate([
                         Text(
-                          title,
+                          widget.title,
                           style: theme.textTheme.labelLarge?.copyWith(
                             letterSpacing: 3.2,
                             color: cs.onSurface.withValues(alpha: 0.38),
@@ -203,9 +216,9 @@ class FinancialDashboardView extends StatelessWidget {
                           ),
                         ],
                         const SizedBox(height: 20),
-                        if (onUploadTransactions != null) ...[
+                        if (widget.onUploadTransactions != null) ...[
                           _UploadTransactionsButton(
-                            onPressed: onUploadTransactions!,
+                            onPressed: widget.onUploadTransactions!,
                           ),
                           const SizedBox(height: 20),
                         ],

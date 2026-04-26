@@ -303,9 +303,7 @@ class AICategorizationService {
     }
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw FormatException(
-        'OpenAI request failed (${res.statusCode}): ${res.body}',
-      );
+      throw FormatException(_friendlyOpenAiHttpError(res.statusCode, res.body));
     }
 
     dynamic outer;
@@ -417,9 +415,7 @@ class AICategorizationService {
     }
 
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw FormatException(
-        'OpenAI request failed (${res.statusCode}): ${res.body}',
-      );
+      throw FormatException(_friendlyOpenAiHttpError(res.statusCode, res.body));
     }
 
     dynamic outer;
@@ -473,4 +469,31 @@ class AICategorizationService {
   void close() {
     _client.close();
   }
+}
+
+String _friendlyOpenAiHttpError(int statusCode, String body) {
+  // Default: keep original payload for debugging.
+  var message = 'OpenAI request failed ($statusCode): $body';
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) {
+      final err = decoded['error'];
+      if (err is Map<String, dynamic>) {
+        final type = err['type'];
+        final msg = err['message'];
+        if (type == 'insufficient_quota') {
+          return 'OpenAI quota exceeded. Add billing/credits to your OpenAI account and try again.';
+        }
+        if (statusCode == 401) {
+          return 'OpenAI authentication failed. Check that OPENAI_API_KEY is valid.';
+        }
+        if (msg is String && msg.trim().isNotEmpty) {
+          message = 'OpenAI request failed ($statusCode): ${msg.trim()}';
+        }
+      }
+    }
+  } on Object {
+    // Ignore parse errors; keep raw message.
+  }
+  return message;
 }
