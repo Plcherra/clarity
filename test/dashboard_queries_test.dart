@@ -85,6 +85,39 @@ void main() {
       );
     });
 
+    test('uncategorized alignment respects display renames', () {
+      final tx = Transaction(
+        date: DateTime(2026, 4, 12, 12),
+        description: 'zzz unique unknown place qqq',
+        amount: -2,
+        accountId: 'b',
+      );
+      final state = AppState();
+      state.transactionsByAccount = {'b': [tx]};
+      state.accounts = [
+        const Account(id: 'b', name: 'B', type: AccountType.checking),
+      ];
+      // Rename Uncategorized -> something else: should remove it from needs-attention.
+      state.categoryDisplayRenames = {'uncategorized': 'Needs manual'};
+
+      const scope = GlobalDashboardScope();
+      final snap = buildDashboardSnapshot(
+        scope: scope,
+        reference: DateTime(2026, 4, 15),
+        accounts: state.accounts,
+        allTransactions: state.allTransactions,
+        scopedTransactions: state.transactionsForDashboardScope(scope),
+        categoryOverrides: state.categoryOverrides,
+        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        categoryRules: state.categoryRules,
+        scopedBalanceFromStatement: null,
+      );
+
+      expect(uncategorizedCountForDashboardScope(state, scope), 0);
+      expect(uncategorizedTransactionsForDashboardScope(state, scope), isEmpty);
+      expect(snap.uncategorizedCount, 0);
+    });
+
     test('effectiveCategoryDisplayLabel matches spendGroupLabelForDisplay', () {
       final t = Transaction(
         date: DateTime(2026, 4, 1, 12),

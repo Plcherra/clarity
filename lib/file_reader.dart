@@ -1,8 +1,2 @@
-import 'package:file_picker/file_picker.dart';
+export 'core/io/file_reader.dart';
 
-import 'file_reader_impl.dart'
-    if (dart.library.io) 'file_reader_impl_io.dart'
-    as impl;
-
-Future<String> readPickedFileContents(PlatformFile file) =>
-    impl.readPickedFileContents(file);

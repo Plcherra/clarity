@@ -58,3 +58,4 @@ Future<void> saveBudgets(Map<String, double> budgets) async {
   final json = jsonEncode(serializable);
   await prefs.setString(kCategoryMonthlyBudgetsPrefsKey, json);
 }
+

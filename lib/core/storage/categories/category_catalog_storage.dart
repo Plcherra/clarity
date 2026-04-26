@@ -89,3 +89,4 @@ Future<void> saveCategoryCatalog({
   };
   await prefs.setString(kCategoryCatalogPrefsKey, jsonEncode(map));
 }
+

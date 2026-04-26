@@ -1,25 +1,27 @@
 import 'package:flutter/foundation.dart';
 
-import 'account_storage.dart';
+import 'core/storage/accounts/account_storage.dart';
 import 'balance_resolve.dart';
 import 'bank_statement_monthly.dart';
-import 'budget_keys.dart';
-import 'budget_storage.dart';
-import 'category_catalog_storage.dart';
+import 'core/storage/budgets/budget_keys.dart';
+import 'core/storage/budgets/budget_storage.dart';
+import 'core/storage/categories/category_catalog_storage.dart';
 import 'category_description_normalize.dart';
 import 'category_rule.dart';
-import 'category_rules_storage.dart';
+import 'core/storage/rules/category_rules_storage.dart';
 import 'csv_parser.dart';
 import 'dashboard_metrics.dart';
 import 'dashboard_snapshot.dart';
-import 'financial_role.dart';
-import 'models.dart';
-import 'profile_storage.dart';
+import 'core/models/models.dart';
+import 'core/storage/profile/profile_storage.dart';
 import 'spend_categories.dart';
-import 'transaction_category_storage.dart';
+import 'core/storage/transactions/transaction_category_storage.dart';
 import 'transaction_fingerprint.dart';
-import 'transaction_storage.dart';
+import 'transaction_resolution.dart' as transaction_resolution;
+import 'core/storage/transactions/transaction_storage.dart';
 import 'uncategorized_for_ai.dart';
+import 'core/storage/ai/ai_suggestion_storage.dart';
+import 'ai_categorization_service.dart';
 
 /// Holds parsed statement data and derived aggregates.
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
@@ -65,6 +67,10 @@ class AppState extends ChangeNotifier {
 
   /// Persisted manual categories by [transactionCategoryKey]; survives restarts and re-import.
   Map<String, String> transactionCategoryAssignments = const {};
+
+  Map<String, AiCategorySuggestion> aiCategorySuggestions = const {};
+
+  static const int _aiPromptVersion = 1;
 
   /// User-created category names (shown in the assignment sheet alongside built-ins).
   List<String> customCategories = const [];
@@ -162,6 +168,78 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// One-time migration: remove duplicated transactions caused by unstable v1 fingerprints.
+  ///
+  /// Keeps one row per stable identity key per account, preferring rows with:
+  /// - persisted/manual categoryId
+  /// - non-null running balance
+  /// - earliest importId
+  Future<void> dedupePersistedTransactionsIfNeeded() async {
+    final done = await getTransactionsDedupeMigrationDone();
+    if (done) return;
+
+    Transaction pickBetter(Transaction a, Transaction b) {
+      int score(Transaction t) {
+        var s = 0;
+        final cid = t.categoryId;
+        if (cid != null && cid.trim().isNotEmpty) s += 1000;
+        if (t.balanceAfter != null) s += 10;
+        return s;
+      }
+
+      final sa = score(a);
+      final sb = score(b);
+      if (sa != sb) return sa > sb ? a : b;
+
+      final ia = int.tryParse(a.importId ?? '');
+      final ib = int.tryParse(b.importId ?? '');
+      if (ia != null && ib != null && ia != ib) {
+        return ia < ib ? a : b;
+      }
+
+      return a;
+    }
+
+    var changed = false;
+    final next = <String, List<Transaction>>{};
+    for (final e in transactionsByAccount.entries) {
+      final accountId = e.key;
+      final list = e.value;
+      final byKey = <String, Transaction>{};
+      for (final t in list) {
+        final k = transactionFingerprint(t);
+        final existing = byKey[k];
+        if (existing == null) {
+          byKey[k] = t;
+        } else {
+          byKey[k] = pickBetter(existing, t);
+          changed = true;
+        }
+      }
+      next[accountId] = byKey.values.toList()
+        ..sort((a, b) => a.date.compareTo(b.date));
+      if (next[accountId]!.length != list.length) changed = true;
+    }
+
+    if (changed) {
+      transactionsByAccount = next;
+      await saveTransactionsByAccount(transactionsByAccount);
+
+      final active = activeAccountId;
+      if (active != null) {
+        transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
+      }
+      _recomputeDerived(
+        activeAccountTransactions: transactions,
+        allTransactionsForMetrics: allTransactions,
+        diag: null,
+      );
+      notifyListeners();
+    }
+
+    await setTransactionsDedupeMigrationDone();
+  }
+
   Future<void> hydrateLocalProfile() async {
     try {
       localProfile = await loadLocalProfile();
@@ -214,22 +292,221 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> hydrateAiCategorySuggestions() async {
+    try {
+      aiCategorySuggestions = await loadAiCategorySuggestions();
+    } on Object {
+      aiCategorySuggestions = {};
+    }
+    notifyListeners();
+  }
+
+  Future<void> _persistAiCategorySuggestions() async {
+    await saveAiCategorySuggestions(aiCategorySuggestions);
+  }
+
+  List<Transaction> uncategorizedImportedRowsGlobal() {
+    final accountsById = {for (final a in accounts) a.id: a};
+    final all = allTransactions;
+    final kept = all.where(isBankStatementDataRow).toList();
+    final resolved = transaction_resolution.resolveTransactions(
+      kept,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenamesLower: categoryDisplayRenames,
+      categoryRules: categoryRules,
+      accountsById: accountsById,
+      allTransactions: all,
+    );
+    return resolved
+        .where((r) => r.needsCategorization)
+        .map((r) => r.transaction)
+        .toList();
+  }
+
+  Future<({int applied, int queuedForReview})> autoCategorizeGlobalUncategorized({
+    required AICategorizationService service,
+    double autoApplyConfidenceThreshold = 0.90,
+  }) async {
+    final allowed = allowedCategoryPickerLabels;
+    final unc = uncategorizedImportedRowsGlobal();
+    if (unc.isEmpty) return (applied: 0, queuedForReview: 0);
+
+    final expectedKeys = unc.map(transactionCategoryKey).toSet();
+
+    // Never override manual choices.
+    final toFetch = <Transaction>[];
+    for (final t in unc) {
+      final k = transactionCategoryKey(t);
+      final alreadyAssigned = transactionCategoryAssignments[k]?.trim();
+      if (alreadyAssigned != null && alreadyAssigned.isNotEmpty) continue;
+
+      final cached = aiCategorySuggestions[k];
+      if (cached != null && cached.promptVersion == _aiPromptVersion) continue;
+      toFetch.add(t);
+    }
+
+    if (toFetch.isNotEmpty) {
+      Map<String, AiCategorySuggestion> fetched = {};
+      try {
+        fetched = await service.suggestCategoriesWithConfidence(
+          transactions: toFetch,
+          allowedCategoryIds: allowed,
+          promptVersion: _aiPromptVersion,
+        );
+      } on Object {
+        fetched = {};
+      }
+      if (fetched.isNotEmpty) {
+        aiCategorySuggestions = {...aiCategorySuggestions, ...fetched};
+        await _persistAiCategorySuggestions();
+      }
+    }
+
+    final apply = <String, String>{};
+    final batch = <AiAppliedCategoryChange>[];
+    var review = 0;
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    for (final k in expectedKeys) {
+      final alreadyAssigned = transactionCategoryAssignments[k]?.trim();
+      if (alreadyAssigned != null && alreadyAssigned.isNotEmpty) continue;
+
+      final s = aiCategorySuggestions[k];
+      if (s == null || s.promptVersion != _aiPromptVersion) continue;
+      final cat = s.suggestedCanonical?.trim();
+      if (cat == null || cat.isEmpty) continue;
+      if (!allowed.contains(cat)) continue;
+
+      if (s.confidence >= autoApplyConfidenceThreshold) {
+        apply[k] = cat;
+        batch.add(
+          AiAppliedCategoryChange(
+            key: k,
+            previousCategoryId: null,
+            newCategoryId: cat,
+            appliedAtIso: nowIso,
+          ),
+        );
+      } else {
+        review += 1;
+      }
+    }
+
+    if (apply.isNotEmpty) {
+      bulkSetCategoryOverrides(apply);
+      await saveLastAiApplyBatch(batch);
+    }
+
+    return (applied: apply.length, queuedForReview: review);
+  }
+
+  Future<int> undoLastAiAutoApply() async {
+    final batch = await loadLastAiApplyBatch();
+    if (batch.isEmpty) return 0;
+
+    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
+    final nextOv = Map<String, String>.from(categoryOverrides);
+
+    var undone = 0;
+    for (final c in batch) {
+      final current = nextAssign[c.key]?.trim();
+      if (current == null || current.isEmpty) continue;
+      if (current != c.newCategoryId) continue;
+
+      if (c.previousCategoryId == null || c.previousCategoryId!.trim().isEmpty) {
+        nextAssign.remove(c.key);
+        nextOv.remove(c.key);
+      } else {
+        nextAssign[c.key] = c.previousCategoryId!.trim();
+        nextOv[c.key] = c.previousCategoryId!.trim();
+      }
+      undone += 1;
+    }
+
+    transactionCategoryAssignments = nextAssign;
+    categoryOverrides = nextOv;
+
+    Transaction applyCategory(Transaction x) {
+      final k = transactionCategoryKey(x);
+      final cat = nextAssign[k];
+      return Transaction(
+        date: x.date,
+        description: x.description,
+        amount: x.amount,
+        accountId: x.accountId,
+        category: x.category,
+        balanceAfter: x.balanceAfter,
+        categoryId: cat,
+        importId: x.importId,
+        fingerprint: x.fingerprint,
+        financialRole: x.financialRole,
+      );
+    }
+
+    final nextByAccount = <String, List<Transaction>>{};
+    for (final e in transactionsByAccount.entries) {
+      nextByAccount[e.key] =
+          List.unmodifiable(e.value.map(applyCategory).toList());
+    }
+    transactionsByAccount = nextByAccount;
+
+    final active = activeAccountId;
+    if (active != null) {
+      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
+    }
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+
+    await saveLastAiApplyBatch(const []);
+    return undone;
+  }
+
   /// Single entry for effective spend grouping (saved categoryId → override map → rules → CSV / keywords).
   String effectiveSpendGroupLabel(Transaction t) {
-    return spendGroupLabel(
-      t,
-      categoryOverrides: categoryOverrides,
-      categoryRules: categoryRules,
-    );
+    return resolveTransaction(t, allTransactionsContext: allTransactions)
+        .canonicalCategory;
   }
 
   /// Display label after renames — use for UI and "is Uncategorized?" checks on this app’s state.
   String effectiveCategoryDisplayLabel(Transaction t) {
-    return spendGroupLabelForDisplay(
-      t,
+    return resolveTransaction(t, allTransactionsContext: allTransactions)
+        .displayCategory;
+  }
+
+  transaction_resolution.ResolvedTransaction resolveTransaction(
+    Transaction t, {
+    required List<Transaction> allTransactionsContext,
+  }) {
+    final accountsById = {for (final a in accounts) a.id: a};
+    return transaction_resolution.resolveTransaction(
+      t: t,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
       categoryRules: categoryRules,
+      accountsById: accountsById,
+      allTransactions: allTransactionsContext,
+    );
+  }
+
+  List<transaction_resolution.ResolvedTransaction> resolveTransactions(
+    List<Transaction> txs, {
+    required List<Transaction> allTransactionsContext,
+  }) {
+    final accountsById = {for (final a in accounts) a.id: a};
+    return transaction_resolution.resolveTransactions(
+      txs,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenamesLower: categoryDisplayRenames,
+      categoryRules: categoryRules,
+      accountsById: accountsById,
+      allTransactions: allTransactionsContext,
     );
   }
 
@@ -434,8 +711,11 @@ class AppState extends ChangeNotifier {
     final existing = List<Transaction>.from(transactionsByAccount[id] ?? const []);
     final existingFingerprints = <String>{};
     for (final t in existing) {
-      final fp = t.fingerprint;
-      if (fp != null && fp.isNotEmpty) existingFingerprints.add(fp);
+      // Older persisted rows may not have a fingerprint; fall back to current key.
+      final fp = (t.fingerprint != null && t.fingerprint!.isNotEmpty)
+          ? t.fingerprint!
+          : transactionFingerprint(t);
+      existingFingerprints.add(fp);
     }
 
     final stampedNew = <Transaction>[];
@@ -771,12 +1051,10 @@ class AppState extends ChangeNotifier {
       categoryRules: categoryRules,
     );
     availableThisMonth = incomeThisMonth - spentThisMonth;
-    uncategorizedCount = uncategorizedTransactionCount(
+    uncategorizedCount = resolveTransactions(
       allTransactionsForMetrics,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
-      categoryRules: categoryRules,
-    );
+      allTransactionsContext: allTransactionsForMetrics,
+    ).where((r) => r.needsCategorization).length;
     biggestLeaksThisMonth = List.unmodifiable(
       biggestCategoryLeaks(
         allTransactionsForMetrics,
@@ -849,25 +1127,22 @@ double _spentThisMonth(
   List<CategoryRule> categoryRules,
 ) {
   final accountsById = {for (final a in accounts) a.id: a};
+  final resolved = transaction_resolution.resolveTransactions(
+    txs,
+    categoryOverrides: categoryOverrides,
+    categoryDisplayRenamesLower: const {},
+    categoryRules: categoryRules,
+    accountsById: accountsById,
+    allTransactions: txs,
+  );
   final y = reference.year;
   final m = reference.month;
   var sum = 0.0;
-  for (final t in txs) {
+  for (final r in resolved) {
+    final t = r.transaction;
     final d = t.date;
     if (d.year != y || d.month != m || !t.isOutflow) continue;
-    final base = spendGroupLabel(
-      t,
-      categoryOverrides: categoryOverrides,
-      categoryRules: categoryRules,
-    );
-    if (isIgnoredCategoryLabel(base)) continue;
-    final role = effectiveFinancialRole(
-      t: t,
-      effectiveCategoryLabel: base,
-      accountsById: accountsById,
-      allTransactions: txs,
-    );
-    if (role != FinancialRole.expense) continue;
+    if (!r.countsAsSpend) continue;
     sum += -t.amount;
   }
   return sum;
@@ -887,24 +1162,20 @@ List<CategorySpend> _topCategoriesThisMonth(
   List<CategoryRule> categoryRules,
 ) {
   final accountsById = {for (final a in accounts) a.id: a};
+  final resolved = transaction_resolution.resolveTransactions(
+    txs,
+    categoryOverrides: categoryOverrides,
+    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+    categoryRules: categoryRules,
+    accountsById: accountsById,
+    allTransactions: txs,
+  );
   final map = <String, double>{};
-  for (final t in txs) {
-    if (t.amount >= 0) continue;
+  for (final r in resolved) {
+    final t = r.transaction;
     if (!_inMonth(t.date, reference)) continue;
-    final base = spendGroupLabel(
-      t,
-      categoryOverrides: categoryOverrides,
-      categoryRules: categoryRules,
-    );
-    if (isIgnoredCategoryLabel(base)) continue;
-    final role = effectiveFinancialRole(
-      t: t,
-      effectiveCategoryLabel: base,
-      accountsById: accountsById,
-      allTransactions: txs,
-    );
-    if (role != FinancialRole.expense) continue;
-    final name = applyCategoryDisplayRenames(base, categoryDisplayRenamesLower);
+    if (!r.countsAsSpend) continue;
+    final name = r.displayCategory;
     if (isIgnoredCategoryLabel(name)) continue;
     map[name] = (map[name] ?? 0) + (-t.amount);
   }

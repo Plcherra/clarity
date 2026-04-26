@@ -57,12 +57,26 @@ Resolution order for **`spendGroupLabel`** ([`spend_categories.dart`](../lib/spe
 
 **Display line for UI / Uncategorized checks:** [`AppState.effectiveCategoryDisplayLabel`](../lib/app_state.dart) — `spendGroupLabelForDisplay` with app maps (includes display renames).
 
+## 4b. Central transaction resolution (single source)
+
+All screens and metrics should resolve transactions via [`transaction_resolution.dart`](../lib/transaction_resolution.dart), which produces a `ResolvedTransaction`:
+
+- `canonicalCategory` (exact `spendGroupLabel` output)
+- `displayCategory` (canonical + `applyCategoryDisplayRenames`)
+- `financialRole` (exact `effectiveFinancialRole` output, with global `allTransactions` context when needed)
+- Inclusion flags used by consumers:
+  - `countsAsSpend`
+  - `countsAsIncome`
+  - `needsCategorization`
+
+Avoid new direct dashboard math from raw `t.amount` sign + category strings; prefer `ResolvedTransaction` or helpers built on it.
+
 ## 5. What “needs attention” / uncategorized means
 
 A row counts toward **needs attention** when:
 
 1. It passes **bank statement row** filters ([`isBankStatementDataRow`](../lib/bank_statement_monthly.dart) — drops empty, invalid amounts, summary/balance boilerplate descriptions).
-2. **Display** category after renames equals **`Uncategorized`** (case-insensitive): [`uncategorizedTransactionCount`](../lib/dashboard_metrics.dart) on the chosen transaction list.
+2. **Display** category after renames equals **`Uncategorized`** (case-insensitive): `ResolvedTransaction.needsCategorization` (and any count should come from `.where((r) => r.needsCategorization)`).
 
 **Review queue** for the in-app flow: [`uncategorizedBankStatementLines`](../lib/bank_statement_monthly.dart) on **`transactionsForDashboardScope(scope)`** with the same override/rename/rule maps — must match the banner for that **same `DashboardScope`**.
 
@@ -75,7 +89,7 @@ A row counts toward **needs attention** when:
 
 ## 7. Money metrics (high level)
 
-- **Spend / income / top categories / leaks** in the snapshot use **`scopedTransactions`** for the reference month, with **`effectiveFinancialRole`** ([`financial_role.dart`](../lib/financial_role.dart)) and global `allTransactions` for internal-payment matching — not raw category strings alone.
+- **Spend / income / top categories / leaks** in the snapshot use **`scopedTransactions`** for the reference month, resolved through `ResolvedTransaction` (role resolution still uses global `allTransactions` for internal-payment matching).
 - **Ignored** categories (and role-based exclusions) prevent lines from polluting expense/income where implemented in [`buildDashboardSnapshot`](../lib/dashboard_snapshot.dart).
 
 ## Budgets ([`BudgetsScreen`](../lib/screens/budgets_screen.dart))

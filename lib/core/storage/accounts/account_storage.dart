@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'models.dart';
+import '../../models/models.dart';
 
 const String kAccountsPrefsKey = 'accounts_v1';
 
@@ -82,3 +82,4 @@ Future<void> saveAccounts(List<Account> accounts) async {
   }
   await prefs.setString(kAccountsPrefsKey, jsonEncode(list));
 }
+

@@ -2,7 +2,7 @@ import 'dart:math' show min;
 
 import 'package:csv/csv.dart';
 
-import 'models.dart';
+import 'core/models/models.dart';
 
 /// Result of parsing a bank-export style CSV.
 class ParseResult {

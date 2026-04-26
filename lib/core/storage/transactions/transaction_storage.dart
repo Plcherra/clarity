@@ -2,9 +2,21 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'models.dart';
+import '../../models/models.dart';
 
 const String kTransactionsByAccountPrefsKey = 'transactions_by_account_v1';
+const String kTransactionsDedupeMigrationPrefsKey =
+    'transactions_dedupe_migration_v1_done';
+
+Future<bool> getTransactionsDedupeMigrationDone() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool(kTransactionsDedupeMigrationPrefsKey) ?? false;
+}
+
+Future<void> setTransactionsDedupeMigrationDone() async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool(kTransactionsDedupeMigrationPrefsKey, true);
+}
 
 String _roleToWire(FinancialRole r) => switch (r) {
       FinancialRole.expense => 'expense',

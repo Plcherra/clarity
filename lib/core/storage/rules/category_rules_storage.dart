@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'category_rule.dart';
+import '../../../category_rule.dart';
 
 const String kCategoryRulesPrefsKey = 'category_rules_v1';
 
@@ -32,3 +32,4 @@ Future<void> saveCategoryRules(List<CategoryRule> rules) async {
   final json = jsonEncode(rules.map((r) => r.toJson()).toList());
   await prefs.setString(kCategoryRulesPrefsKey, json);
 }
+

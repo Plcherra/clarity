@@ -47,3 +47,4 @@ Future<void> saveTransactionCategoryAssignments(Map<String, String> map) async {
     jsonEncode(serializable),
   );
 }
+

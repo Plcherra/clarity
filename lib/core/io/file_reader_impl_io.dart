@@ -13,3 +13,4 @@ Future<String> readPickedFileContents(PlatformFile file) async {
   }
   throw const FormatException('Could not read file.');
 }
+

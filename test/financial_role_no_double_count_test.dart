@@ -3,14 +3,14 @@ import 'package:clarity/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  AppState _stateWithAccounts(List<Account> accounts) {
+  AppState stateWithAccounts(List<Account> accounts) {
     final s = AppState();
     s.accounts = accounts;
     return s;
   }
 
   test('confirmed CC payment excludes checking outflow (no double count)', () {
-    final state = _stateWithAccounts([
+    final state = stateWithAccounts([
       const Account(
         id: 'checking',
         name: 'BOA Checking',
@@ -53,7 +53,7 @@ Date,Description,Amount,Category
   });
 
   test('unconfirmed CC payment still counts as expense (conservative)', () {
-    final state = _stateWithAccounts([
+    final state = stateWithAccounts([
       const Account(
         id: 'checking',
         name: 'BOA Checking',
@@ -96,7 +96,7 @@ Date,Description,Amount,Category
   });
 
   test('unrelated CC ledger does not exclude a different-institution payment', () {
-    final state = _stateWithAccounts([
+    final state = stateWithAccounts([
       const Account(
         id: 'checking',
         name: 'BOA Checking',
