@@ -46,10 +46,9 @@ Resolution order for **`spendGroupLabel`** ([`spend_categories.dart`](../lib/spe
 1. **`transaction.categoryId`** (user-saved canonical category) if non-empty.
 2. **Manual override** via `categoryOverrides[transactionCategoryKey(t)]`.
 3. **Returned/reversed/NSF-style descriptions** → `Ignored` (dropped from normal spend charts per rules).
-4. **First matching user `CategoryRule`** (outflows first; special case for inflow + income-from-keywords).
+4. **Merchant memory** (`merchantCategoryMemory[transactionMerchantKeyLower(t)]`) if present and non-empty.
 5. **`suggestCategoryFromDescription`** (built-in keywords) — may return an income label that overrides weaker CSV labels below.
-6. **Inflow path:** Additional rule pass for non-outflows if needed.
-7. **`transaction.category`** from CSV: if `uncategorized` / `other`, substitute keyword suggestion; else use raw CSV category.
+6. **`transaction.category`** from CSV: if `uncategorized` / `other`, substitute keyword suggestion; else use raw CSV category.
 
 **Display-only layer:** `spendGroupLabelForDisplay` = `spendGroupLabel` + `applyCategoryDisplayRenames`. Anything that checks “is this Uncategorized?” for **UI/review counts** should use the **display** label unless you intentionally want pre-rename logic.
 
@@ -81,6 +80,7 @@ A row counts toward **needs attention** when:
 **Review queue** for the in-app flow: [`uncategorizedBankStatementLines`](../lib/bank_statement_monthly.dart) on **`transactionsForDashboardScope(scope)`** with the same override/rename/rule maps — must match the banner for that **same `DashboardScope`**.
 
 **AI import flow** (`AiCategorizationFlowScreen`): separate path; uses uncategorized **import** helpers where applicable — suggestions are not final until the user saves; saved picks should flow through `categoryId` / overrides like any other categorization.
+AI suggestions are **prefilled from merchant memory** when possible, and the GPT call is only made for transactions that are not already covered by merchant memory.
 
 ## 6. Month list and month detail
 

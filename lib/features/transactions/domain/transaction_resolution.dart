@@ -36,12 +36,14 @@ ResolvedTransaction resolveTransaction({
   required Transaction t,
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
+  Map<String, String> merchantCategoryMemory = const {},
   required Map<String, Account> accountsById,
   required List<Transaction> allTransactions,
 }) {
   final canonical = spendGroupLabel(
     t,
     categoryOverrides: categoryOverrides,
+    merchantCategoryMemory: merchantCategoryMemory,
   );
   final display = applyCategoryDisplayRenames(canonical, categoryDisplayRenamesLower);
 
@@ -78,6 +80,7 @@ List<ResolvedTransaction> resolveTransactions(
   List<Transaction> txs, {
   required Map<String, String> categoryOverrides,
   required Map<String, String> categoryDisplayRenamesLower,
+  Map<String, String> merchantCategoryMemory = const {},
   required Map<String, Account> accountsById,
   required List<Transaction> allTransactions,
 }) {
@@ -87,6 +90,7 @@ List<ResolvedTransaction> resolveTransactions(
           t: t,
           categoryOverrides: categoryOverrides,
           categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+          merchantCategoryMemory: merchantCategoryMemory,
           accountsById: accountsById,
           allTransactions: allTransactions,
         ),

@@ -13,6 +13,7 @@ import 'core/models/models.dart';
 import 'core/storage/profile/profile_storage.dart';
 import 'spend_categories.dart';
 import 'core/storage/transactions/transaction_category_storage.dart';
+import 'core/storage/transactions/merchant_category_memory_storage.dart';
 import 'transaction_fingerprint.dart';
 import 'transaction_resolution.dart' as transaction_resolution;
 import 'core/storage/transactions/transaction_storage.dart';
@@ -65,6 +66,9 @@ class AppState extends ChangeNotifier {
   Map<String, String> transactionCategoryAssignments = const {};
 
   Map<String, AiCategorySuggestion> aiCategorySuggestions = const {};
+
+  /// Per-user merchant -> canonical category “silent memory” (keys are lowercase merchant keys).
+  Map<String, String> merchantCategoryMemory = const {};
 
   // Bump to invalidate cached "empty" suggestions from earlier prompt iterations.
   static const int _aiPromptVersion = 2;
@@ -239,7 +243,236 @@ class AppState extends ChangeNotifier {
   Future<void> setLocalProfile(LocalProfile profile) async {
     await saveLocalProfile(profile);
     localProfile = profile;
+    // Switch merchant memory namespace to the new profile.
+    await hydrateMerchantCategoryMemory();
     notifyListeners();
+  }
+
+  String _userNamespaceForMerchantMemory() {
+    // LocalProfile is the best available per-user namespace in v1.
+    // If absent (onboarding), keep memory in an anonymous namespace.
+    final p = localProfile;
+    final created = p?.createdAtUtcIso.trim();
+    if (created != null && created.isNotEmpty) return created;
+    return 'anon';
+  }
+
+  Future<void> hydrateMerchantCategoryMemory() async {
+    try {
+      merchantCategoryMemory =
+          await loadMerchantCategoryMemory(_userNamespaceForMerchantMemory());
+    } on Object {
+      merchantCategoryMemory = {};
+    }
+    notifyListeners();
+  }
+
+  void _persistMerchantCategoryMemory() {
+    saveMerchantCategoryMemory(
+      _userNamespaceForMerchantMemory(),
+      merchantCategoryMemory,
+    ).catchError((_) {});
+  }
+
+  /// Applies explicit category assignments, then learns merchant memory and backfills
+  /// similar merchants. Returns the backfill batch for UI undo.
+  List<AiAppliedCategoryChange> applyCategoriesWithMerchantLearning(
+    Map<String, String> keyToCanonicalCategory,
+  ) {
+    _applyCategoryAssignments(keyToCanonicalCategory);
+    return _learnAndBackfillMerchantMemory(keyToCanonicalCategory);
+  }
+
+  /// Learns merchant memory from explicit user picks, and backfills matching rows.
+  ///
+  /// Returns a batch of category changes that can be undone.
+  List<AiAppliedCategoryChange> _learnAndBackfillMerchantMemory(
+    Map<String, String> keyToCanonicalCategory,
+  ) {
+    if (keyToCanonicalCategory.isEmpty) return const [];
+
+    // Map merchantKeyLower -> chosen category (last write wins within this save).
+    final merchantUpdates = <String, String>{};
+    final txByKey = <String, Transaction>{};
+    for (final t in allTransactions) {
+      txByKey[transactionCategoryKey(t)] = t;
+    }
+    for (final e in keyToCanonicalCategory.entries) {
+      final t = txByKey[e.key];
+      if (t == null) continue;
+      final mk = transactionMerchantKeyLower(t).trim().toLowerCase();
+      if (mk.isEmpty) continue;
+      merchantUpdates[mk] = e.value.trim();
+    }
+    if (merchantUpdates.isEmpty) return const [];
+
+    // Persist merchant memory.
+    final nextMemory = Map<String, String>.from(merchantCategoryMemory);
+    for (final e in merchantUpdates.entries) {
+      final k = e.key.trim().toLowerCase();
+      final v = e.value.trim();
+      if (k.isEmpty || v.isEmpty) continue;
+      nextMemory[k] = v;
+    }
+    merchantCategoryMemory = nextMemory;
+    _persistMerchantCategoryMemory();
+
+    // Backfill: apply to all matching transactions (with undo info).
+    final toApply = <String, String>{};
+    final undo = <AiAppliedCategoryChange>[];
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+
+    for (final t in allTransactions) {
+      final mk = transactionMerchantKeyLower(t).trim().toLowerCase();
+      final target = merchantUpdates[mk];
+      if (target == null || target.isEmpty) continue;
+
+      final key = transactionCategoryKey(t);
+      if (keyToCanonicalCategory.containsKey(key)) continue; // already set explicitly in this save
+
+      final current = transactionCategoryAssignments[key]?.trim();
+      if (current != null && current == target) continue;
+
+      toApply[key] = target;
+      undo.add(
+        AiAppliedCategoryChange(
+          key: key,
+          previousCategoryId: current,
+          newCategoryId: target,
+          appliedAtIso: nowIso,
+        ),
+      );
+    }
+
+    if (toApply.isEmpty) return const [];
+    _applyCategoryAssignments(toApply);
+    return undo;
+  }
+
+  void _applyCategoryAssignments(Map<String, String> keyToCanonicalCategory) {
+    final normalized = <String, String>{};
+    for (final e in keyToCanonicalCategory.entries) {
+      final k = e.key.trim();
+      final v = e.value.trim();
+      if (k.isEmpty || v.isEmpty) continue;
+      normalized[k] = v;
+    }
+    if (normalized.isEmpty) return;
+
+    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
+    final nextOv = Map<String, String>.from(categoryOverrides);
+    for (final e in normalized.entries) {
+      nextAssign[e.key] = e.value;
+      nextOv[e.key] = e.value;
+    }
+    transactionCategoryAssignments = nextAssign;
+    categoryOverrides = nextOv;
+
+    Transaction applyCategory(Transaction x) {
+      final k = transactionCategoryKey(x);
+      final cat = normalized[k];
+      if (cat == null) return x;
+      final c = cat.trim();
+      if (c.isEmpty) return x;
+      return Transaction(
+        date: x.date,
+        description: x.description,
+        amount: x.amount,
+        accountId: x.accountId,
+        category: x.category,
+        balanceAfter: x.balanceAfter,
+        categoryId: c,
+        importId: x.importId,
+        fingerprint: x.fingerprint,
+        financialRole: x.financialRole,
+      );
+    }
+
+    final nextByAccount = <String, List<Transaction>>{};
+    for (final e in transactionsByAccount.entries) {
+      nextByAccount[e.key] =
+          List.unmodifiable(e.value.map(applyCategory).toList());
+    }
+    transactionsByAccount = nextByAccount;
+
+    final active = activeAccountId;
+    if (active != null) {
+      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
+    }
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+  }
+
+  Future<int> undoCategoryApplyBatch(List<AiAppliedCategoryChange> batch) async {
+    if (batch.isEmpty) return 0;
+
+    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
+    final nextOv = Map<String, String>.from(categoryOverrides);
+
+    var undone = 0;
+    for (final c in batch) {
+      final current = nextAssign[c.key]?.trim();
+      if (current == null || current.isEmpty) continue;
+      if (current != c.newCategoryId) continue;
+
+      if (c.previousCategoryId == null || c.previousCategoryId!.trim().isEmpty) {
+        nextAssign.remove(c.key);
+        nextOv.remove(c.key);
+      } else {
+        nextAssign[c.key] = c.previousCategoryId!.trim();
+        nextOv[c.key] = c.previousCategoryId!.trim();
+      }
+      undone += 1;
+    }
+
+    transactionCategoryAssignments = nextAssign;
+    categoryOverrides = nextOv;
+
+    Transaction applyCategory(Transaction x) {
+      final k = transactionCategoryKey(x);
+      final cat = nextAssign[k];
+      return Transaction(
+        date: x.date,
+        description: x.description,
+        amount: x.amount,
+        accountId: x.accountId,
+        category: x.category,
+        balanceAfter: x.balanceAfter,
+        categoryId: cat,
+        importId: x.importId,
+        fingerprint: x.fingerprint,
+        financialRole: x.financialRole,
+      );
+    }
+
+    final nextByAccount = <String, List<Transaction>>{};
+    for (final e in transactionsByAccount.entries) {
+      nextByAccount[e.key] =
+          List.unmodifiable(e.value.map(applyCategory).toList());
+    }
+    transactionsByAccount = nextByAccount;
+
+    final active = activeAccountId;
+    if (active != null) {
+      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
+    }
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _recomputeDerived(
+      activeAccountTransactions: transactions,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+    return undone;
   }
 
   /// Appends [account], persists, and notifies. Returns false if save fails.
@@ -484,6 +717,7 @@ class AppState extends ChangeNotifier {
       t: t,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
+      merchantCategoryMemory: merchantCategoryMemory,
       accountsById: accountsById,
       allTransactions: allTransactionsContext,
     );
@@ -498,6 +732,7 @@ class AppState extends ChangeNotifier {
       txs,
       categoryOverrides: categoryOverrides,
       categoryDisplayRenamesLower: categoryDisplayRenames,
+      merchantCategoryMemory: merchantCategoryMemory,
       accountsById: accountsById,
       allTransactions: allTransactionsContext,
     );
@@ -682,101 +917,12 @@ class AppState extends ChangeNotifier {
   void setCategoryOverride(Transaction t, String category) {
     final key = transactionCategoryKey(t);
     final cat = category.trim();
-    transactionCategoryAssignments = {
-      ...transactionCategoryAssignments,
-      key: cat,
-    };
-    final next = Map<String, String>.from(categoryOverrides);
-    next[key] = cat;
-    categoryOverrides = next;
-    transactions = List.unmodifiable(
-      transactions.map((x) {
-        if (transactionCategoryKey(x) != key) return x;
-        return Transaction(
-          date: x.date,
-          description: x.description,
-          amount: x.amount,
-          accountId: x.accountId,
-          category: x.category,
-          balanceAfter: x.balanceAfter,
-          categoryId: cat,
-          importId: x.importId,
-          fingerprint: x.fingerprint,
-          financialRole: x.financialRole,
-        );
-      }).toList(),
-    );
-    _persistActiveAccountTransactionsIfAny();
-    _persistTransactionCategoryAssignments();
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
+    applyCategoriesWithMerchantLearning({key: cat});
   }
 
   /// Assigns categories for many [transactionCategoryKey]s at once (persists [categoryId] on each row).
   void bulkSetCategoryOverrides(Map<String, String> keyToCanonicalCategory) {
-    final normalized = <String, String>{};
-    for (final e in keyToCanonicalCategory.entries) {
-      final k = e.key.trim();
-      final v = e.value.trim();
-      if (k.isEmpty || v.isEmpty) continue;
-      normalized[k] = v;
-    }
-    if (normalized.isEmpty) return;
-
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryOverrides);
-    for (final e in normalized.entries) {
-      nextAssign[e.key] = e.value;
-      nextOv[e.key] = e.value;
-    }
-    transactionCategoryAssignments = nextAssign;
-    categoryOverrides = nextOv;
-
-    Transaction applyCategory(Transaction x) {
-      final k = transactionCategoryKey(x);
-      final cat = normalized[k];
-      if (cat == null) return x;
-      final c = cat.trim();
-      if (c.isEmpty) return x;
-      return Transaction(
-        date: x.date,
-        description: x.description,
-        amount: x.amount,
-        accountId: x.accountId,
-        category: x.category,
-        balanceAfter: x.balanceAfter,
-        categoryId: c,
-        importId: x.importId,
-        fingerprint: x.fingerprint,
-        financialRole: x.financialRole,
-      );
-    }
-
-    final nextByAccount = <String, List<Transaction>>{};
-    for (final e in transactionsByAccount.entries) {
-      nextByAccount[e.key] =
-          List.unmodifiable(e.value.map(applyCategory).toList());
-    }
-    transactionsByAccount = nextByAccount;
-
-    final active = activeAccountId;
-    if (active != null) {
-      transactions =
-          List.unmodifiable(transactionsByAccount[active] ?? const []);
-    }
-
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    _persistTransactionCategoryAssignments();
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
+    applyCategoriesWithMerchantLearning(keyToCanonicalCategory);
   }
 
   /// Adds a new category name (if needed), assigns [t], and notifies.

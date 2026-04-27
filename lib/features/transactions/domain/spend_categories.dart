@@ -1,4 +1,5 @@
 import '../../../core/models/models.dart';
+import 'merchant_normalization.dart';
 
 /// System category for returned / reversed / NSF lines (not in normal picker or budgets).
 const String kIgnoredCategoryLabel = 'Ignored';
@@ -37,6 +38,13 @@ bool isReturnedOrReversedDescription(String description) {
 String transactionCategoryKey(Transaction t) {
   final ba = t.balanceAfter;
   return '${t.accountId}|${t.date.toIso8601String()}|${t.amount}|${t.description}|${ba ?? ''}';
+}
+
+/// Stable per-merchant key for “silent memory” categorization.
+///
+/// See [merchantKeyLowerFromDescription] for normalization behavior.
+String transactionMerchantKeyLower(Transaction t) {
+  return merchantKeyLowerFromDescription(t.description);
 }
 
 /// All built-in categories users can assign (excludes `Uncategorized`; order is pick-list order).
@@ -338,6 +346,7 @@ bool isIncomeCategoryLabel(String label) =>
 String spendGroupLabel(
   Transaction t, {
   Map<String, String>? categoryOverrides,
+  Map<String, String>? merchantCategoryMemory,
 }) {
   final saved = t.categoryId?.trim();
   if (saved != null && saved.isNotEmpty) {
@@ -351,6 +360,13 @@ String spendGroupLabel(
   if (isReturnedOrReversedDescription(t.description)) {
     return kIgnoredCategoryLabel;
   }
+
+  final mk = transactionMerchantKeyLower(t);
+  final memo = mk.isNotEmpty ? (merchantCategoryMemory?[mk]) : null;
+  if (memo != null && memo.trim().isNotEmpty) {
+    return memo.trim();
+  }
+
   final suggested = suggestCategoryFromDescription(t.description);
   // Income from description always wins over generic bank CSV categories
   // (e.g. "Deposit", "Transfer", "Uncategorized") and over inflow-only rules below.

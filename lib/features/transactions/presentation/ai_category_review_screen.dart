@@ -62,10 +62,27 @@ class _AiCategorizationFlowScreenState extends State<AiCategorizationFlowScreen>
     }
     try {
       final allowed = widget.appState.allowedCategoryPickerLabels;
-      final map = await _service.suggestCategories(
-        transactions: unc,
-        allowedCategoryIds: allowed,
-      );
+      final prefilled = <String, String?>{};
+      final toFetch = <Transaction>[];
+      for (final t in unc) {
+        final k = transactionCategoryKey(t);
+        final mk = transactionMerchantKeyLower(t);
+        final memo = mk.isNotEmpty ? widget.appState.merchantCategoryMemory[mk] : null;
+        if (memo != null && memo.trim().isNotEmpty) {
+          prefilled[k] = memo.trim();
+        } else {
+          toFetch.add(t);
+        }
+      }
+
+      final fetched = toFetch.isEmpty
+          ? <String, String?>{}
+          : await _service.suggestCategories(
+              transactions: toFetch,
+              allowedCategoryIds: allowed,
+            );
+
+      final map = {...prefilled, ...fetched};
       if (!mounted) return;
       setState(() {
         _transactions = unc;
@@ -235,6 +252,7 @@ class AiCategoryReviewScreen extends StatefulWidget {
 
 class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
   late Map<String, String?> _choice;
+  String? _filterCategory;
 
   @override
   void initState() {
@@ -251,6 +269,19 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
   }
 
   List<String> get _allowed => widget.appState.allowedCategoryPickerLabels;
+
+  List<Transaction> get _filteredTransactions {
+    final f = _filterCategory?.trim();
+    if (f == null || f.isEmpty) return widget.transactions;
+    final out = <Transaction>[];
+    for (final t in widget.transactions) {
+      final k = transactionCategoryKey(t);
+      final selected = _choice[k];
+      final ai = widget.initialSuggestions[k];
+      if (selected == f || ai == f) out.add(t);
+    }
+    return out;
+  }
 
   void _acceptAllFromAi() {
     setState(() {
@@ -281,14 +312,26 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       );
       return;
     }
-    widget.appState.bulkSetCategoryOverrides(toSave);
+    final backfillBatch =
+        widget.appState.applyCategoriesWithMerchantLearning(toSave);
     if (!mounted) return;
     final n = toSave.length;
-    ScaffoldMessenger.of(context).showSnackBar(
+    final snack = ScaffoldMessenger.of(context);
+    snack.clearSnackBars();
+    snack.showSnackBar(
       SnackBar(
         content: Text(
-          'Saved $n AI ${n == 1 ? 'category' : 'categories'}.',
+          'Saved $n AI ${n == 1 ? 'category' : 'categories'}. '
+          'Applied to similar merchants too.',
         ),
+        action: backfillBatch.isEmpty
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () async {
+                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                },
+              ),
       ),
     );
     widget.onSkip();
@@ -312,14 +355,26 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       );
       return;
     }
-    widget.appState.bulkSetCategoryOverrides(toSave);
+    final backfillBatch =
+        widget.appState.applyCategoriesWithMerchantLearning(toSave);
     if (!mounted) return;
     final n = toSave.length;
-    ScaffoldMessenger.of(context).showSnackBar(
+    final snack = ScaffoldMessenger.of(context);
+    snack.clearSnackBars();
+    snack.showSnackBar(
       SnackBar(
         content: Text(
-          'Saved $n ${n == 1 ? 'category' : 'categories'}.',
+          'Saved $n ${n == 1 ? 'category' : 'categories'}. '
+          'Applied to similar merchants too.',
         ),
+        action: backfillBatch.isEmpty
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () async {
+                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                },
+              ),
       ),
     );
     widget.onSkip();
@@ -329,6 +384,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
+    final items = _filteredTransactions;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -344,7 +400,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Review ${widget.transactions.length} suggestion${widget.transactions.length == 1 ? '' : 's'}',
+                  'Review ${items.length} suggestion${items.length == 1 ? '' : 's'}',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     letterSpacing: -0.2,
@@ -355,7 +411,34 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 8),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 4),
+          child: DropdownButton<String?>(
+            isExpanded: true,
+            borderRadius: BorderRadius.circular(12),
+            value: _validDropdownValue(_filterCategory),
+            hint: Text(
+              'Filter by category',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.45),
+              ),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('— All categories —'),
+              ),
+              ..._allowed.map(
+                (c) => DropdownMenuItem<String?>(
+                  value: c,
+                  child: Text(c),
+                ),
+              ),
+            ],
+            onChanged: (v) => setState(() => _filterCategory = v),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
           child: Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -377,10 +460,10 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            itemCount: widget.transactions.length,
+            itemCount: items.length,
             separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
-              final t = widget.transactions[i];
+              final t = items[i];
               final k = transactionCategoryKey(t);
               final selected = _choice[k];
               return Material(

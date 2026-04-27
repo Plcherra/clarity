@@ -60,10 +60,26 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
       toSave[k] = v;
     }
     if (toSave.isEmpty) return;
-    widget.appState.bulkSetCategoryOverrides(toSave);
+    final backfillBatch =
+        widget.appState.applyCategoriesWithMerchantLearning(toSave);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Saved ${toSave.length} categor${toSave.length == 1 ? 'y' : 'ies'}.')),
+    final snack = ScaffoldMessenger.of(context);
+    snack.clearSnackBars();
+    snack.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Saved ${toSave.length} categor${toSave.length == 1 ? 'y' : 'ies'}. '
+          'Applied to similar merchants too.',
+        ),
+        action: backfillBatch.isEmpty
+            ? null
+            : SnackBarAction(
+                label: 'Undo',
+                onPressed: () async {
+                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                },
+              ),
+      ),
     );
     setState(() {});
   }

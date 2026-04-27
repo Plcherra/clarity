@@ -19,6 +19,7 @@ Future<void> bootstrap() async {
   await appState.hydrateAiCategorySuggestions();
   await appState.dedupePersistedTransactionsIfNeeded();
   await appState.hydrateLocalProfile();
+  await appState.hydrateMerchantCategoryMemory();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
