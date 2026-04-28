@@ -19,6 +19,137 @@ class AccountDetailScreen extends StatelessWidget {
   final AppState appState;
   final String accountId;
 
+  String _batchLabel(CsvImportBatchSummary batch) {
+    final utc = batch.importedAtUtc;
+    if (utc == null) return 'Upload ${batch.importId}';
+    final local = utc.toLocal();
+    final yy = local.year.toString().padLeft(4, '0');
+    final mm = local.month.toString().padLeft(2, '0');
+    final dd = local.day.toString().padLeft(2, '0');
+    final hh = local.hour.toString().padLeft(2, '0');
+    final min = local.minute.toString().padLeft(2, '0');
+    return '$yy-$mm-$dd $hh:$min';
+  }
+
+  Future<void> _deleteCsvUploadBatch(BuildContext context) async {
+    final batches = appState.csvImportBatchesForAccount(accountId);
+    if (batches.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No CSV uploads found for this account.')),
+      );
+      return;
+    }
+
+    final selected = await showDialog<CsvImportBatchSummary>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: const Text('Delete CSV upload'),
+        children: [
+          for (final batch in batches)
+            SimpleDialogOption(
+              onPressed: () => Navigator.of(ctx).pop(batch),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _batchLabel(batch),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${batch.transactionCount} transaction${batch.transactionCount == 1 ? '' : 's'}',
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    if (selected == null) return;
+    if (!context.mounted) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete this CSV upload?'),
+        content: Text(
+          'Delete ${selected.transactionCount} transaction'
+          '${selected.transactionCount == 1 ? '' : 's'} from this upload? '
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete upload'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final deleted = await appState.deleteTransactionsForImportBatch(
+      accountId: accountId,
+      importId: selected.importId,
+    );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          deleted > 0
+              ? 'Deleted $deleted transaction${deleted == 1 ? '' : 's'} from CSV upload.'
+              : 'Could not delete CSV upload.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteAccount(BuildContext context, String accountName) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: const Text(
+          'Delete this account and all its transactions? This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete account'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    final ok = await appState.deleteAccount(accountId);
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete account.')),
+      );
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$accountName deleted.')),
+    );
+    Navigator.of(context).pop();
+  }
+
   Future<void> _importCsvForThisAccount(BuildContext context) async {
     try {
       final result = await FilePicker.platform.pickFiles(
@@ -98,6 +229,8 @@ class AccountDetailScreen extends StatelessWidget {
           title: title,
           buildSnapshot: (s, _) => _snapshotForAccount(s),
           onUploadTransactions: () => _importCsvForThisAccount(context),
+          onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
+          onDeleteAccount: () => _deleteAccount(context, title),
         );
       },
     );

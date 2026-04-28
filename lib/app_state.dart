@@ -24,6 +24,18 @@ import 'uncategorized_for_ai.dart';
 import 'core/storage/ai/ai_suggestion_storage.dart';
 import 'ai_categorization_service.dart';
 
+class CsvImportBatchSummary {
+  const CsvImportBatchSummary({
+    required this.importId,
+    required this.transactionCount,
+    required this.importedAtUtc,
+  });
+
+  final String importId;
+  final int transactionCount;
+  final DateTime? importedAtUtc;
+}
+
 /// Holds parsed statement data and derived aggregates.
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
 /// are persisted separately from CSV data.
@@ -506,19 +518,9 @@ class AppState extends ChangeNotifier {
     }
     transactionsByAccount = nextByAccount;
 
-    final active = activeAccountId;
-    if (active != null) {
-      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
-    }
-
     saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
     _persistTransactionCategoryAssignments();
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
+    refreshAllState();
   }
 
   Future<int> undoCategoryApplyBatch(List<AiAppliedCategoryChange> batch) async {
@@ -570,19 +572,9 @@ class AppState extends ChangeNotifier {
     }
     transactionsByAccount = nextByAccount;
 
-    final active = activeAccountId;
-    if (active != null) {
-      transactions = List.unmodifiable(transactionsByAccount[active] ?? const []);
-    }
-
     saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
     _persistTransactionCategoryAssignments();
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      diag: null,
-    );
-    notifyListeners();
+    refreshAllState();
     return undone;
   }
 
@@ -596,6 +588,42 @@ class AppState extends ChangeNotifier {
     }
     accounts = next;
     notifyListeners();
+    return true;
+  }
+
+  /// Deletes one account and all its transactions + related keyed metadata.
+  Future<bool> deleteAccount(String accountId) async {
+    final id = accountId.trim();
+    if (id.isEmpty) return false;
+    if (!accounts.any((a) => a.id == id)) return false;
+
+    final removedTransactions = transactionsByAccount[id] ?? const <Transaction>[];
+    final removedKeys = removedTransactions.map(transactionCategoryKey).toSet();
+
+    final nextAccounts = accounts.where((a) => a.id != id).toList();
+    final nextByAccount = <String, List<Transaction>>{
+      for (final e in transactionsByAccount.entries)
+        if (e.key != id) e.key: List.unmodifiable(e.value),
+    };
+
+    try {
+      await saveAccounts(nextAccounts);
+      await saveTransactionsByAccount(nextByAccount);
+    } on Object {
+      return false;
+    }
+
+    accounts = nextAccounts;
+    transactionsByAccount = nextByAccount;
+    _removeTransactionMetadataForKeys(removedKeys);
+
+    if (activeAccountId == id) {
+      activeAccountId = null;
+    }
+
+    _persistTransactionCategoryAssignments();
+    _persistAiCategorySuggestions().catchError((_) {});
+    refreshAllState();
     return true;
   }
 
@@ -634,6 +662,168 @@ class AppState extends ChangeNotifier {
 
   Future<void> _persistAiCategorySuggestions() async {
     await saveAiCategorySuggestions(aiCategorySuggestions);
+  }
+
+  void _removeTransactionMetadataForKeys(Set<String> keys) {
+    if (keys.isEmpty) return;
+
+    final nextAssignments = Map<String, String>.from(transactionCategoryAssignments)
+      ..removeWhere((k, _) => keys.contains(k));
+    final nextOverrides = Map<String, String>.from(categoryOverrides)
+      ..removeWhere((k, _) => keys.contains(k));
+    final nextAiSuggestions = Map<String, AiCategorySuggestion>.from(
+      aiCategorySuggestions,
+    )..removeWhere((k, _) => keys.contains(k));
+
+    transactionCategoryAssignments = nextAssignments;
+    categoryOverrides = nextOverrides;
+    aiCategorySuggestions = nextAiSuggestions;
+  }
+
+  /// Single source of truth for app-wide recomputation after any data mutation.
+  ///
+  /// This keeps Dashboard (global + account), monthly breakdowns, and dependent
+  /// views in sync without requiring route-level/manual refresh hooks.
+  void refreshAllState() {
+    final active = activeAccountId;
+    final List<Transaction> activeTx = active == null
+        ? const <Transaction>[]
+        : List.unmodifiable(
+            transactionsByAccount[active] ?? const <Transaction>[],
+          );
+    transactions = activeTx;
+    _recomputeDerived(
+      activeAccountTransactions: activeTx,
+      allTransactionsForMetrics: allTransactions,
+      diag: null,
+    );
+    notifyListeners();
+  }
+
+  /// Deletes a single transaction row and refreshes derived dashboard state.
+  Future<bool> deleteTransaction(Transaction transaction) async {
+    final key = transactionCategoryKey(transaction);
+    if (key.trim().isEmpty) return false;
+
+    final nextByAccount = <String, List<Transaction>>{};
+    var removed = false;
+    for (final e in transactionsByAccount.entries) {
+      final nextList = <Transaction>[];
+      for (final t in e.value) {
+        if (transactionCategoryKey(t) == key) {
+          removed = true;
+          continue;
+        }
+        nextList.add(t);
+      }
+      nextByAccount[e.key] = List.unmodifiable(nextList);
+    }
+    if (!removed) return false;
+
+    transactionsByAccount = nextByAccount;
+    _removeTransactionMetadataForKeys({key});
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _persistAiCategorySuggestions().catchError((_) {});
+    refreshAllState();
+    return true;
+  }
+
+  /// Deletes all transactions for one account and refreshes derived dashboard state.
+  Future<int> clearTransactionsForAccount(String accountId) async {
+    final id = accountId.trim();
+    if (id.isEmpty) return 0;
+    final existing = transactionsByAccount[id] ?? const [];
+    if (existing.isEmpty) return 0;
+
+    final removedKeys = existing.map(transactionCategoryKey).toSet();
+    final nextByAccount = <String, List<Transaction>>{
+      for (final e in transactionsByAccount.entries)
+        e.key: e.key == id ? const <Transaction>[] : List.unmodifiable(e.value),
+    };
+
+    transactionsByAccount = nextByAccount;
+    _removeTransactionMetadataForKeys(removedKeys);
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _persistAiCategorySuggestions().catchError((_) {});
+    refreshAllState();
+    return removedKeys.length;
+  }
+
+  List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
+    final id = accountId.trim();
+    if (id.isEmpty) return const [];
+    final accountTxs = transactionsByAccount[id] ?? const <Transaction>[];
+    if (accountTxs.isEmpty) return const [];
+
+    final counts = <String, int>{};
+    for (final t in accountTxs) {
+      final importId = t.importId?.trim();
+      if (importId == null || importId.isEmpty) continue;
+      counts[importId] = (counts[importId] ?? 0) + 1;
+    }
+    final out = <CsvImportBatchSummary>[];
+    for (final e in counts.entries) {
+      final micros = int.tryParse(e.key);
+      final importedAtUtc = micros == null
+          ? null
+          : DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
+      out.add(
+        CsvImportBatchSummary(
+          importId: e.key,
+          transactionCount: e.value,
+          importedAtUtc: importedAtUtc,
+        ),
+      );
+    }
+    out.sort((a, b) {
+      final ai = a.importedAtUtc?.microsecondsSinceEpoch;
+      final bi = b.importedAtUtc?.microsecondsSinceEpoch;
+      if (ai != null && bi != null && ai != bi) return bi.compareTo(ai);
+      return b.importId.compareTo(a.importId);
+    });
+    return out;
+  }
+
+  Future<int> deleteTransactionsForImportBatch({
+    required String accountId,
+    required String importId,
+  }) async {
+    final id = accountId.trim();
+    final targetImportId = importId.trim();
+    if (id.isEmpty || targetImportId.isEmpty) return 0;
+
+    final existing = transactionsByAccount[id] ?? const <Transaction>[];
+    if (existing.isEmpty) return 0;
+
+    final kept = <Transaction>[];
+    final removed = <Transaction>[];
+    for (final t in existing) {
+      if ((t.importId?.trim() ?? '') == targetImportId) {
+        removed.add(t);
+      } else {
+        kept.add(t);
+      }
+    }
+    if (removed.isEmpty) return 0;
+
+    final removedKeys = removed.map(transactionCategoryKey).toSet();
+    final nextByAccount = <String, List<Transaction>>{
+      for (final e in transactionsByAccount.entries)
+        e.key: e.key == id ? List.unmodifiable(kept) : List.unmodifiable(e.value),
+    };
+
+    transactionsByAccount = nextByAccount;
+    _removeTransactionMetadataForKeys(removedKeys);
+
+    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
+    _persistTransactionCategoryAssignments();
+    _persistAiCategorySuggestions().catchError((_) {});
+    refreshAllState();
+    return removed.length;
   }
 
   List<Transaction> uncategorizedImportedRowsGlobal() {

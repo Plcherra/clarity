@@ -155,12 +155,59 @@ class _LineTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                formatMoney(tx.amount),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: amountColor,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatMoney(tx.amount),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: amountColor,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete transaction',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    color: Colors.red.shade700,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Delete this transaction?'),
+                          content: const Text(
+                            'This transaction will be permanently deleted.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                              ),
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm != true) return;
+                      final deleted = await appState.deleteTransaction(tx);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            deleted
+                                ? 'Transaction deleted.'
+                                : 'Could not delete transaction.',
+                          ),
+                        ),
+                      );
+                    },
                 ),
+                ],
               ),
             ],
           ),

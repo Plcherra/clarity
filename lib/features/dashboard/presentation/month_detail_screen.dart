@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../app_state.dart';
+import '../../../core/models/models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../../../core/formatting/formatting.dart';
+import '../../transactions/domain/spend_categories.dart' show transactionCategoryKey;
 import '../../transactions/widgets/transaction_category_dropdown.dart';
 
 class MonthDetailScreen extends StatelessWidget {
@@ -25,10 +27,44 @@ class MonthDetailScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
+        final scopedAccountIds = group.transactions
+            .map((e) => e.transaction.accountId)
+            .toSet();
+        final hasScopedStorageEntry = scopedAccountIds.any(
+          appState.transactionsByAccount.containsKey,
+        );
+        final allTransactions = appState.allTransactions;
+        final lines = <BankStatementLine>[];
+        if (hasScopedStorageEntry) {
+          final byKey = <String, Transaction>{
+            for (final t in allTransactions) transactionCategoryKey(t): t,
+          };
+          for (final line in group.transactions) {
+            final k = transactionCategoryKey(line.transaction);
+            final current = byKey[k];
+            if (current == null) continue;
+            final resolved = appState.resolveTransaction(
+              current,
+              allTransactionsContext: allTransactions,
+            );
+            lines.add(
+              BankStatementLine(
+                transaction: current,
+                suggestedCategory: resolved.displayCategory,
+              ),
+            );
+          }
+        } else {
+          lines.addAll(group.transactions);
+        }
+
+        final monthTotal = lines.fold<double>(0, (sum, e) => sum + e.transaction.amount);
+        final accountIds = lines.map((e) => e.transaction.accountId).toSet();
+        final clearAccountId = accountIds.length == 1 ? accountIds.first : null;
         final title = formatYearMonthLabel(group.yearMonth);
-        final totalColor = group.totalAmount < 0
+        final totalColor = monthTotal < 0
             ? const Color(0xFFC41E3A)
-            : group.totalAmount > 0
+            : monthTotal > 0
                 ? const Color(0xFF1B7A4C)
                 : cs.onSurface;
 
@@ -46,6 +82,52 @@ class MonthDetailScreen extends StatelessWidget {
               ),
               onPressed: () => Navigator.of(context).pop(),
             ),
+            actions: [
+              if (clearAccountId != null && lines.isNotEmpty)
+                IconButton(
+                  tooltip: 'Clear all transactions',
+                  icon: const Icon(Icons.delete_forever_rounded),
+                  color: Colors.red.shade700,
+                  onPressed: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Clear all transactions?'),
+                        content: const Text(
+                          'This will permanently delete every transaction for this account. This action cannot be undone.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                            ),
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            child: const Text('Delete all'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    final deleted = await appState.clearTransactionsForAccount(
+                      clearAccountId,
+                    );
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          deleted > 0
+                              ? 'Deleted $deleted transaction${deleted == 1 ? '' : 's'}.'
+                              : 'No transactions were deleted.',
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
           ),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
@@ -72,7 +154,7 @@ class MonthDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      formatMoney(group.totalAmount),
+                      formatMoney(monthTotal),
                       style: theme.textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         letterSpacing: -0.5,
@@ -81,7 +163,7 @@ class MonthDetailScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${group.transactions.length} transactions',
+                      '${lines.length} transactions',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: cs.onSurface.withValues(alpha: 0.45),
                       ),
@@ -104,19 +186,33 @@ class MonthDetailScreen extends StatelessWidget {
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(color: const Color(0xFFE4E0D8)),
                 ),
-                child: Column(
-                  children: [
-                    for (var i = 0; i < group.transactions.length; i++) ...[
-                      if (i > 0)
-                        Divider(
-                          height: 1,
-                          thickness: 1,
-                          color: cs.outlineVariant.withValues(alpha: 0.35),
+                child: lines.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 26,
                         ),
-                      _LineTile(line: group.transactions[i], appState: appState),
-                    ],
-                  ],
-                ),
+                        child: Text(
+                          'No transactions left for this month.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: cs.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      )
+                    : Column(
+                        children: [
+                          for (var i = 0; i < lines.length; i++) ...[
+                            if (i > 0)
+                              Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: cs.outlineVariant.withValues(alpha: 0.35),
+                              ),
+                            _LineTile(line: lines[i], appState: appState),
+                          ],
+                        ],
+                      ),
               ),
             ],
           ),
@@ -180,12 +276,59 @@ class _LineTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Text(
-                formatMoney(tx.amount),
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: amountColor,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    formatMoney(tx.amount),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: amountColor,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Delete transaction',
+                    icon: const Icon(Icons.delete_outline_rounded),
+                    color: Colors.red.shade700,
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Delete this transaction?'),
+                          content: const Text(
+                            'This transaction will be permanently deleted.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(false),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.red.shade700,
+                              ),
+                              onPressed: () => Navigator.of(ctx).pop(true),
+                              child: const Text('Delete'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm != true) return;
+                      final deleted = await appState.deleteTransaction(tx);
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            deleted
+                                ? 'Transaction deleted.'
+                                : 'Could not delete transaction.',
+                          ),
+                        ),
+                      );
+                    },
+                    visualDensity: VisualDensity.compact,
                 ),
+                ],
               ),
             ],
           ),

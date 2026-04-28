@@ -32,6 +32,8 @@ class FinancialDashboardView extends StatefulWidget {
     this.showBackButton = false,
     this.title = 'Overview',
     this.onUploadTransactions,
+    this.onDeleteCsvImportBatch,
+    this.onDeleteAccount,
   });
 
   final AppState appState;
@@ -42,6 +44,12 @@ class FinancialDashboardView extends StatefulWidget {
 
   /// When set (per-account dashboard only), shows a prominent CSV import control.
   final Future<void> Function()? onUploadTransactions;
+
+  /// Optional per-account delete-one-upload action.
+  final Future<void> Function()? onDeleteCsvImportBatch;
+
+  /// Optional account-level delete action (shown as a red trash icon in app bar).
+  final Future<void> Function()? onDeleteAccount;
 
   @override
   State<FinancialDashboardView> createState() => _FinancialDashboardViewState();
@@ -200,6 +208,22 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                     onPressed: () => Navigator.of(context).pop(),
                   )
                 : null,
+            actions: [
+              if (widget.onDeleteCsvImportBatch != null)
+                IconButton(
+                  tooltip: 'Delete CSV upload',
+                  icon: const Icon(Icons.playlist_remove_rounded),
+                  color: Colors.red.shade500,
+                  onPressed: widget.onDeleteCsvImportBatch,
+                ),
+              if (widget.onDeleteAccount != null)
+                IconButton(
+                  tooltip: 'Delete account',
+                  icon: const Icon(Icons.delete_forever_rounded),
+                  color: Colors.red.shade700,
+                  onPressed: widget.onDeleteAccount,
+                ),
+            ],
           ),
           body: widget.showBackButton
               ? ImportAiStatusHost(appState: appState, child: scrollBody)
