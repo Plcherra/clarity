@@ -8,10 +8,9 @@ import '../domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../../budgets/presentation/budgets_screen.dart';
+import '../../shell/presentation/import_ai_progress_banner.dart';
 import 'month_detail_screen.dart';
 import '../../transactions/presentation/transaction_review_screen.dart';
-import '../../transactions/presentation/ai_low_confidence_review_screen.dart';
-import '../../../ai_categorization_service.dart';
 
 typedef SnapshotBuilder =
     DashboardSnapshot Function(AppState appState, DashboardScope scope);
@@ -22,34 +21,6 @@ Color _balanceColor(double v) {
   if (v > 0) return const Color(0xFF1B7A4C);
   if (v < 0) return const Color(0xFFC41E3A);
   return const Color(0xFF3A3A38);
-}
-
-class _AiRunningDialog extends StatelessWidget {
-  const _AiRunningDialog();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return AlertDialog(
-      title: const Text('Auto-categorizing'),
-      content: Row(
-        children: [
-          const SizedBox(
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Text(
-              'Applying high-confidence categories…',
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class FinancialDashboardView extends StatefulWidget {
@@ -77,8 +48,6 @@ class FinancialDashboardView extends StatefulWidget {
 }
 
 class _FinancialDashboardViewState extends State<FinancialDashboardView> {
-  var _aiRunning = false;
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -93,94 +62,7 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
         final uncategorizedQueue =
             uncategorizedTransactionsForDashboardScope(appState, scope);
         final attentionCount = uncategorizedQueue.length;
-        return Scaffold(
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            leading: widget.showBackButton
-                ? IconButton(
-                    icon: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  )
-                : null,
-            actions: [
-              IconButton(
-                tooltip: 'Auto-categorize (AI)',
-                onPressed: _aiRunning
-                    ? null
-                    : () async {
-                  final nav = Navigator.of(context);
-                  final messenger = ScaffoldMessenger.of(context);
-                  final service = AICategorizationService();
-                  setState(() => _aiRunning = true);
-                  showDialog<void>(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (context) => const _AiRunningDialog(),
-                  );
-                  try {
-                    final res = await appState.autoCategorizeGlobalUncategorized(
-                      service: service,
-                    );
-                    if (nav.canPop()) nav.pop(); // close dialog
-
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'AI applied ${res.applied} categor${res.applied == 1 ? 'y' : 'ies'}. '
-                          '${res.queuedForReview} need review.',
-                        ),
-                        action: res.queuedForReview > 0
-                            ? SnackBarAction(
-                                label: 'Review',
-                                onPressed: () {
-                                  Navigator.of(context).push<void>(
-                                    MaterialPageRoute<void>(
-                                      builder: (context) =>
-                                          AiLowConfidenceReviewScreen(
-                                            appState: appState,
-                                          ),
-                                    ),
-                                  );
-                                },
-                              )
-                            : SnackBarAction(
-                                label: 'Undo',
-                                onPressed: () async {
-                                  await appState.undoLastAiAutoApply();
-                                },
-                              ),
-                      ),
-                    );
-                  } catch (e) {
-                    if (nav.canPop()) nav.pop(); // close dialog
-                    messenger.showSnackBar(
-                      SnackBar(
-                        content: Text('AI failed: $e'),
-                        action: SnackBarAction(
-                          label: 'Dismiss',
-                          onPressed: () {},
-                        ),
-                      ),
-                    );
-                  } finally {
-                    service.close();
-                    if (mounted) setState(() => _aiRunning = false);
-                  }
-                },
-                icon: Icon(
-                  Icons.auto_awesome_rounded,
-                  color: cs.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-            ],
-          ),
-          body: DecoratedBox(
+        final scrollBody = DecoratedBox(
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,
@@ -301,7 +183,27 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                 ],
               ),
             ),
+        );
+
+        return Scaffold(
+          extendBodyBehindAppBar: true,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            leading: widget.showBackButton
+                ? IconButton(
+                    icon: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: cs.onSurface.withValues(alpha: 0.55),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(),
+                  )
+                : null,
           ),
+          body: widget.showBackButton
+              ? ImportAiStatusHost(appState: appState, child: scrollBody)
+              : scrollBody,
         );
       },
     );

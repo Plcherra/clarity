@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
+import 'constants.dart';
 import 'core/storage/accounts/account_storage.dart';
 import 'balance_resolve.dart';
 import 'bank_statement_monthly.dart';
@@ -69,6 +72,114 @@ class AppState extends ChangeNotifier {
 
   /// Per-user merchant -> canonical category “silent memory” (keys are lowercase merchant keys).
   Map<String, String> merchantCategoryMemory = const {};
+
+  /// CSV import background AI job (see [startBackgroundImportAiCategorization]).
+  bool importAiCategorizationRunning = false;
+  int importAiProgressCompleted = 0;
+  int importAiProgressTotal = 0;
+
+  /// One-shot snack text for [ImportAiStatusHost]; cleared via [consumeImportAiSnackMessage].
+  String? importAiSnackMessage;
+
+  bool get importAiEngineConfigured => Constants.openAIKey.isNotEmpty;
+
+  bool needsImportAiAfterCsvUpload(String accountId) {
+    return uncategorizedImportedRowsForAccount(accountId.trim()).isNotEmpty;
+  }
+
+  String? consumeImportAiSnackMessage() {
+    final m = importAiSnackMessage;
+    importAiSnackMessage = null;
+    return m;
+  }
+
+  Future<void> _yieldUi() => Future<void>.delayed(Duration.zero);
+
+  Future<void> _applyPrefilledMerchantChunks(Map<String, String> prefilled) async {
+    if (prefilled.isEmpty) return;
+    final entries = prefilled.entries.toList();
+    const chunkSize = 80;
+    for (var i = 0; i < entries.length; i += chunkSize) {
+      final slice = Map<String, String>.fromEntries(
+        entries.skip(i).take(chunkSize),
+      );
+      applyCategoriesWithMerchantLearning(slice);
+      await _yieldUi();
+    }
+  }
+
+  /// Runs after CSV import: merchant memory first, then GPT in batches (see [AICategorizationService]).
+  Future<void> startBackgroundImportAiCategorization(String accountId) async {
+    await _yieldUi();
+    final id = accountId.trim();
+    if (id.isEmpty) return;
+    if (importAiCategorizationRunning) return;
+
+    var unc = uncategorizedImportedRowsForAccount(id);
+    final prefilled = <String, String>{};
+    for (final t in unc) {
+      final k = transactionCategoryKey(t);
+      final mk = transactionMerchantKeyLower(t).trim().toLowerCase();
+      if (mk.isEmpty) continue;
+      final memo = merchantCategoryMemory[mk];
+      if (memo != null && memo.trim().isNotEmpty) {
+        prefilled[k] = memo.trim();
+      }
+    }
+    await _applyPrefilledMerchantChunks(prefilled);
+
+    unc = uncategorizedImportedRowsForAccount(id);
+    if (unc.isEmpty) {
+      importAiSnackMessage = 'Transactions categorized successfully';
+      notifyListeners();
+      return;
+    }
+
+    if (!importAiEngineConfigured) {
+      return;
+    }
+
+    importAiCategorizationRunning = true;
+    importAiProgressCompleted = 0;
+    importAiProgressTotal = unc.length;
+    notifyListeners();
+
+    final service = AICategorizationService();
+    try {
+      await service.suggestCategories(
+        transactions: unc,
+        allowedCategoryIds: allowedCategoryPickerLabels,
+        onBatchProgress: (completed, total) {
+          importAiProgressCompleted = completed;
+          importAiProgressTotal = total;
+          notifyListeners();
+        },
+        onPartialBatch: (partial) async {
+          final toApply = <String, String>{};
+          for (final e in partial.entries) {
+            final v = e.value?.trim();
+            if (v != null && v.isNotEmpty) {
+              toApply[e.key] = v;
+            }
+          }
+          if (toApply.isNotEmpty) {
+            applyCategoriesWithMerchantLearning(toApply);
+          }
+          await _yieldUi();
+        },
+      );
+      importAiSnackMessage = 'Transactions categorized successfully';
+    } on MissingOpenAiApiKeyException {
+      importAiSnackMessage =
+          'Add OPENAI_API_KEY to your .env file to use AI categorization.';
+    } catch (e) {
+      importAiSnackMessage = 'Could not categorize transactions: $e';
+    } finally {
+      service.close();
+      importAiCategorizationRunning = false;
+      notifyListeners();
+    }
+  }
 
   // Bump to invalidate cached "empty" suggestions from earlier prompt iterations.
   static const int _aiPromptVersion = 2;

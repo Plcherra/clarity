@@ -1,11 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app_state.dart';
-import '../../../constants.dart';
 import '../../../core/models/models.dart';
-import '../../transactions/presentation/ai_category_review_screen.dart';
-import '../../dashboard/presentation/dashboard_screen.dart';
+import '../../shell/presentation/home_shell.dart';
 
 /// Shown after the user picks a CSV; they must pick or create an account before import runs.
 class AccountSelectionScreen extends StatelessWidget {
@@ -47,9 +47,8 @@ class AccountSelectionScreen extends StatelessWidget {
     try {
       appState.loadFromCsv(pendingCsvText, accountId: account.id);
       if (!context.mounted) return;
-      final unc = appState.uncategorizedImportedRowsForAccount(account.id);
-      if (unc.isNotEmpty) {
-        if (Constants.openAIKey.isEmpty) {
+      if (appState.needsImportAiAfterCsvUpload(account.id)) {
+        if (!appState.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -59,32 +58,13 @@ class AccountSelectionScreen extends StatelessWidget {
             ),
           );
         } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'AI review: ${unc.length} '
-                  'uncategorized transaction${unc.length == 1 ? '' : 's'}',
-                ),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (context) => AiCategorizationFlowScreen(
-                appState: appState,
-                accountId: account.id,
-                onFinished: () => Navigator.of(context).pop(),
-              ),
-            ),
-          );
+          unawaited(appState.startBackgroundImportAiCategorization(account.id));
         }
       }
       if (!context.mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(
-          builder: (context) => DashboardScreen(appState: appState),
+          builder: (context) => HomeShell(appState: appState),
         ),
       );
     } on FormatException catch (e) {

@@ -13,7 +13,7 @@ const String _openAiChatCompletionsUrl =
 
 const String openAiModel = 'gpt-4o-mini';
 
-const int _defaultBatchSize = 32;
+const int _defaultBatchSize = 30;
 
 /// Wall-clock limit per OpenAI HTTP request (large batches can be slow).
 const Duration _openAiRequestTimeout = Duration(seconds: 120);
@@ -142,6 +142,7 @@ class AICategorizationService {
     required List<Transaction> transactions,
     required List<String> allowedCategoryIds,
     void Function(int completed, int total)? onBatchProgress,
+    Future<void> Function(Map<String, String?>)? onPartialBatch,
   }) async {
     if (Constants.openAIKey.isEmpty) {
       throw MissingOpenAiApiKeyException();
@@ -174,6 +175,10 @@ class AICategorizationService {
       out.addAll(partial);
       done += batch.length;
       onBatchProgress?.call(done, transactions.length);
+      if (onPartialBatch != null) {
+        await onPartialBatch(partial);
+        await Future<void>.delayed(Duration.zero);
+      }
     }
     for (final t in transactions) {
       final k = transactionCategoryKey(t);

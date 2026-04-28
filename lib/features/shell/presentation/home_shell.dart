@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app_state.dart';
+import 'import_ai_progress_banner.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../budgets/presentation/budgets_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
@@ -29,7 +30,10 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _idx, children: pages),
+      body: ImportAiStatusHost(
+        appState: widget.appState,
+        child: IndexedStack(index: _idx, children: pages),
+      ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: cs.surface,
         surfaceTintColor: Colors.transparent,

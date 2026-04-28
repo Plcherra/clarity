@@ -1,12 +1,12 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app_state.dart';
-import '../../../constants.dart';
 import '../../../core/io/file_reader.dart';
 import '../../../core/models/models.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
-import '../../transactions/presentation/ai_category_review_screen.dart';
 import '../../dashboard/presentation/financial_dashboard_view.dart';
 
 class AccountDetailScreen extends StatelessWidget {
@@ -34,9 +34,8 @@ class AccountDetailScreen extends StatelessWidget {
       if (!context.mounted) return;
       appState.loadFromCsv(text, accountId: accountId);
       if (!context.mounted) return;
-      final unc = appState.uncategorizedImportedRowsForAccount(accountId);
-      if (unc.isNotEmpty) {
-        if (Constants.openAIKey.isEmpty) {
+      if (appState.needsImportAiAfterCsvUpload(accountId)) {
+        if (!appState.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -46,26 +45,7 @@ class AccountDetailScreen extends StatelessWidget {
             ),
           );
         } else {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'AI review: ${unc.length} '
-                  'uncategorized transaction${unc.length == 1 ? '' : 's'}',
-                ),
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-          await Navigator.of(context).push<void>(
-            MaterialPageRoute<void>(
-              builder: (ctx) => AiCategorizationFlowScreen(
-                appState: appState,
-                accountId: accountId,
-                onFinished: () => Navigator.of(ctx).pop(),
-              ),
-            ),
-          );
+          unawaited(appState.startBackgroundImportAiCategorization(accountId));
         }
       }
       if (!context.mounted) return;
