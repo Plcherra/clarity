@@ -67,6 +67,7 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
         final appState = widget.appState;
         final scope = widget.scope;
         final snap = widget.buildSnapshot(appState, scope);
+        final budgetPerformance = appState.budgetPerformanceForScope(scope);
         final uncategorizedQueue =
             uncategorizedTransactionsForDashboardScope(appState, scope);
         final attentionCount = uncategorizedQueue.length;
@@ -156,6 +157,13 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                           large: false,
                           valueColor: const Color(0xFF9B2C2C),
                         ),
+                        const SizedBox(height: _sectionGap),
+                        _SectionTitle(
+                          theme: theme,
+                          title: 'Budget performance',
+                        ),
+                        const SizedBox(height: 16),
+                        _BudgetPerformanceCard(performance: budgetPerformance),
                         const SizedBox(height: _sectionGap),
                         _SectionTitle(
                           theme: theme,
@@ -399,6 +407,100 @@ class _BiggestLeaksCard extends StatelessWidget {
             if (i > 0) const SizedBox(height: 18),
             _LeakRow(stat: leaks[i]),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _BudgetPerformanceCard extends StatelessWidget {
+  const _BudgetPerformanceCard({required this.performance});
+
+  final BudgetPerformanceSnapshot performance;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    if (performance.budgetedCategoryCount == 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+        decoration: BoxDecoration(
+          color: cs.surface,
+          borderRadius: BorderRadius.circular(26),
+          border: Border.all(color: const Color(0xFFE4E0D8)),
+        ),
+        child: Text(
+          'No budgets set for ${performance.periodLabel} yet.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: cs.onSurface.withValues(alpha: 0.58),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 20),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFFE4E0D8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            performance.periodLabel,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: cs.onSurface.withValues(alpha: 0.5),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '${performance.onTrackCategoryCount}/${performance.budgetedCategoryCount} categories on track',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Total overspent ${formatMoney(performance.totalOverspent)}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: performance.totalOverspent > 0
+                  ? const Color(0xFFC41E3A)
+                  : const Color(0xFF1B7A4C),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Budgeted ${formatMoney(performance.totalBudgeted)} · Spent ${formatMoney(performance.totalSpent)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: cs.onSurface.withValues(alpha: 0.58),
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (performance.topOverspendingCategories.isEmpty)
+            Text(
+              'No overspending categories in this period.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurface.withValues(alpha: 0.58),
+              ),
+            )
+          else
+            for (final row in performance.topOverspendingCategories) ...[
+              Text(
+                '${row.displayLabel}: overspent ${formatMoney(row.overspent)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: const Color(0xFFC41E3A),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+            ],
         ],
       ),
     );
