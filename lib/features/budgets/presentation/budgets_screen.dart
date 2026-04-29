@@ -145,13 +145,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     return widget.appState.budgetPeriodLabel(periodType: type, periodKey: key);
   }
 
-  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-  DateTime _startOfWeek(DateTime d) {
-    final x = _dateOnly(d);
-    return x.subtract(Duration(days: x.weekday - DateTime.monday));
-  }
-
   String _monthName(int m) {
     const months = [
       'January',
@@ -171,28 +164,133 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     return months[m - 1];
   }
 
-  String _weeklyPrimaryLabel(String key) {
-    final range = widget.appState.budgetPeriodRangeFor(
-      periodType: BudgetPeriodType.weekly,
-      periodKey: key,
-    );
-    if (range == null) return _periodDisplayLabel(BudgetPeriodType.weekly, key);
-    final thisWeekStart = _startOfWeek(DateTime.now());
-    final start = _dateOnly(range.start);
-    final diff = start.difference(thisWeekStart).inDays;
-    if (diff == 0) return 'This week';
-    if (diff == 7) return 'Next week';
-    if (diff == -7) return 'Last week';
-    return 'Week of ${_monthName(start.month)} ${start.day}';
+  DateTime? _parseYearMonthKey(String key) {
+    final parts = key.split('-');
+    if (parts.length != 2) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (y == null || m == null || m < 1 || m > 12) return null;
+    return DateTime(y, m, 1);
   }
 
-  String _weeklySecondaryLabel(String key) {
+  String _yearMonthKey(DateTime date) {
+    return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
+  }
+
+  Future<String?> _openMonthYearPicker(String initialKey) async {
+    final initial = _parseYearMonthKey(initialKey) ?? DateTime.now();
+    var selected = initial;
+    var shownYear = initial.year;
+    return showDialog<String>(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              titlePadding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              title: Row(
+                children: [
+                  IconButton(
+                    onPressed: () =>
+                        setModalState(() => shownYear = shownYear - 1),
+                    icon: const Icon(Icons.chevron_left_rounded),
+                  ),
+                  Expanded(
+                    child: Text(
+                      '$shownYear',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () =>
+                        setModalState(() => shownYear = shownYear + 1),
+                    icon: const Icon(Icons.chevron_right_rounded),
+                  ),
+                ],
+              ),
+              contentPadding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              content: SizedBox(
+                width: 300,
+                child: GridView.builder(
+                  shrinkWrap: true,
+                  itemCount: 12,
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    mainAxisSpacing: 8,
+                    crossAxisSpacing: 8,
+                    childAspectRatio: 2.2,
+                  ),
+                  itemBuilder: (context, index) {
+                    final month = index + 1;
+                    final monthDate = DateTime(shownYear, month, 1);
+                    final isSelected =
+                        selected.year == shownYear && selected.month == month;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () {
+                        selected = monthDate;
+                        Navigator.of(context).pop(_yearMonthKey(monthDate));
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isSelected
+                                ? Theme.of(context).colorScheme.primary
+                                : Theme.of(context).colorScheme.outline.withValues(
+                                    alpha: 0.25,
+                                  ),
+                            width: isSelected ? 1.6 : 1.0,
+                          ),
+                          color: isSelected
+                              ? Theme.of(context)
+                                  .colorScheme
+                                  .primary
+                                  .withValues(alpha: 0.10)
+                              : null,
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          _monthName(month).substring(0, 3),
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                fontWeight:
+                                    isSelected ? FontWeight.w700 : FontWeight.w500,
+                              ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  DateTime? _parseDateKey(String key) {
+    final parts = key.split('-');
+    if (parts.length != 3) return null;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return null;
+    if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+    return DateTime(y, m, d);
+  }
+
+  String _weeklyRangeLabel(String key) {
     final range = widget.appState.budgetPeriodRangeFor(
       periodType: BudgetPeriodType.weekly,
       periodKey: key,
     );
     if (range == null) return key;
     return '${formatShortDate(range.start)} – ${formatShortDate(range.end)}';
+  }
+
+  String _formatLongDate(DateTime date) {
+    return '${_monthName(date.month)} ${date.day}, ${date.year}';
   }
 
   void _activatePeriod(BudgetPeriodType type, String key) {
@@ -222,6 +320,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           }
         }
       }
+    } else if (type == BudgetPeriodType.weekly) {
+      final parsedCurrent = _parseDateKey(_selectedPeriodKey);
+      nextKey = widget.appState.budgetWeekStartKey(parsedCurrent ?? DateTime.now());
     } else {
       final keys = _periodKeys(type);
       nextKey = keys.isNotEmpty ? keys.first : '';
@@ -302,6 +403,20 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     }
   }
 
+  Future<void> _pickWeeklyStartDate() async {
+    final initial = _parseDateKey(_selectedPeriodKey) ?? DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      firstDate: DateTime(2020, 1, 1),
+      lastDate: DateTime(2100, 12, 31),
+      initialDate: initial,
+    );
+    if (picked == null) return;
+    final key = widget.appState.budgetWeekStartKey(picked);
+    setState(() => _selectedPeriodKey = key);
+    _activatePeriod(BudgetPeriodType.weekly, key);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -311,12 +426,24 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       listenable: widget.appState,
       builder: (context, _) {
         final keys = _periodKeys(_selectedType);
-        if (_selectedPeriodKey.trim().isEmpty && keys.isNotEmpty) {
-          _selectedPeriodKey = keys.first;
-        }
-        if (_selectedPeriodKey.trim().isNotEmpty &&
-            !keys.contains(_selectedPeriodKey)) {
-          _selectedPeriodKey = keys.isNotEmpty ? keys.first : '';
+        if (_selectedType == BudgetPeriodType.weekly) {
+          if (_selectedPeriodKey.trim().isEmpty) {
+            _selectedPeriodKey = widget.appState.budgetWeekStartKey(DateTime.now());
+          }
+        } else if (_selectedType == BudgetPeriodType.monthly) {
+          if (_selectedPeriodKey.trim().isEmpty) {
+            _selectedPeriodKey = keys.isNotEmpty
+                ? keys.first
+                : widget.appState.activeBudgetYearMonth;
+          }
+        } else {
+          if (_selectedPeriodKey.trim().isEmpty && keys.isNotEmpty) {
+            _selectedPeriodKey = keys.first;
+          }
+          if (_selectedPeriodKey.trim().isNotEmpty &&
+              !keys.contains(_selectedPeriodKey)) {
+            _selectedPeriodKey = keys.isNotEmpty ? keys.first : '';
+          }
         }
 
         final hasSelectedPeriod = _selectedPeriodKey.trim().isNotEmpty;
@@ -457,104 +584,61 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                                           color: cs.onSurface.withValues(alpha: 0.58),
                                         ),
                                       )
-                                    : SingleChildScrollView(
-                                        scrollDirection: Axis.horizontal,
-                                        child: Row(
-                                          children: [
-                                            for (final key in keys)
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 8),
-                                                child: ChoiceChip(
-                                                  showCheckmark: false,
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 8,
-                                                      ),
-                                                  label: Text(
-                                                    formatYearMonthLabel(key),
+                                    : SizedBox(
+                                        height: 44,
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(
+                                            Icons.calendar_month_rounded,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            _selectedPeriodKey.trim().isEmpty
+                                                ? 'Select month'
+                                                : formatYearMonthLabel(
+                                                    _selectedPeriodKey,
                                                   ),
-                                                  selected:
-                                                      _selectedPeriodKey == key,
-                                                  onSelected: (_) {
-                                                    setState(
-                                                      () => _selectedPeriodKey = key,
-                                                    );
-                                                    _activatePeriod(
-                                                      BudgetPeriodType.monthly,
-                                                      key,
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                          ],
+                                          ),
+                                          onPressed: () async {
+                                            final picked = await _openMonthYearPicker(
+                                              _selectedPeriodKey,
+                                            );
+                                            if (!mounted || picked == null) return;
+                                            setState(() => _selectedPeriodKey = picked);
+                                            _activatePeriod(
+                                              BudgetPeriodType.monthly,
+                                              picked,
+                                            );
+                                          },
                                         ),
                                       ),
                               if (_selectedType == BudgetPeriodType.weekly)
-                                Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(
-                                      color: cs.outline.withValues(alpha: 0.14),
-                                    ),
-                                  ),
-                                  child: keys.isEmpty
-                                      ? Padding(
-                                          padding: const EdgeInsets.all(12),
-                                          child: Text(
-                                            'No weekly periods available.',
-                                            style: theme.textTheme.bodySmall
-                                                ?.copyWith(
-                                                  color: cs.onSurface.withValues(
-                                                    alpha: 0.58,
-                                                  ),
-                                                ),
-                                          ),
-                                        )
-                                      : Column(
-                                          children: [
-                                            for (var i = 0; i < keys.length; i++) ...[
-                                              if (i > 0)
-                                                Divider(
-                                                  height: 1,
-                                                  color: cs.outline.withValues(
-                                                    alpha: 0.12,
-                                                  ),
-                                                ),
-                                              ListTile(
-                                                dense: true,
-                                                contentPadding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 2,
-                                                    ),
-                                                title: Text(
-                                                  _weeklyPrimaryLabel(keys[i]),
-                                                  style: theme.textTheme.bodyMedium
-                                                      ?.copyWith(
-                                                        fontWeight: FontWeight.w600,
-                                                      ),
-                                                ),
-                                                subtitle: Text(
-                                                  _weeklySecondaryLabel(keys[i]),
-                                                ),
-                                                trailing: _selectedPeriodKey ==
-                                                        keys[i]
-                                                    ? const Icon(Icons.check_rounded)
-                                                    : null,
-                                                onTap: () {
-                                                  setState(
-                                                    () => _selectedPeriodKey = keys[i],
-                                                  );
-                                                  _activatePeriod(
-                                                    BudgetPeriodType.weekly,
-                                                    keys[i],
-                                                  );
-                                                },
-                                              ),
-                                            ],
-                                          ],
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    SizedBox(
+                                      height: 44,
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(
+                                          Icons.date_range_rounded,
+                                          size: 18,
                                         ),
+                                        onPressed: _pickWeeklyStartDate,
+                                        label: Text(
+                                          _parseDateKey(_selectedPeriodKey) == null
+                                              ? 'Week starts'
+                                              : 'Week starts ${_formatLongDate(_parseDateKey(_selectedPeriodKey)!)}',
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'Selected range: ${_weeklyRangeLabel(_selectedPeriodKey)}',
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: cs.onSurface.withValues(alpha: 0.58),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               if (_selectedType == BudgetPeriodType.custom)
                                 Row(

@@ -1168,15 +1168,11 @@ class AppState extends ChangeNotifier {
     return DateTime(y, m, d);
   }
 
-  DateTime _startOfWeek(DateTime date) {
-    final base = DateTime(date.year, date.month, date.day);
-    return base.subtract(Duration(days: base.weekday - DateTime.monday));
-  }
-
   String budgetYearMonthKey(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
 
-  String budgetWeekStartKey(DateTime date) => _dateKey(_startOfWeek(date));
+  /// Weekly period key uses the exact user-selected start date (not normalized).
+  String budgetWeekStartKey(DateTime date) => _dateKey(date);
 
   String get activeBudgetYearMonth => budgetYearMonthKey(_spendReference);
 
@@ -1212,7 +1208,8 @@ class AppState extends ChangeNotifier {
   }
 
   List<String> defaultBudgetWeeks({DateTime? start}) {
-    final base = _startOfWeek(start ?? DateTime.now());
+    final seed = start ?? DateTime.now();
+    final base = DateTime(seed.year, seed.month, seed.day);
     final out = <String>[];
     for (var i = 0; i < 12; i++) {
       out.add(_dateKey(base.add(Duration(days: i * 7))));
@@ -1356,9 +1353,8 @@ class AppState extends ChangeNotifier {
   BudgetPeriodRange? _weekRangeFromKey(String weekStartKey) {
     final start = _parseDateKey(weekStartKey);
     if (start == null) return null;
-    final normalized = _startOfWeek(start);
-    final end = normalized.add(const Duration(days: 6));
-    return BudgetPeriodRange(start: normalized, end: end);
+    final end = start.add(const Duration(days: 6));
+    return BudgetPeriodRange(start: start, end: end);
   }
 
   bool _inRangeInclusive(DateTime d, DateTime start, DateTime end) {

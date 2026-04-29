@@ -88,7 +88,7 @@ void main() {
     state.accounts = const [
       Account(id: 'a', name: 'A', type: AccountType.checking),
     ];
-    final monday = DateTime(2026, 4, 6);
+    final weekStart = DateTime(2026, 4, 8); // Wednesday start, user-selected.
     state.transactionsByAccount = {
       'a': [
         _tx(
@@ -96,18 +96,26 @@ void main() {
           description: 'Coffee',
           amount: -25,
           categoryId: 'Coffee / Quick Food',
-          date: monday,
+          date: weekStart,
         ),
         _tx(
           accountId: 'a',
           description: 'Transport',
           amount: -40,
           categoryId: 'Transportation',
-          date: monday.add(const Duration(days: 2)),
+          date: weekStart.add(const Duration(days: 2)),
+        ),
+        // Must NOT be included in the selected weekly range when start date is exact.
+        _tx(
+          accountId: 'a',
+          description: 'Before selected week',
+          amount: -7,
+          categoryId: 'Transportation',
+          date: weekStart.subtract(const Duration(days: 1)),
         ),
       ],
     };
-    final weekKey = state.budgetWeekStartKey(monday);
+    final weekKey = state.budgetWeekStartKey(weekStart);
     state.categoryWeeklyBudgetsByWeekStart = {
       weekKey: {
         budgetDisplayKey('Coffee / Quick Food'): 30,
@@ -115,8 +123,8 @@ void main() {
       },
     };
     final customKey = state.ensureCustomBudgetPeriod(
-      monday,
-      monday.add(const Duration(days: 2)),
+      weekStart,
+      weekStart.add(const Duration(days: 2)),
     );
     state.categoryCustomBudgetsByKey = {
       customKey: {
