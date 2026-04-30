@@ -15,9 +15,12 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
 
   /// Uncategorized rows for global Overview (all accounts), newest first.
   static List<BankStatementLine> uncategorizedLines(AppState state) {
+    const scope = GlobalDashboardScope();
     return uncategorizedTransactionsForDashboardScope(
-      state,
-      const GlobalDashboardScope(),
+      scope,
+      scopedTransactions: state.transactionsForDashboardScope(scope),
+      categoryOverrides: state.categoryOverrides,
+      categoryDisplayRenamesLower: state.categoryDisplayRenames,
     );
   }
 
@@ -113,8 +116,9 @@ class _LineTile extends StatelessWidget {
     final cs = theme.colorScheme;
     final tx = line.transaction;
     final muted = cs.onSurface.withValues(alpha: 0.42);
-    final amountColor =
-        tx.amount < 0 ? const Color(0xFFC41E3A) : const Color(0xFF1B7A4C);
+    final amountColor = tx.amount < 0
+        ? const Color(0xFFC41E3A)
+        : const Color(0xFF1B7A4C);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -206,7 +210,7 @@ class _LineTile extends StatelessWidget {
                         ),
                       );
                     },
-                ),
+                  ),
                 ],
               ),
             ],
@@ -216,4 +220,3 @@ class _LineTile extends StatelessWidget {
     );
   }
 }
-

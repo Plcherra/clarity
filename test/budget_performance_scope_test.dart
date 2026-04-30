@@ -1,5 +1,4 @@
 import 'package:clarity/app/app_state.dart';
-import 'package:clarity/features/budgets/application/budget_performance.dart';
 import 'package:clarity/features/budgets/domain/budget_models.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
@@ -58,7 +57,7 @@ void main() {
       ],
     };
     final month = state.activeBudgetYearMonth;
-    state.budgets.categoryMonthlyBudgetsByYearMonth = {
+    state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,
@@ -66,7 +65,9 @@ void main() {
     };
     state.refreshAllState();
 
-    final global = state.budgetPerformanceForScope(const GlobalDashboardScope());
+    final global = state.budgetPerformanceForScope(
+      const GlobalDashboardScope(),
+    );
     expect(global.budgetedCategoryCount, 2);
     expect(global.onTrackCategoryCount, 1);
     expect(global.totalBudgeted, 150);
@@ -118,7 +119,7 @@ void main() {
       ],
     };
     final weekKey = state.budgetWeekStartKey(weekStart);
-    state.budgets.categoryWeeklyBudgetsByWeekStart = {
+    state.budgetService.repository.categoryWeeklyBudgetsByWeekStart = {
       weekKey: {
         budgetDisplayKey('Coffee / Quick Food'): 30,
         budgetDisplayKey('Transportation'): 30,
@@ -128,10 +129,8 @@ void main() {
       weekStart,
       weekStart.add(const Duration(days: 2)),
     );
-    state.budgets.categoryCustomBudgetsByKey = {
-      customKey: {
-        budgetDisplayKey('Coffee / Quick Food'): 20,
-      },
+    state.budgetService.repository.categoryCustomBudgetsByKey = {
+      customKey: {budgetDisplayKey('Coffee / Quick Food'): 20},
     };
     state.refreshAllState();
 

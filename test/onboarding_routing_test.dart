@@ -1,13 +1,15 @@
 import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/storage/profile/profile_storage.dart';
-import 'package:clarity/screens/home_shell.dart';
-import 'package:clarity/screens/onboarding_screen.dart';
+import 'package:clarity/features/onboarding/presentation/onboarding_screen.dart';
+import 'package:clarity/features/shell/presentation/home_shell.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  testWidgets('Onboarding navigates to HomeShell after saving profile', (tester) async {
+  testWidgets('Onboarding navigates to HomeShell after saving profile', (
+    tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
     final state = AppState();
 
@@ -41,4 +43,3 @@ void main() {
     expect(find.text('Dashboard'), findsOneWidget);
   });
 }
-

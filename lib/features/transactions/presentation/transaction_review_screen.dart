@@ -35,8 +35,12 @@ class TransactionReviewScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: appState,
       builder: (context, _) {
-        final uncategorizedQueue =
-            uncategorizedTransactionsForDashboardScope(appState, scope);
+        final uncategorizedQueue = uncategorizedTransactionsForDashboardScope(
+          scope,
+          scopedTransactions: appState.transactionsForDashboardScope(scope),
+          categoryOverrides: appState.categoryOverrides,
+          categoryDisplayRenamesLower: appState.categoryDisplayRenames,
+        );
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),
@@ -87,10 +91,7 @@ class TransactionReviewScreen extends StatelessWidget {
 
 /// Shown when there are no uncategorized transactions left.
 class _ReviewDoneEmptyState extends StatelessWidget {
-  const _ReviewDoneEmptyState({
-    required this.theme,
-    required this.colorScheme,
-  });
+  const _ReviewDoneEmptyState({required this.theme, required this.colorScheme});
 
   final ThemeData theme;
   final ColorScheme colorScheme;
@@ -153,8 +154,9 @@ class _SingleUncategorizedReview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tx = line.transaction;
-    final amountColor =
-        tx.amount < 0 ? const Color(0xFFC41E3A) : const Color(0xFF1B7A4C);
+    final amountColor = tx.amount < 0
+        ? const Color(0xFFC41E3A)
+        : const Color(0xFF1B7A4C);
     final mutedOnSurface = colorScheme.onSurface.withValues(alpha: 0.42);
 
     return LayoutBuilder(
@@ -167,9 +169,7 @@ class _SingleUncategorizedReview extends StatelessWidget {
             _kReviewScrollBottomPadding,
           ),
           child: ConstrainedBox(
-            constraints: BoxConstraints(
-              minHeight: constraints.maxHeight - 16,
-            ),
+            constraints: BoxConstraints(minHeight: constraints.maxHeight - 16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -235,4 +235,3 @@ class _SingleUncategorizedReview extends StatelessWidget {
     );
   }
 }
-

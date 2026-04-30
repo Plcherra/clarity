@@ -32,6 +32,17 @@ class DashboardDerivedValues {
 }
 
 class DashboardService {
+  DateTime spendReference = DateTime.now();
+  double totalBalance = 0;
+  double spentThisMonth = 0;
+  double incomeThisMonth = 0;
+  double availableThisMonth = 0;
+  int uncategorizedCount = 0;
+  List<CategorySpend> topCategories = const [];
+  List<CategoryLeakStat> biggestLeaksThisMonth = const [];
+  int? burnRunwayDays;
+  List<MonthlyBankGroup> monthlyGroups = const [];
+
   List<Transaction> transactionsForDashboardScope({
     required DashboardScope scope,
     required List<Transaction> allTransactions,
@@ -43,6 +54,46 @@ class DashboardService {
         transactionsByAccount[accountId] ?? const [],
       ),
     };
+  }
+
+  void resetDerivedState() {
+    totalBalance = 0;
+    spentThisMonth = 0;
+    incomeThisMonth = 0;
+    availableThisMonth = 0;
+    uncategorizedCount = 0;
+    topCategories = const [];
+    biggestLeaksThisMonth = const [];
+    burnRunwayDays = null;
+    monthlyGroups = const [];
+  }
+
+  List<Transaction> refreshAllState({
+    required String? activeAccountId,
+    required List<Transaction> Function(String? accountId)
+    activeTransactionsForAccount,
+    required List<Transaction> allTransactionsForMetrics,
+    required List<Account> accounts,
+    required Map<String, String> categoryOverrides,
+    required Map<String, String> categoryDisplayRenames,
+    required List<tx_res.ResolvedTransaction> Function(
+      List<Transaction> txs, {
+      required List<Transaction> allTransactionsContext,
+    })
+    resolveTransactions,
+  }) {
+    final activeTx = activeTransactionsForAccount(activeAccountId);
+    recomputeDerivedState(
+      activeAccountTransactions: activeTx,
+      allTransactionsForMetrics: allTransactionsForMetrics,
+      transactionsForCsvDiagnostics: activeTx,
+      diag: null,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
+    );
+    return activeTx;
   }
 
   bool _inRangeInclusive(DateTime d, DateTime start, DateTime end) {
@@ -137,6 +188,42 @@ class DashboardService {
       merchantCategoryMemory: merchantCategoryMemory,
       accounts: accounts,
     );
+  }
+
+  void recomputeDerivedState({
+    required List<Transaction> activeAccountTransactions,
+    required List<Transaction> allTransactionsForMetrics,
+    required List<Transaction> transactionsForCsvDiagnostics,
+    required CsvParseDiagnostics? diag,
+    required List<Account> accounts,
+    required Map<String, String> categoryOverrides,
+    required Map<String, String> categoryDisplayRenames,
+    required List<tx_res.ResolvedTransaction> Function(
+      List<Transaction> txs, {
+      required List<Transaction> allTransactionsContext,
+    })
+    resolveTransactions,
+  }) {
+    final d = recomputeDerived(
+      activeAccountTransactions: activeAccountTransactions,
+      allTransactionsForMetrics: allTransactionsForMetrics,
+      transactionsForCsvDiagnostics: transactionsForCsvDiagnostics,
+      diag: diag,
+      spendReference: spendReference,
+      totalBalance: totalBalance,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
+    );
+    spentThisMonth = d.spentThisMonth;
+    incomeThisMonth = d.incomeThisMonth;
+    availableThisMonth = d.availableThisMonth;
+    uncategorizedCount = d.uncategorizedCount;
+    biggestLeaksThisMonth = d.biggestLeaksThisMonth;
+    burnRunwayDays = d.burnRunwayDays;
+    topCategories = d.topCategories;
+    monthlyGroups = d.monthlyGroups;
   }
 
   DashboardDerivedValues recomputeDerived({
@@ -286,9 +373,9 @@ List<CategorySpend> _topCategoriesThisMonth(
   }
   final list =
       map.entries
-              .map((e) => CategorySpend(name: e.key, amount: e.value))
-              .toList()
-            ..sort((a, b) => b.amount.compareTo(a.amount));
+          .map((e) => CategorySpend(name: e.key, amount: e.value))
+          .toList()
+        ..sort((a, b) => b.amount.compareTo(a.amount));
   if (list.length <= limit) return list;
   return list.sublist(0, limit);
 }
@@ -334,7 +421,9 @@ void debugPrintCsvImportDiagnostics(
     );
   }
 
-  final jan2025Parsed = txs.where((t) => t.date.year == 2025 && t.date.month == 1).length;
+  final jan2025Parsed = txs
+      .where((t) => t.date.year == 2025 && t.date.month == 1)
+      .length;
   debugPrint(
     '[Clarity][CSV import] Rows with parsed calendar date in January 2025: '
     '$jan2025Parsed (total parsed transaction rows: ${txs.length})',
@@ -366,7 +455,9 @@ void debugPrintCsvImportDiagnostics(
     );
   }
 
-  final dec2026Parsed = txs.where((t) => t.date.year == 2026 && t.date.month == 12).length;
+  final dec2026Parsed = txs
+      .where((t) => t.date.year == 2026 && t.date.month == 12)
+      .length;
   debugPrint(
     '[Clarity][CSV import] Rows with parsed date in December 2026: '
     '$dec2026Parsed',

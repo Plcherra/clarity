@@ -1,7 +1,7 @@
 import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
-import 'package:clarity/screens/account_detail_screen.dart';
-import 'package:clarity/screens/dashboard_screen.dart';
+import 'package:clarity/features/accounts/presentation/account_detail_screen.dart';
+import 'package:clarity/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -39,9 +39,7 @@ void main() {
       ];
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: DashboardScreen(appState: state, isRoot: true),
-      ),
+      MaterialApp(home: DashboardScreen(appState: state, isRoot: true)),
     );
     await tester.pumpAndSettle();
 

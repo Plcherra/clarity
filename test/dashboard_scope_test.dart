@@ -2,8 +2,8 @@ import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_metrics.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
+import 'package:clarity/features/dashboard/presentation/month_detail_screen.dart';
 import 'package:clarity/features/transactions/domain/bank_statement_monthly.dart';
-import 'package:clarity/screens/month_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -61,16 +61,8 @@ void main() {
       );
       final state = AppState();
       state.accounts = [
-        const Account(
-          id: 'a',
-          name: 'Checking A',
-          type: AccountType.checking,
-        ),
-        const Account(
-          id: 'b',
-          name: 'Checking B',
-          type: AccountType.checking,
-        ),
+        const Account(id: 'a', name: 'Checking A', type: AccountType.checking),
+        const Account(id: 'b', name: 'Checking B', type: AccountType.checking),
       ];
       state.transactionsByAccount = {
         'a': [],
@@ -78,8 +70,9 @@ void main() {
       };
       state.activeAccountId = 'a';
 
-      final globalTxs =
-          state.transactionsForDashboardScope(const GlobalDashboardScope());
+      final globalTxs = state.transactionsForDashboardScope(
+        const GlobalDashboardScope(),
+      );
       final accountATxs = state.transactionsForDashboardScope(
         const AccountDashboardScope('a'),
       );
@@ -110,16 +103,8 @@ void main() {
   group('uncategorized metric alignment', () {
     test('count helper matches bank-line helper length', () {
       final txs = [
-        _tx(
-          accountId: 'a',
-          description: 'balance nonsense',
-          amount: -1,
-        ),
-        _tx(
-          accountId: 'a',
-          description: 'unknown zzz merchant',
-          amount: -4,
-        ),
+        _tx(accountId: 'a', description: 'balance nonsense', amount: -1),
+        _tx(accountId: 'a', description: 'unknown zzz merchant', amount: -4),
       ];
       const overrides = <String, String>{};
       const renames = <String, String>{};
@@ -164,10 +149,7 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
-          home: MonthDetailScreen(
-            appState: AppState(),
-            group: group,
-          ),
+          home: MonthDetailScreen(appState: AppState(), group: group),
         ),
       );
       expect(find.text('2 transactions'), findsOneWidget);

@@ -9,7 +9,6 @@ import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/accounts/application/account_service.dart';
 import '../core/models/models.dart';
-import '../core/storage/profile/profile_storage.dart';
 import '../features/transactions/domain/transaction_resolution.dart'
     as transaction_resolution;
 import '../features/transactions/data/ai_categorization_service.dart';
@@ -21,7 +20,8 @@ import '../features/categories/application/category_catalog_service.dart';
 import '../features/transactions/application/category_service.dart';
 import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
-import '../features/budgets/data/budget_repository.dart';
+import '../features/profile/application/profile_service.dart';
+import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/domain/budget_models.dart';
 
 export '../features/transactions/data/csv_import_service.dart'
@@ -31,16 +31,18 @@ export '../features/transactions/data/csv_import_service.dart'
 /// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
 /// are persisted separately from CSV data.
 class AppState extends ChangeNotifier {
-  LocalProfile? localProfile;
-
-  /// Persisted budgets and active budget period (monthly / weekly / custom).
-  final BudgetRepository budgets = BudgetRepository();
+  LocalProfile? get localProfile => profileService.localProfile;
+  set localProfile(LocalProfile? value) {
+    profileService.localProfile = value;
+  }
 
   final TransactionService transactionService = TransactionService();
   final CategoryService categoryService = CategoryService();
   final CategoryCatalogService categoryCatalogService =
       CategoryCatalogService();
   final MerchantService merchantService = MerchantService();
+  final ProfileService profileService = ProfileService();
+  final BudgetService budgetService = BudgetService();
   final AccountService accountService = AccountService();
   final app_ai.AiCategorizationApplicationService aiCategorizationService =
       app_ai.AiCategorizationApplicationService();
@@ -78,20 +80,55 @@ class AppState extends ChangeNotifier {
     transactionService.transactions = value;
   }
 
-  double totalBalance = 0;
-  double spentThisMonth = 0;
-  double incomeThisMonth = 0;
-  double availableThisMonth = 0;
-  int uncategorizedCount = 0;
-  List<CategorySpend> topCategories = const [];
-  List<CategoryLeakStat> biggestLeaksThisMonth = const [];
-  int? burnRunwayDays;
+  double get totalBalance => _dashboard.totalBalance;
+  set totalBalance(double value) {
+    _dashboard.totalBalance = value;
+  }
 
-  /// Newest calendar month first for the **active account only** (see [_recomputeDerived]).
+  double get spentThisMonth => _dashboard.spentThisMonth;
+  set spentThisMonth(double value) {
+    _dashboard.spentThisMonth = value;
+  }
+
+  double get incomeThisMonth => _dashboard.incomeThisMonth;
+  set incomeThisMonth(double value) {
+    _dashboard.incomeThisMonth = value;
+  }
+
+  double get availableThisMonth => _dashboard.availableThisMonth;
+  set availableThisMonth(double value) {
+    _dashboard.availableThisMonth = value;
+  }
+
+  int get uncategorizedCount => _dashboard.uncategorizedCount;
+  set uncategorizedCount(int value) {
+    _dashboard.uncategorizedCount = value;
+  }
+
+  List<CategorySpend> get topCategories => _dashboard.topCategories;
+  set topCategories(List<CategorySpend> value) {
+    _dashboard.topCategories = value;
+  }
+
+  List<CategoryLeakStat> get biggestLeaksThisMonth =>
+      _dashboard.biggestLeaksThisMonth;
+  set biggestLeaksThisMonth(List<CategoryLeakStat> value) {
+    _dashboard.biggestLeaksThisMonth = value;
+  }
+
+  int? get burnRunwayDays => _dashboard.burnRunwayDays;
+  set burnRunwayDays(int? value) {
+    _dashboard.burnRunwayDays = value;
+  }
+
+  /// Newest calendar month first for the **active account only**.
   ///
   /// Do **not** use for global Overview / [GlobalDashboardScope] UI — use
   /// [monthlyGroupsForDashboardScope] or [buildDashboardSnapshot].monthlyGroups instead.
-  List<MonthlyBankGroup> monthlyGroups = const [];
+  List<MonthlyBankGroup> get monthlyGroups => _dashboard.monthlyGroups;
+  set monthlyGroups(List<MonthlyBankGroup> value) {
+    _dashboard.monthlyGroups = value;
+  }
 
   Map<String, String> get categoryOverrides =>
       categoryService.categoryOverrides;
@@ -145,8 +182,9 @@ class AppState extends ChangeNotifier {
   bool get importAiEngineConfigured => Constants.openAIKey.isNotEmpty;
 
   bool needsImportAiAfterCsvUpload(String accountId) {
-    return aiCategorizationService.needsImportAiAfterCsvUpload(
+    return transactionService.needsImportAiAfterCsvUploadWorkflow(
       accountId,
+      aiCategorizationService: aiCategorizationService,
       uncategorizedImportedRowsForAccount: uncategorizedImportedRowsForAccount,
     );
   }
@@ -157,18 +195,12 @@ class AppState extends ChangeNotifier {
 
   /// Runs after CSV import: merchant memory first, then GPT in batches (see [AICategorizationService]).
   Future<void> startBackgroundImportAiCategorization(String accountId) async {
-    await aiCategorizationService.startBackgroundImportAiCategorization(
+    await transactionService.startBackgroundImportAiCategorizationWorkflow(
       accountId,
+      aiCategorizationService: aiCategorizationService,
       importAiEngineConfigured: importAiEngineConfigured,
       uncategorizedImportedRowsForAccount: uncategorizedImportedRowsForAccount,
-      merchantCategoryMemory: merchantCategoryMemory,
-      applyPrefilledMerchantChunks: (prefilled) {
-        return merchantService.applyPrefilledMerchantChunks(
-          prefilled,
-          applyCategoriesWithMerchantLearning:
-              applyCategoriesWithMerchantLearning,
-        );
-      },
+      merchantService: merchantService,
       allowedCategoryPickerLabels: allowedCategoryPickerLabels,
       applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
       notifyListeners: notifyListeners,
@@ -199,15 +231,12 @@ class AppState extends ChangeNotifier {
 
   // Rules feature removed: no persisted categorization rules.
 
-  /// Reference month for "spent this month" / top categories (set in [loadFromCsv]).
-  DateTime _spendReference = DateTime.now();
-
   /// Same instant used for monthly aggregates (defaults to import time / [loadFromCsv]).
-  DateTime get spendReference => _spendReference;
+  DateTime get spendReference => _dashboard.spendReference;
 
   /// Loads persisted budgets from disk (call once before [runApp]).
   Future<void> hydratePersistedBudgets() async {
-    await budgets.hydrate(reference: _spendReference);
+    await budgetService.hydratePersistedBudgets(reference: spendReference);
     notifyListeners();
   }
 
@@ -231,11 +260,15 @@ class AppState extends ChangeNotifier {
       activeAccountId: activeAccountId,
     );
     transactions = result.activeTransactions;
-    _recomputeDerived(
+    _dashboard.recomputeDerivedState(
       activeAccountTransactions: transactions,
       allTransactionsForMetrics: allTransactions,
       transactionsForCsvDiagnostics: transactions,
       diag: null,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
     );
     notifyListeners();
   }
@@ -253,39 +286,33 @@ class AppState extends ChangeNotifier {
     if (!result.changed) return;
 
     transactions = result.activeTransactions;
-    _recomputeDerived(
+    _dashboard.recomputeDerivedState(
       activeAccountTransactions: transactions,
       allTransactionsForMetrics: allTransactions,
       transactionsForCsvDiagnostics: transactions,
       diag: null,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
     );
     notifyListeners();
   }
 
   Future<void> hydrateLocalProfile() async {
-    try {
-      localProfile = await loadLocalProfile();
-    } on Object {
-      localProfile = null;
-    }
+    await profileService.hydrateLocalProfile();
     notifyListeners();
   }
 
   Future<void> setLocalProfile(LocalProfile profile) async {
-    await saveLocalProfile(profile);
-    localProfile = profile;
+    await profileService.setLocalProfile(profile);
     // Switch merchant memory namespace to the new profile.
     await hydrateMerchantCategoryMemory();
     notifyListeners();
   }
 
   String _userNamespaceForMerchantMemory() {
-    // LocalProfile is the best available per-user namespace in v1.
-    // If absent (onboarding), keep memory in an anonymous namespace.
-    final p = localProfile;
-    final created = p?.createdAtUtcIso.trim();
-    if (created != null && created.isNotEmpty) return created;
-    return 'anon';
+    return profileService.userNamespaceForMerchantMemory();
   }
 
   Future<void> hydrateMerchantCategoryMemory() async {
@@ -387,39 +414,54 @@ class AppState extends ChangeNotifier {
   /// This keeps Dashboard (global + account), monthly breakdowns, and dependent
   /// views in sync without requiring route-level/manual refresh hooks.
   void refreshAllState() {
-    final activeTx = transactionService.activeTransactionsForAccount(
-      activeAccountId,
+    final activeTx = _dashboard.refreshAllState(
+      activeAccountId: activeAccountId,
+      activeTransactionsForAccount:
+          transactionService.activeTransactionsForAccount,
+      allTransactionsForMetrics: allTransactions,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
     );
     transactions = activeTx;
-    _recomputeDerived(
-      activeAccountTransactions: activeTx,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: activeTx,
-      diag: null,
-    );
     notifyListeners();
+  }
+
+  void _syncDashboardAfterTransactionWorkflow({
+    required List<Transaction> activeAccountTransactions,
+    required List<Transaction> allTransactionsForMetrics,
+    required List<Transaction> transactionsForCsvDiagnostics,
+    required CsvParseDiagnostics? diag,
+  }) {
+    _dashboard.recomputeDerivedState(
+      activeAccountTransactions: activeAccountTransactions,
+      allTransactionsForMetrics: allTransactionsForMetrics,
+      transactionsForCsvDiagnostics: transactionsForCsvDiagnostics,
+      diag: diag,
+      accounts: accounts,
+      categoryOverrides: categoryOverrides,
+      categoryDisplayRenames: categoryDisplayRenames,
+      resolveTransactions: resolveTransactions,
+    );
   }
 
   /// Deletes a single transaction row and refreshes derived dashboard state.
   Future<bool> deleteTransaction(Transaction transaction) async {
-    final result = await transactionService.deleteTransaction(
+    return transactionService.deleteTransactionWorkflow(
       transaction,
       categoryService: categoryService,
+      refreshAllState: refreshAllState,
     );
-    if (!result.success) return false;
-    refreshAllState();
-    return true;
   }
 
   /// Deletes all transactions for one account and refreshes derived dashboard state.
   Future<int> clearTransactionsForAccount(String accountId) async {
-    final result = await transactionService.clearTransactionsForAccount(
+    return transactionService.clearTransactionsForAccountWorkflow(
       accountId,
       categoryService: categoryService,
+      refreshAllState: refreshAllState,
     );
-    if (!result.success) return 0;
-    refreshAllState();
-    return result.removedCount;
   }
 
   List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
@@ -430,14 +472,12 @@ class AppState extends ChangeNotifier {
     required String accountId,
     required String importId,
   }) async {
-    final result = await transactionService.deleteTransactionsForImportBatch(
+    return transactionService.deleteTransactionsForImportBatchWorkflow(
       accountId: accountId,
       importId: importId,
       categoryService: categoryService,
+      refreshAllState: refreshAllState,
     );
-    if (!result.success) return 0;
-    refreshAllState();
-    return result.removedCount;
   }
 
   List<Transaction> uncategorizedImportedRowsGlobal() {
@@ -453,13 +493,11 @@ class AppState extends ChangeNotifier {
     required AICategorizationService service,
     double autoApplyConfidenceThreshold = 0.90,
   }) async {
-    return aiCategorizationService.autoCategorizeGlobalUncategorized(
+    return transactionService.autoCategorizeGlobalUncategorizedWorkflow(
       service: service,
+      aiCategorizationService: aiCategorizationService,
       allowedCategoryPickerLabels: allowedCategoryPickerLabels,
       uncategorizedImportedRowsGlobal: uncategorizedImportedRowsGlobal(),
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      aiCategorySuggestions: aiCategorySuggestions,
-      setAiCategorySuggestions: (next) => aiCategorySuggestions = next,
       persistAiCategorySuggestions: _persistAiCategorySuggestions,
       bulkSetCategoryOverrides: bulkSetCategoryOverrides,
       autoApplyConfidenceThreshold: autoApplyConfidenceThreshold,
@@ -467,27 +505,13 @@ class AppState extends ChangeNotifier {
   }
 
   Future<int> undoLastAiAutoApply() async {
-    final result = await aiCategorizationService.undoLastAiAutoApply(
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      categoryOverrides: categoryOverrides,
-      transactionsByAccount: transactionsByAccount,
-      activeAccountId: activeAccountId,
-    );
-    if (result.undone == 0) return 0;
-
-    transactions = transactionService.applyAiAutoApplyUndoResult(
-      result,
+    return transactionService.undoLastAiAutoApplyWorkflow(
+      aiCategorizationService: aiCategorizationService,
       categoryService: categoryService,
+      activeAccountId: activeAccountId,
+      recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
+      notifyListeners: notifyListeners,
     );
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: null,
-    );
-    notifyListeners();
-
-    return result.undone;
   }
 
   /// Single entry for effective spend grouping (saved categoryId → override map → rules → CSV / keywords).
@@ -568,19 +592,20 @@ class AppState extends ChangeNotifier {
 
   /// Active calendar month key derived from spend reference (budget UX).
   String get activeBudgetYearMonth =>
-      budgets.budgetYearMonthKey(_spendReference);
+      budgetService.activeBudgetYearMonth(spendReference);
 
   /// Weekly period key uses the exact user-selected start date (not normalized).
-  String budgetWeekStartKey(DateTime date) => budgets.budgetWeekStartKey(date);
+  String budgetWeekStartKey(DateTime date) =>
+      budgetService.budgetWeekStartKey(date);
 
   String ensureCustomBudgetPeriod(DateTime start, DateTime end) =>
-      budgets.ensureCustomBudgetPeriod(start, end);
+      budgetService.ensureCustomBudgetPeriod(start, end);
 
   void setActiveBudgetPeriod({
     required BudgetPeriodType type,
     required String key,
   }) {
-    budgets.setActivePeriod(type, key);
+    budgetService.setActiveBudgetPeriod(type: type, key: key);
     notifyListeners();
   }
 
@@ -588,11 +613,10 @@ class AppState extends ChangeNotifier {
     String displayLabel, {
     String? yearMonth,
   }) {
-    final ym = yearMonth ?? activeBudgetYearMonth;
-    return budgets.budgetForDisplayLabel(
-      displayLabel: displayLabel,
-      periodType: BudgetPeriodType.monthly,
-      periodKey: ym,
+    return budgetService.monthlyBudgetForDisplayLabel(
+      displayLabel,
+      yearMonth: yearMonth,
+      spendReference: spendReference,
     );
   }
 
@@ -601,7 +625,7 @@ class AppState extends ChangeNotifier {
     String periodKey,
     Map<String, double?> draftByNormalizedDisplayKey,
   ) async {
-    final ok = await budgets.commitBudgetDraft(
+    final ok = await budgetService.commitBudgetDraft(
       periodType,
       periodKey,
       draftByNormalizedDisplayKey,
@@ -618,6 +642,23 @@ class AppState extends ChangeNotifier {
       BudgetPeriodType.monthly,
       yearMonth,
       draftByNormalizedDisplayKey,
+    );
+  }
+
+  BudgetPerformanceSnapshot budgetPerformanceForScope(
+    DashboardScope scope, {
+    BudgetPeriodType? periodType,
+    String? periodKey,
+  }) {
+    return budgetService.budgetPerformanceForScope(
+      scope,
+      customCategories: customCategories,
+      categoriesHiddenFromPicker: categoriesHiddenFromPicker,
+      categoryDisplayRenames: categoryDisplayRenames,
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
+      periodType: periodType,
+      periodKey: periodKey,
     );
   }
 
@@ -678,37 +719,30 @@ class AppState extends ChangeNotifier {
     required String accountId,
     DateTime? reference,
   }) {
-    final result = transactionService.loadFromCsv(
+    transactionService.loadFromCsvWorkflow(
       utf8Text,
       accountId: accountId,
       reference: reference,
       accounts: accounts,
       categoryService: categoryService,
-    );
-    _spendReference = result.spendReference;
-    activeAccountId = result.activeAccountId;
-    transactions = result.transactions;
-    totalBalance = result.totalBalance;
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: result.diagnostics,
-    );
-    notifyListeners();
-    _persistCategoryCatalog();
-  }
-
-  void _persistActiveAccountTransactionsIfAny() {
-    transactionService.persistActiveAccountTransactionsIfAny(
-      activeAccountId: activeAccountId,
-      transactions: transactions,
+      setSpendReference: (reference) {
+        _dashboard.spendReference = reference;
+      },
+      setActiveAccountId: (accountId) {
+        activeAccountId = accountId;
+      },
+      setTotalBalance: (balance) {
+        totalBalance = balance;
+      },
+      recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
+      notifyListeners: notifyListeners,
+      persistCategoryCatalog: _persistCategoryCatalog,
     );
   }
 
   /// Assigns a category to a transaction and refreshes aggregates.
   void setCategoryOverride(Transaction t, String category) {
-    categoryService.setCategoryOverride(
+    categoryService.setCategoryOverrideWorkflow(
       t,
       category,
       applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
@@ -717,7 +751,7 @@ class AppState extends ChangeNotifier {
 
   /// Assigns categories for many [transactionCategoryKey]s at once (persists [categoryId] on each row).
   void bulkSetCategoryOverrides(Map<String, String> keyToCanonicalCategory) {
-    categoryService.bulkSetCategoryOverrides(
+    categoryService.bulkSetCategoryOverridesWorkflow(
       keyToCanonicalCategory,
       applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
     );
@@ -725,121 +759,44 @@ class AppState extends ChangeNotifier {
 
   /// Adds a new category name (if needed), assigns [t], and notifies.
   void createCategoryAndAssign(Transaction t, String rawName) {
-    categoryService.createCategoryAndAssign(
+    categoryService.createCategoryAndAssignWorkflow(
       t,
       rawName,
-      customCategories: customCategories,
-      setCustomCategories: (next) => customCategories = next,
-      persistCategoryCatalog: _persistCategoryCatalog,
-      setCategoryOverride: setCategoryOverride,
+      categoryCatalogService: categoryCatalogService,
+      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
     );
   }
 
   /// Deletes a category from the picker and clears assignments using it (any label, built-in or custom).
   void deleteCategory(String canonicalLabel) {
-    final result = categoryService.deleteCategory(
+    categoryService.deleteCategoryWorkflow(
       canonicalLabel,
-      customCategories: customCategories,
-      categoryDisplayRenames: categoryDisplayRenames,
-      categoriesHiddenFromPicker: categoriesHiddenFromPicker,
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      transactions: transactions,
+      categoryCatalogService: categoryCatalogService,
+      transactionService: transactionService,
+      activeAccountId: activeAccountId,
+      recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
+      notifyListeners: notifyListeners,
     );
-    if (result == null) return;
-
-    customCategories = result.customCategories;
-    categoryDisplayRenames = result.categoryDisplayRenames;
-    categoriesHiddenFromPicker = result.categoriesHiddenFromPicker;
-    transactionCategoryAssignments = result.transactionCategoryAssignments;
-    transactions = result.transactions;
-    if (result.shouldPersistActiveAccountTransactions) {
-      _persistActiveAccountTransactionsIfAny();
-    }
-    _persistTransactionCategoryAssignments();
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: null,
-    );
-    notifyListeners();
-    _persistCategoryCatalog();
   }
 
   /// Renames a category. Built-ins: display-only map (overrides stay canonical). Custom: text + overrides.
   void renameCategory(String oldLabel, String newLabel) {
-    final result = categoryService.renameCategory(
+    categoryService.renameCategoryWorkflow(
       oldLabel,
       newLabel,
-      customCategories: customCategories,
-      categoryDisplayRenames: categoryDisplayRenames,
-      categoriesHiddenFromPicker: categoriesHiddenFromPicker,
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      transactions: transactions,
+      categoryCatalogService: categoryCatalogService,
+      transactionService: transactionService,
+      activeAccountId: activeAccountId,
+      recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
+      notifyListeners: notifyListeners,
     );
-    if (result == null) return;
-
-    customCategories = result.customCategories;
-    categoryDisplayRenames = result.categoryDisplayRenames;
-    categoriesHiddenFromPicker = result.categoriesHiddenFromPicker;
-    transactionCategoryAssignments = result.transactionCategoryAssignments;
-    transactions = result.transactions;
-    if (result.shouldPersistActiveAccountTransactions) {
-      _persistActiveAccountTransactionsIfAny();
-      _persistTransactionCategoryAssignments();
-    }
-
-    _recomputeDerived(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: null,
-    );
-    notifyListeners();
-    _persistCategoryCatalog();
-  }
-
-  void _recomputeDerived({
-    required List<Transaction> activeAccountTransactions,
-    required List<Transaction> allTransactionsForMetrics,
-    required List<Transaction> transactionsForCsvDiagnostics,
-    required CsvParseDiagnostics? diag,
-  }) {
-    final d = _dashboard.recomputeDerived(
-      activeAccountTransactions: activeAccountTransactions,
-      allTransactionsForMetrics: allTransactionsForMetrics,
-      transactionsForCsvDiagnostics: transactionsForCsvDiagnostics,
-      diag: diag,
-      spendReference: _spendReference,
-      totalBalance: totalBalance,
-      accounts: accounts,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
-    );
-    spentThisMonth = d.spentThisMonth;
-    incomeThisMonth = d.incomeThisMonth;
-    availableThisMonth = d.availableThisMonth;
-    uncategorizedCount = d.uncategorizedCount;
-    biggestLeaksThisMonth = d.biggestLeaksThisMonth;
-    burnRunwayDays = d.burnRunwayDays;
-    topCategories = d.topCategories;
-    monthlyGroups = d.monthlyGroups;
   }
 
   void clear() {
     transactions = const [];
     transactionsByAccount = const {};
     activeAccountId = null;
-    totalBalance = 0;
-    spentThisMonth = 0;
-    incomeThisMonth = 0;
-    availableThisMonth = 0;
-    uncategorizedCount = 0;
-    topCategories = const [];
-    biggestLeaksThisMonth = const [];
-    burnRunwayDays = null;
-    monthlyGroups = const [];
+    _dashboard.resetDerivedState();
     categoryOverrides = const {};
     customCategories = const [];
     categoryDisplayRenames = const {};

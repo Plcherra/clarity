@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_state.dart';
-import '../../budgets/application/budget_performance.dart';
 import '../../budgets/domain/budget_models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../domain/dashboard_queries.dart';
@@ -70,137 +69,138 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
         final scope = widget.scope;
         final snap = widget.buildSnapshot(appState, scope);
         final budgetPerformance = appState.budgetPerformanceForScope(scope);
-        final uncategorizedQueue =
-            uncategorizedTransactionsForDashboardScope(appState, scope);
+        final uncategorizedQueue = uncategorizedTransactionsForDashboardScope(
+          scope,
+          scopedTransactions: appState.transactionsForDashboardScope(scope),
+          categoryOverrides: appState.categoryOverrides,
+          categoryDisplayRenamesLower: appState.categoryDisplayRenames,
+        );
         final attentionCount = uncategorizedQueue.length;
         final scrollBody = DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [const Color(0xFFF3F1ED), cs.surface],
-              ),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [const Color(0xFFF3F1ED), cs.surface],
             ),
-            child: SafeArea(
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(),
-                slivers: [
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
+          ),
+          child: SafeArea(
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      Text(
+                        widget.title,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          letterSpacing: 3.2,
+                          color: cs.onSurface.withValues(alpha: 0.38),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (kDebugMode) ...[
+                        const SizedBox(height: 8),
                         Text(
-                          widget.title,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            letterSpacing: 3.2,
-                            color: cs.onSurface.withValues(alpha: 0.38),
-                            fontWeight: FontWeight.w600,
+                          'debug: reviewQueue=$attentionCount · '
+                          'snapUncat=${snap.uncategorizedCount}',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: cs.onSurface.withValues(alpha: 0.42),
                           ),
                         ),
-                        if (kDebugMode) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            'debug: reviewQueue=$attentionCount · '
-                            'snapUncat=${snap.uncategorizedCount}',
-                            style: theme.textTheme.labelSmall?.copyWith(
-                              fontFamily: 'monospace',
-                              color: cs.onSurface.withValues(alpha: 0.42),
-                            ),
-                          ),
-                        ],
+                      ],
+                      const SizedBox(height: 20),
+                      if (widget.onUploadTransactions != null) ...[
+                        _UploadTransactionsButton(
+                          onPressed: widget.onUploadTransactions!,
+                        ),
                         const SizedBox(height: 20),
-                        if (widget.onUploadTransactions != null) ...[
-                          _UploadTransactionsButton(
-                            onPressed: widget.onUploadTransactions!,
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                        FilledButton(
-                          onPressed: () {
+                      ],
+                      FilledButton(
+                        onPressed: () {
+                          Navigator.of(context).push<void>(
+                            MaterialPageRoute<void>(
+                              builder: (context) =>
+                                  BudgetsScreen(appState: appState),
+                            ),
+                          );
+                        },
+                        child: const Text('Set Budgets'),
+                      ),
+                      const SizedBox(height: 20),
+                      if (attentionCount > 0) ...[
+                        _UncategorizedAttentionCard(
+                          count: attentionCount,
+                          onTap: () {
                             Navigator.of(context).push<void>(
                               MaterialPageRoute<void>(
-                                builder: (context) =>
-                                    BudgetsScreen(appState: appState),
+                                builder: (context) => TransactionReviewScreen(
+                                  appState: appState,
+                                  scope: scope,
+                                ),
                               ),
                             );
                           },
-                          child: const Text('Set Budgets'),
-                        ),
-                        const SizedBox(height: 20),
-                        if (attentionCount > 0) ...[
-                          _UncategorizedAttentionCard(
-                            count: attentionCount,
-                            onTap: () {
-                              Navigator.of(context).push<void>(
-                                MaterialPageRoute<void>(
-                                  builder: (context) => TransactionReviewScreen(
-                                    appState: appState,
-                                    scope: scope,
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                          const SizedBox(height: _sectionGap),
-                        ],
-                        _ResponsiveMetricCard(
-                          label: 'Available this month',
-                          value: formatMoney(snap.availableThisMonth),
-                          large: true,
-                          valueColor: _balanceColor(snap.availableThisMonth),
-                          footnote:
-                              'Income ${formatMoney(snap.incomeThisMonth)} · '
-                              'Spending ${formatMoney(snap.spentThisMonth)}',
                         ),
                         const SizedBox(height: _sectionGap),
-                        _ResponsiveMetricCard(
-                          label: 'Spent this month',
-                          value: formatMoney(snap.spentThisMonth),
-                          large: false,
-                          valueColor: const Color(0xFF9B2C2C),
+                      ],
+                      _ResponsiveMetricCard(
+                        label: 'Available this month',
+                        value: formatMoney(snap.availableThisMonth),
+                        large: true,
+                        valueColor: _balanceColor(snap.availableThisMonth),
+                        footnote:
+                            'Income ${formatMoney(snap.incomeThisMonth)} · '
+                            'Spending ${formatMoney(snap.spentThisMonth)}',
+                      ),
+                      const SizedBox(height: _sectionGap),
+                      _ResponsiveMetricCard(
+                        label: 'Spent this month',
+                        value: formatMoney(snap.spentThisMonth),
+                        large: false,
+                        valueColor: const Color(0xFF9B2C2C),
+                      ),
+                      const SizedBox(height: _sectionGap),
+                      _SectionTitle(theme: theme, title: 'Budget performance'),
+                      const SizedBox(height: 16),
+                      _BudgetPerformanceCard(performance: budgetPerformance),
+                      const SizedBox(height: _sectionGap),
+                      _SectionTitle(
+                        theme: theme,
+                        title: 'Biggest leaks this month',
+                      ),
+                      const SizedBox(height: 16),
+                      _BiggestLeaksCard(leaks: snap.biggestLeaksThisMonth),
+                      const SizedBox(height: _sectionGap),
+                      _BurnRateCard(
+                        runwayDays: snap.burnRunwayDays,
+                        totalBalance: snap.totalBalance,
+                        spentThisMonth: snap.spentThisMonth,
+                      ),
+                      const SizedBox(height: _sectionGap),
+                      _SectionTitle(theme: theme, title: 'Statement by month'),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap a month for transactions',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          letterSpacing: 0.8,
+                          color: cs.onSurface.withValues(alpha: 0.4),
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(height: _sectionGap),
-                        _SectionTitle(
-                          theme: theme,
-                          title: 'Budget performance',
-                        ),
-                        const SizedBox(height: 16),
-                        _BudgetPerformanceCard(performance: budgetPerformance),
-                        const SizedBox(height: _sectionGap),
-                        _SectionTitle(
-                          theme: theme,
-                          title: 'Biggest leaks this month',
-                        ),
-                        const SizedBox(height: 16),
-                        _BiggestLeaksCard(leaks: snap.biggestLeaksThisMonth),
-                        const SizedBox(height: _sectionGap),
-                        _BurnRateCard(
-                          runwayDays: snap.burnRunwayDays,
-                          totalBalance: snap.totalBalance,
-                          spentThisMonth: snap.spentThisMonth,
-                        ),
-                        const SizedBox(height: _sectionGap),
-                        _SectionTitle(theme: theme, title: 'Statement by month'),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tap a month for transactions',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            letterSpacing: 0.8,
-                            color: cs.onSurface.withValues(alpha: 0.4),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        _MonthlyGroupsList(
-                          groups: snap.monthlyGroups,
-                          appState: appState,
-                        ),
-                      ]),
-                    ),
+                      ),
+                      const SizedBox(height: 16),
+                      _MonthlyGroupsList(
+                        groups: snap.monthlyGroups,
+                        appState: appState,
+                      ),
+                    ]),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
+          ),
         );
 
         return Scaffold(
@@ -524,8 +524,8 @@ class _LeakRow extends StatelessWidget {
     final trendColor = goodTrend
         ? const Color(0xFF1B7A4C)
         : badTrend
-            ? const Color(0xFFC41E3A)
-            : cs.onSurface.withValues(alpha: 0.4);
+        ? const Color(0xFFC41E3A)
+        : cs.onSurface.withValues(alpha: 0.4);
 
     Widget trendWidget;
     if (pct == null && stat.amountLastMonth <= 0 && stat.amountThisMonth > 0) {
@@ -550,7 +550,9 @@ class _LeakRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            pct >= 0 ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+            pct >= 0
+                ? Icons.arrow_upward_rounded
+                : Icons.arrow_downward_rounded,
             size: 18,
             color: trendColor,
           ),
@@ -722,8 +724,8 @@ class _MonthCard extends StatelessWidget {
     final totalColor = group.totalAmount < 0
         ? const Color(0xFFC41E3A)
         : group.totalAmount > 0
-            ? const Color(0xFF1B7A4C)
-            : cs.onSurface;
+        ? const Color(0xFF1B7A4C)
+        : cs.onSurface;
 
     return Material(
       color: cs.surface,
@@ -733,10 +735,8 @@ class _MonthCard extends StatelessWidget {
         onTap: () {
           Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
-              builder: (context) => MonthDetailScreen(
-                appState: appState,
-                group: group,
-              ),
+              builder: (context) =>
+                  MonthDetailScreen(appState: appState, group: group),
             ),
           );
         },
@@ -913,4 +913,3 @@ class _ResponsiveMetricCard extends StatelessWidget {
     );
   }
 }
-

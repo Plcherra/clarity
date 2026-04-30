@@ -16,13 +16,11 @@ void main() {
       );
       final state = AppState();
       state.accounts = [
-        const Account(
-          id: 'a',
-          name: 'A',
-          type: AccountType.checking,
-        ),
+        const Account(id: 'a', name: 'A', type: AccountType.checking),
       ];
-      state.transactionsByAccount = {'a': [t1]};
+      state.transactionsByAccount = {
+        'a': [t1],
+      };
       const scope = GlobalDashboardScope();
       final ref = DateTime(2026, 4, 15);
       final snap = buildDashboardSnapshot(
@@ -35,7 +33,12 @@ void main() {
         categoryDisplayRenamesLower: state.categoryDisplayRenames,
         scopedBalanceFromStatement: null,
       );
-      final fromQueries = monthlyGroupsForDashboardScope(state, scope);
+      final fromQueries = monthlyGroupsForDashboardScope(
+        scope,
+        scopedTransactions: state.transactionsForDashboardScope(scope),
+        categoryOverrides: state.categoryOverrides,
+        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+      );
       expect(fromQueries.length, snap.monthlyGroups.length);
       for (var i = 0; i < fromQueries.length; i++) {
         expect(fromQueries[i].yearMonth, snap.monthlyGroups[i].yearMonth);
@@ -54,13 +57,11 @@ void main() {
         accountId: 'b',
       );
       final state = AppState();
-      state.transactionsByAccount = {'b': [obscure]};
+      state.transactionsByAccount = {
+        'b': [obscure],
+      };
       state.accounts = [
-        const Account(
-          id: 'b',
-          name: 'B',
-          type: AccountType.checking,
-        ),
+        const Account(id: 'b', name: 'B', type: AccountType.checking),
       ];
       const scope = GlobalDashboardScope();
       final snap = buildDashboardSnapshot(
@@ -74,11 +75,21 @@ void main() {
         scopedBalanceFromStatement: null,
       );
       expect(
-        uncategorizedCountForDashboardScope(state, scope),
+        uncategorizedCountForDashboardScope(
+          scope,
+          scopedTransactions: state.transactionsForDashboardScope(scope),
+          categoryOverrides: state.categoryOverrides,
+          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        ),
         snap.uncategorizedCount,
       );
       expect(
-        uncategorizedTransactionsForDashboardScope(state, scope).length,
+        uncategorizedTransactionsForDashboardScope(
+          scope,
+          scopedTransactions: state.transactionsForDashboardScope(scope),
+          categoryOverrides: state.categoryOverrides,
+          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        ).length,
         snap.uncategorizedCount,
       );
     });
@@ -91,7 +102,9 @@ void main() {
         accountId: 'b',
       );
       final state = AppState();
-      state.transactionsByAccount = {'b': [tx]};
+      state.transactionsByAccount = {
+        'b': [tx],
+      };
       state.accounts = [
         const Account(id: 'b', name: 'B', type: AccountType.checking),
       ];
@@ -110,8 +123,24 @@ void main() {
         scopedBalanceFromStatement: null,
       );
 
-      expect(uncategorizedCountForDashboardScope(state, scope), 0);
-      expect(uncategorizedTransactionsForDashboardScope(state, scope), isEmpty);
+      expect(
+        uncategorizedCountForDashboardScope(
+          scope,
+          scopedTransactions: state.transactionsForDashboardScope(scope),
+          categoryOverrides: state.categoryOverrides,
+          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        ),
+        0,
+      );
+      expect(
+        uncategorizedTransactionsForDashboardScope(
+          scope,
+          scopedTransactions: state.transactionsForDashboardScope(scope),
+          categoryOverrides: state.categoryOverrides,
+          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        ),
+        isEmpty,
+      );
       expect(snap.uncategorizedCount, 0);
     });
 

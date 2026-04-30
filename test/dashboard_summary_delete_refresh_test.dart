@@ -2,7 +2,7 @@ import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/formatting/formatting.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
-import 'package:clarity/screens/dashboard_screen.dart';
+import 'package:clarity/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';

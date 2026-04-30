@@ -1,4 +1,4 @@
-import '../../../app/app_state.dart';
+import '../../../core/models/models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import 'dashboard_snapshot.dart';
 
@@ -7,45 +7,59 @@ import 'dashboard_snapshot.dart';
 /// See [docs/app_logic_contract.md](../docs/app_logic_contract.md).
 
 /// Month groups for [scope], newest first — same rows as [DashboardSnapshot.monthlyGroups]
-/// when [buildDashboardSnapshot] uses `scopedTransactions: appState.transactionsForDashboardScope(scope)`.
+/// when [buildDashboardSnapshot] uses the same [scopedTransactions].
 List<MonthlyBankGroup> monthlyGroupsForDashboardScope(
-  AppState appState,
-  DashboardScope scope,
-) {
-  final scoped = appState.transactionsForDashboardScope(scope);
+  DashboardScope scope, {
+  required List<Transaction> scopedTransactions,
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) {
   return monthlyBankGroupsNewestFirstForScopedTransactions(
-    scoped,
-    categoryOverrides: appState.categoryOverrides,
-    categoryDisplayRenamesLower: appState.categoryDisplayRenames,
+    scopedTransactions,
+    categoryOverrides: categoryOverrides,
+    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
   );
 }
 
 /// Single source for the red “needs attention” banner, review screen queue, and any row count.
 ///
 /// Same rows as [uncategorizedBankStatementLines] on
-/// [AppState.transactionsForDashboardScope] — banner count must be `.length` only.
+/// the scoped dashboard transactions — banner count must be `.length` only.
 List<BankStatementLine> uncategorizedTransactionsForDashboardScope(
-  AppState appState,
-  DashboardScope scope,
-) {
+  DashboardScope scope, {
+  required List<Transaction> scopedTransactions,
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) {
   return uncategorizedBankStatementLines(
-    appState.transactionsForDashboardScope(scope),
-    categoryOverrides: appState.categoryOverrides,
-    categoryDisplayRenamesLower: appState.categoryDisplayRenames,
+    scopedTransactions,
+    categoryOverrides: categoryOverrides,
+    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
   );
 }
 
 /// Same as [uncategorizedTransactionsForDashboardScope] (…).length — avoids a second definition.
 int uncategorizedCountForDashboardScope(
-  AppState appState,
-  DashboardScope scope,
-) =>
-    uncategorizedTransactionsForDashboardScope(appState, scope).length;
+  DashboardScope scope, {
+  required List<Transaction> scopedTransactions,
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) => uncategorizedTransactionsForDashboardScope(
+  scope,
+  scopedTransactions: scopedTransactions,
+  categoryOverrides: categoryOverrides,
+  categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+).length;
 
 /// Prefer [uncategorizedTransactionsForDashboardScope].
 List<BankStatementLine> uncategorizedBankStatementLinesForDashboardScope(
-  AppState appState,
-  DashboardScope scope,
-) =>
-    uncategorizedTransactionsForDashboardScope(appState, scope);
-
+  DashboardScope scope, {
+  required List<Transaction> scopedTransactions,
+  required Map<String, String> categoryOverrides,
+  required Map<String, String> categoryDisplayRenamesLower,
+}) => uncategorizedTransactionsForDashboardScope(
+  scope,
+  scopedTransactions: scopedTransactions,
+  categoryOverrides: categoryOverrides,
+  categoryDisplayRenamesLower: categoryDisplayRenamesLower,
+);

@@ -1,7 +1,7 @@
 import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
-import 'package:clarity/screens/dashboard_screen.dart';
+import 'package:clarity/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -67,7 +67,7 @@ void main() {
     };
     state.activeAccountId = 'a';
     final month = state.activeBudgetYearMonth;
-    state.budgets.categoryMonthlyBudgetsByYearMonth = {
+    state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,
