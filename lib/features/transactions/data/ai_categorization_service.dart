@@ -4,9 +4,9 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
-import 'core/constants/constants.dart';
-import 'core/models/models.dart';
-import 'spend_categories.dart';
+import '../../../core/constants/constants.dart';
+import '../../../core/models/models.dart';
+import '../domain/spend_categories.dart';
 
 const String _openAiChatCompletionsUrl =
     'https://api.openai.com/v1/chat/completions';

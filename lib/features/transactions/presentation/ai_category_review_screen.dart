@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../../ai_categorization_service.dart';
-import '../../../app_state.dart';
+import '../data/ai_categorization_service.dart';
+import '../../../app/app_state.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';

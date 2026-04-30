@@ -1,4 +1,4 @@
-import 'package:clarity/ai_categorization_service.dart';
+import 'package:clarity/features/transactions/data/ai_categorization_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

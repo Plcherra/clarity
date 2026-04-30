@@ -1,4 +1,4 @@
-import 'package:clarity/bank_statement_monthly.dart';
+import 'package:clarity/features/transactions/domain/bank_statement_monthly.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

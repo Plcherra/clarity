@@ -1,8 +1,8 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/dashboard_queries.dart';
-import 'package:clarity/dashboard_snapshot.dart';
-import 'package:clarity/models.dart';
-import 'package:clarity/spend_categories.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_queries.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
+import 'package:clarity/features/transactions/domain/spend_categories.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

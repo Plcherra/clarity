@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import 'import_ai_progress_banner.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../budgets/presentation/budgets_screen.dart';

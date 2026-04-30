@@ -1,5 +1,5 @@
 import '../../../core/models/models.dart';
-import '../../../csv_parser.dart';
+import '../data/csv_parser.dart';
 import 'spend_categories.dart';
 import 'transaction_resolution.dart';
 

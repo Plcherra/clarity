@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:clarity/app_state.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Imports the real bank CSV from Downloads (same path used for local debugging).

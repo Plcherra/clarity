@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/storage/budgets/budget_keys.dart';
-import '../../../dashboard_snapshot.dart';
+import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../transactions/domain/spend_categories.dart';
 
 class BudgetCategoryRow {

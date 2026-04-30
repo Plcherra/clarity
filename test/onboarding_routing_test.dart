@@ -1,5 +1,5 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/profile_storage.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/storage/profile/profile_storage.dart';
 import 'package:clarity/screens/home_shell.dart';
 import 'package:clarity/screens/onboarding_screen.dart';
 import 'package:flutter/material.dart';

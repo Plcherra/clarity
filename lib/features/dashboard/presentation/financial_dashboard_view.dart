@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../domain/dashboard_queries.dart';
 import '../domain/dashboard_snapshot.dart';

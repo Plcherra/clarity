@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/models/models.dart';
 import 'account_detail_screen.dart';
 

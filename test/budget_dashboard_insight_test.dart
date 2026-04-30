@@ -1,6 +1,6 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/budget_keys.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/models/models.dart';
+import 'package:clarity/core/storage/budgets/budget_keys.dart';
 import 'package:clarity/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

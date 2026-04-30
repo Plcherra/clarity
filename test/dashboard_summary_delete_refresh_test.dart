@@ -1,7 +1,7 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/dashboard_snapshot.dart';
-import 'package:clarity/formatting.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/formatting/formatting.dart';
+import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:clarity/screens/dashboard_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

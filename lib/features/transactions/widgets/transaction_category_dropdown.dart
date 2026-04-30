@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 // (rules disabled) keep normalization helpers local to rule subsystem only.
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';

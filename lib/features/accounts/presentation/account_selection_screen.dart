@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/models/models.dart';
 import '../../shell/presentation/home_shell.dart';
 

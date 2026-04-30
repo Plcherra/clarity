@@ -1,5 +1,5 @@
-import 'package:clarity/dashboard_snapshot.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

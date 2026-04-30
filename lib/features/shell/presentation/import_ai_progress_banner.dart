@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 
 /// Top banner: `Categorizing transactions… X of Y (Z%)`.
 class ImportAiProgressBanner extends StatelessWidget {

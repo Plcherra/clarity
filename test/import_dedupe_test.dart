@@ -1,5 +1,5 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

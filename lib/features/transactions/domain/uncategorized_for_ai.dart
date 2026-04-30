@@ -1,5 +1,5 @@
+import '../../../core/models/models.dart';
 import 'bank_statement_monthly.dart';
-import 'core/models/models.dart';
 import 'transaction_resolution.dart';
 
 /// Statement rows that still resolve to Uncategorized (after rules/heuristics), for AI flows.

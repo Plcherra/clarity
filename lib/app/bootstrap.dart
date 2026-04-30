@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import '../app_state.dart';
+import 'app_state.dart';
 import '../core/storage/migrations/rules_wipe_migration.dart';
 import 'app.dart';
 

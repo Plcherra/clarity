@@ -1,4 +1,4 @@
-import 'core/models/models.dart';
+import '../../../core/models/models.dart';
 
 /// Stable identity key for dedupe within the same account.
 ///

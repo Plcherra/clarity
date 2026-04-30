@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/models/models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../../../core/formatting/formatting.dart';

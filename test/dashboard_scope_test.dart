@@ -1,8 +1,8 @@
-import 'package:clarity/app_state.dart';
-import 'package:clarity/bank_statement_monthly.dart';
-import 'package:clarity/dashboard_metrics.dart';
-import 'package:clarity/dashboard_snapshot.dart';
-import 'package:clarity/models.dart';
+import 'package:clarity/app/app_state.dart';
+import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_metrics.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
+import 'package:clarity/features/transactions/domain/bank_statement_monthly.dart';
 import 'package:clarity/screens/month_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

@@ -1,4 +1,4 @@
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import 'dashboard_snapshot.dart';
 

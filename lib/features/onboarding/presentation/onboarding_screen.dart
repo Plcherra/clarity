@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/storage/profile/profile_storage.dart';
 import '../../shell/presentation/home_shell.dart';
 

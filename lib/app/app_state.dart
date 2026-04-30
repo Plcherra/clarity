@@ -2,28 +2,29 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import 'constants.dart';
-import 'core/storage/accounts/account_storage.dart';
-import 'balance_resolve.dart';
-import 'bank_statement_monthly.dart';
-import 'core/storage/budgets/budget_keys.dart';
-import 'core/storage/budgets/budget_storage.dart';
-import 'core/storage/categories/category_catalog_storage.dart';
-import 'csv_parser.dart';
-import 'dashboard_metrics.dart';
-import 'dashboard_snapshot.dart';
-import 'formatting.dart';
-import 'core/models/models.dart';
-import 'core/storage/profile/profile_storage.dart';
-import 'spend_categories.dart';
-import 'core/storage/transactions/transaction_category_storage.dart';
-import 'core/storage/transactions/merchant_category_memory_storage.dart';
-import 'transaction_fingerprint.dart';
-import 'transaction_resolution.dart' as transaction_resolution;
-import 'core/storage/transactions/transaction_storage.dart';
-import 'uncategorized_for_ai.dart';
-import 'core/storage/ai/ai_suggestion_storage.dart';
-import 'ai_categorization_service.dart';
+import '../core/constants/constants.dart';
+import '../core/storage/accounts/account_storage.dart';
+import '../features/dashboard/domain/balance_resolve.dart';
+import '../features/transactions/domain/bank_statement_monthly.dart';
+import '../core/storage/budgets/budget_keys.dart';
+import '../core/storage/budgets/budget_storage.dart';
+import '../core/storage/categories/category_catalog_storage.dart';
+import '../features/transactions/data/csv_parser.dart';
+import '../features/dashboard/domain/dashboard_metrics.dart';
+import '../features/dashboard/domain/dashboard_snapshot.dart';
+import '../core/formatting/formatting.dart';
+import '../core/models/models.dart';
+import '../core/storage/profile/profile_storage.dart';
+import '../features/transactions/domain/spend_categories.dart';
+import '../core/storage/transactions/transaction_category_storage.dart';
+import '../core/storage/transactions/merchant_category_memory_storage.dart';
+import '../features/transactions/domain/transaction_fingerprint.dart';
+import '../features/transactions/domain/transaction_resolution.dart'
+    as transaction_resolution;
+import '../core/storage/transactions/transaction_storage.dart';
+import '../features/transactions/domain/uncategorized_for_ai.dart';
+import '../core/storage/ai/ai_suggestion_storage.dart';
+import '../features/transactions/data/ai_categorization_service.dart';
 
 class CsvImportBatchSummary {
   const CsvImportBatchSummary({

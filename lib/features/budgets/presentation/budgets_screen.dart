@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/formatting/formatting.dart';
 import 'budget_category_list.dart';
 import 'budgets_header.dart';
@@ -16,6 +16,8 @@ class BudgetsScreen extends StatefulWidget {
   @override
   State<BudgetsScreen> createState() => _BudgetsScreenState();
 }
+
+enum _PeriodSwitchChoice { save, discard, cancel }
 
 class _BudgetsScreenState extends State<BudgetsScreen> {
   final Map<String, TextEditingController> _controllers = {};
@@ -80,7 +82,54 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     widget.appState.setActiveBudgetPeriod(type: type, key: key);
   }
 
-  void _onPeriodTypeChanged(BudgetPeriodType type) {
+  Future<bool> _confirmPeriodSwitchIfNeeded() async {
+    if (!_viewModel.hasUnsavedChanges.value) return true;
+
+    final choice = await showDialog<_PeriodSwitchChoice>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Save changes before switching period?'),
+          content: const Text(
+            'You have unsaved budget changes for this period.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_PeriodSwitchChoice.cancel),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_PeriodSwitchChoice.discard),
+              child: const Text('Discard'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.of(context).pop(_PeriodSwitchChoice.save),
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) return false;
+
+    switch (choice) {
+      case _PeriodSwitchChoice.save:
+        return _save(_viewModel.sortedRows());
+      case _PeriodSwitchChoice.discard:
+        _viewModel.clearUnsavedChanges();
+        return true;
+      case _PeriodSwitchChoice.cancel:
+      case null:
+        return false;
+    }
+  }
+
+  Future<void> _onPeriodTypeChanged(BudgetPeriodType type) async {
+    if (!await _confirmPeriodSwitchIfNeeded()) return;
+
     final change = _viewModel.resolvePeriodTypeChange(
       nextType: type,
       currentPeriodKey: _selectedPeriodKey,
@@ -93,7 +142,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       _customStart = change.customStart;
       _customEnd = change.customEnd;
     });
-    _viewModel.clearUnsavedChanges();
     _activatePeriod(type, change.periodKey);
   }
 
@@ -103,8 +151,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       initialKey: _selectedPeriodKey,
     );
     if (!mounted || picked == null) return;
+    if (!await _confirmPeriodSwitchIfNeeded()) return;
+
     setState(() => _selectedPeriodKey = picked);
-    _viewModel.clearUnsavedChanges();
     _activatePeriod(BudgetPeriodType.monthly, picked);
   }
 
@@ -115,10 +164,11 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       context: context,
       initialDate: initial,
     );
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
+    if (!await _confirmPeriodSwitchIfNeeded()) return;
+
     final key = widget.appState.budgetWeekStartKey(picked);
     setState(() => _selectedPeriodKey = key);
-    _viewModel.clearUnsavedChanges();
     _activatePeriod(BudgetPeriodType.weekly, key);
   }
 
@@ -132,7 +182,9 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       context: context,
       initialDate: initial,
     );
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
+    if (!await _confirmPeriodSwitchIfNeeded()) return;
+
     setState(() {
       if (start) {
         _customStart = DateTime(picked.year, picked.month, picked.day);
@@ -147,25 +199,24 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       }
     });
     if (_customStart != null && _customEnd != null) {
-      _viewModel.clearUnsavedChanges();
       _activatePeriod(BudgetPeriodType.custom, _selectedPeriodKey);
     }
   }
 
-  Future<void> _save(List<BudgetCategoryRow> rows) async {
-    if (_selectedPeriodKey.trim().isEmpty) return;
+  Future<bool> _save(List<BudgetCategoryRow> rows) async {
+    if (_selectedPeriodKey.trim().isEmpty) return false;
     final draft = _viewModel.buildDraft(rows: rows, controllers: _controllers);
     final ok = await widget.appState.commitBudgetDraft(
       _selectedType,
       _selectedPeriodKey,
       draft,
     );
-    if (!mounted) return;
+    if (!mounted) return false;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Could not save budgets. Try again.')),
       );
-      return;
+      return false;
     }
     _viewModel.clearUnsavedChanges();
     ScaffoldMessenger.of(context).showSnackBar(
@@ -175,6 +226,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         ),
       ),
     );
+    return true;
   }
 
   @override
@@ -251,7 +303,11 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
                   return IconButton(
                     tooltip: 'Save changes',
                     visualDensity: VisualDensity.compact,
-                    onPressed: canSave ? () => _save(rows) : null,
+                    onPressed: canSave
+                        ? () async {
+                            await _save(rows);
+                          }
+                        : null,
                     icon: Icon(
                       Icons.check_rounded,
                       size: 22,

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../app_state.dart';
+import '../../../app/app_state.dart';
 import '../../../core/io/file_reader.dart';
 import '../../../core/models/models.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';

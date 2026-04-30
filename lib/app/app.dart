@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../app_state.dart';
+import 'app_state.dart';
 import '../features/shell/presentation/home_shell.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 
