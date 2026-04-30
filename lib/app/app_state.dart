@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/constants.dart';
-import '../core/storage/accounts/account_storage.dart';
 import '../features/transactions/domain/bank_statement_monthly.dart';
 import '../core/storage/categories/category_catalog_storage.dart';
 import '../features/transactions/data/csv_parser.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/dashboard/application/dashboard_service.dart';
+import '../features/accounts/application/account_service.dart';
 import '../core/models/models.dart';
 import '../core/storage/profile/profile_storage.dart';
 import '../features/transactions/domain/spend_categories.dart';
@@ -43,13 +43,23 @@ class AppState extends ChangeNotifier {
   final CsvImportService csvImportService = CsvImportService();
   final CategoryService categoryService = CategoryService();
   final MerchantService merchantService = MerchantService();
+  final AccountService accountService = AccountService();
   final app_ai.AiCategorizationApplicationService aiCategorizationService =
       app_ai.AiCategorizationApplicationService();
 
   final DashboardService _dashboard = DashboardService();
 
   /// The account currently being viewed/reviewed in UI flows.
-  String? activeAccountId;
+  String? get activeAccountId => accountService.activeAccountId;
+  set activeAccountId(String? value) {
+    accountService.activeAccountId = value;
+  }
+
+  /// User-defined bank / card accounts (persisted separately from CSV rows).
+  List<Account> get accounts => accountService.accounts;
+  set accounts(List<Account> value) {
+    accountService.accounts = value;
+  }
 
   Map<String, List<Transaction>> get transactionsByAccount =>
       transactionRepository.transactionsByAccount;
@@ -164,9 +174,6 @@ class AppState extends ChangeNotifier {
 
   // Rules feature removed: no persisted categorization rules.
 
-  /// User-defined bank / card accounts (persisted separately from CSV rows).
-  List<Account> accounts = const [];
-
   /// Reference month for "spent this month" / top categories (set in [loadFromCsv]).
   DateTime _spendReference = DateTime.now();
 
@@ -202,11 +209,7 @@ class AppState extends ChangeNotifier {
 
   /// Loads persisted accounts from disk (call once before [runApp]).
   Future<void> hydratePersistedAccounts() async {
-    try {
-      accounts = await loadAccounts();
-    } on Object {
-      accounts = const [];
-    }
+    await accountService.hydratePersistedAccounts();
     notifyListeners();
   }
 
@@ -406,47 +409,21 @@ class AppState extends ChangeNotifier {
 
   /// Appends [account], persists, and notifies. Returns false if save fails.
   Future<bool> addAccount(Account account) async {
-    final next = [...accounts, account];
-    try {
-      await saveAccounts(next);
-    } on Object {
-      return false;
-    }
-    accounts = next;
-    notifyListeners();
-    return true;
+    final ok = await accountService.addAccount(account);
+    if (ok) notifyListeners();
+    return ok;
   }
 
   /// Deletes one account and all its transactions + related keyed metadata.
   Future<bool> deleteAccount(String accountId) async {
-    final id = accountId.trim();
-    if (id.isEmpty) return false;
-    if (!accounts.any((a) => a.id == id)) return false;
+    final applied = await accountService.deleteAccount(
+      accountId: accountId,
+      transactionsByAccount: transactionsByAccount,
+    );
+    if (applied == null) return false;
 
-    final removedTransactions =
-        transactionsByAccount[id] ?? const <Transaction>[];
-    final removedKeys = removedTransactions.map(transactionCategoryKey).toSet();
-
-    final nextAccounts = accounts.where((a) => a.id != id).toList();
-    final nextByAccount = <String, List<Transaction>>{
-      for (final e in transactionsByAccount.entries)
-        if (e.key != id) e.key: List.unmodifiable(e.value),
-    };
-
-    try {
-      await saveAccounts(nextAccounts);
-      await saveTransactionsByAccount(nextByAccount);
-    } on Object {
-      return false;
-    }
-
-    accounts = nextAccounts;
-    transactionsByAccount = nextByAccount;
-    _removeTransactionMetadataForKeys(removedKeys);
-
-    if (activeAccountId == id) {
-      activeAccountId = null;
-    }
+    transactionsByAccount = applied.transactionsByAccount;
+    _removeTransactionMetadataForKeys(applied.removedKeys);
 
     _persistTransactionCategoryAssignments();
     _persistAiCategorySuggestions().catchError((_) {});
