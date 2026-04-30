@@ -4,26 +4,23 @@ import 'package:flutter/foundation.dart';
 
 import '../core/constants/constants.dart';
 import '../features/transactions/domain/bank_statement_monthly.dart';
-import '../core/storage/categories/category_catalog_storage.dart';
 import '../features/transactions/data/csv_parser.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/accounts/application/account_service.dart';
 import '../core/models/models.dart';
 import '../core/storage/profile/profile_storage.dart';
-import '../features/transactions/domain/spend_categories.dart';
-import '../core/storage/transactions/transaction_category_storage.dart';
 import '../features/transactions/domain/transaction_resolution.dart'
     as transaction_resolution;
-import '../core/storage/transactions/transaction_storage.dart';
-import '../core/storage/ai/ai_suggestion_storage.dart';
 import '../features/transactions/data/ai_categorization_service.dart';
 import '../features/transactions/data/csv_import_service.dart';
 import '../features/transactions/data/transaction_repository.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
+import '../features/categories/application/category_catalog_service.dart';
 import '../features/transactions/application/category_service.dart';
 import '../features/transactions/application/merchant_service.dart';
+import '../features/transactions/application/transaction_service.dart';
 import '../features/budgets/data/budget_repository.dart';
 import '../features/budgets/domain/budget_models.dart';
 
@@ -39,9 +36,10 @@ class AppState extends ChangeNotifier {
   /// Persisted budgets and active budget period (monthly / weekly / custom).
   final BudgetRepository budgets = BudgetRepository();
 
-  final TransactionRepository transactionRepository = TransactionRepository();
-  final CsvImportService csvImportService = CsvImportService();
+  final TransactionService transactionService = TransactionService();
   final CategoryService categoryService = CategoryService();
+  final CategoryCatalogService categoryCatalogService =
+      CategoryCatalogService();
   final MerchantService merchantService = MerchantService();
   final AccountService accountService = AccountService();
   final app_ai.AiCategorizationApplicationService aiCategorizationService =
@@ -61,17 +59,25 @@ class AppState extends ChangeNotifier {
     accountService.accounts = value;
   }
 
+  TransactionRepository get transactionRepository =>
+      transactionService.transactionRepository;
+
+  CsvImportService get csvImportService => transactionService.csvImportService;
+
   Map<String, List<Transaction>> get transactionsByAccount =>
-      transactionRepository.transactionsByAccount;
+      transactionService.transactionsByAccount;
   set transactionsByAccount(Map<String, List<Transaction>> value) {
-    transactionRepository.transactionsByAccount = value;
+    transactionService.transactionsByAccount = value;
   }
 
   /// Convenience: flattened across accounts, used for global dashboard metrics.
-  List<Transaction> get allTransactions =>
-      transactionRepository.allTransactions;
+  List<Transaction> get allTransactions => transactionService.allTransactions;
 
-  List<Transaction> transactions = const [];
+  List<Transaction> get transactions => transactionService.transactions;
+  set transactions(List<Transaction> value) {
+    transactionService.transactions = value;
+  }
+
   double totalBalance = 0;
   double spentThisMonth = 0;
   double incomeThisMonth = 0;
@@ -94,9 +100,17 @@ class AppState extends ChangeNotifier {
   }
 
   /// Persisted manual categories by [transactionCategoryKey]; survives restarts and re-import.
-  Map<String, String> transactionCategoryAssignments = const {};
+  Map<String, String> get transactionCategoryAssignments =>
+      transactionService.transactionCategoryAssignments;
+  set transactionCategoryAssignments(Map<String, String> value) {
+    transactionService.transactionCategoryAssignments = value;
+  }
 
-  Map<String, AiCategorySuggestion> aiCategorySuggestions = const {};
+  Map<String, AiCategorySuggestion> get aiCategorySuggestions =>
+      transactionService.aiCategorySuggestions;
+  set aiCategorySuggestions(Map<String, AiCategorySuggestion> value) {
+    transactionService.aiCategorySuggestions = value;
+  }
 
   Map<String, String> get merchantCategoryMemory =>
       merchantService.merchantCategoryMemory;
@@ -162,15 +176,26 @@ class AppState extends ChangeNotifier {
   }
 
   /// User-created category names (shown in the assignment sheet alongside built-ins).
-  List<String> customCategories = const [];
+  List<String> get customCategories => categoryCatalogService.customCategories;
+  set customCategories(List<String> value) {
+    categoryCatalogService.customCategories = value;
+  }
 
   /// Lowercase base label -> user display name (renamed built-ins / display tweaks).
   /// Not cleared by [loadFromCsv] (persisted with the category catalog).
-  Map<String, String> categoryDisplayRenames = const {};
+  Map<String, String> get categoryDisplayRenames =>
+      categoryCatalogService.categoryDisplayRenames;
+  set categoryDisplayRenames(Map<String, String> value) {
+    categoryCatalogService.categoryDisplayRenames = value;
+  }
 
   /// Lowercase canonical labels removed from the picker (deleted built-ins).
   /// Not cleared by [loadFromCsv] (persisted with the category catalog).
-  Set<String> categoriesHiddenFromPicker = {};
+  Set<String> get categoriesHiddenFromPicker =>
+      categoryCatalogService.categoriesHiddenFromPicker;
+  set categoriesHiddenFromPicker(Set<String> value) {
+    categoryCatalogService.categoriesHiddenFromPicker = value;
+  }
 
   // Rules feature removed: no persisted categorization rules.
 
@@ -190,20 +215,7 @@ class AppState extends ChangeNotifier {
 
   /// Loads custom category names and picker metadata from disk (call once before [runApp]).
   Future<void> hydratePersistedCategoryCatalog() async {
-    try {
-      final snap = await loadCategoryCatalog();
-      customCategories = List<String>.from(snap.customCategories);
-      categoryDisplayRenames = Map<String, String>.from(
-        snap.categoryDisplayRenames,
-      );
-      categoriesHiddenFromPicker = Set<String>.from(
-        snap.categoriesHiddenFromPicker,
-      );
-    } on Object {
-      customCategories = const [];
-      categoryDisplayRenames = const {};
-      categoriesHiddenFromPicker = {};
-    }
+    await categoryCatalogService.hydratePersistedCategoryCatalog();
     notifyListeners();
   }
 
@@ -215,7 +227,7 @@ class AppState extends ChangeNotifier {
 
   /// Loads persisted transactions across all accounts (call once before [runApp]).
   Future<void> hydratePersistedTransactions() async {
-    final result = await transactionRepository.hydratePersistedTransactions(
+    final result = await transactionService.hydratePersistedTransactions(
       activeAccountId: activeAccountId,
     );
     transactions = result.activeTransactions;
@@ -235,8 +247,9 @@ class AppState extends ChangeNotifier {
   /// - non-null running balance
   /// - earliest importId
   Future<void> dedupePersistedTransactionsIfNeeded() async {
-    final result = await transactionRepository
-        .dedupePersistedTransactionsIfNeeded(activeAccountId: activeAccountId);
+    final result = await transactionService.dedupePersistedTransactionsIfNeeded(
+      activeAccountId: activeAccountId,
+    );
     if (!result.changed) return;
 
     transactions = result.activeTransactions;
@@ -297,112 +310,21 @@ class AppState extends ChangeNotifier {
   }
 
   void _applyCategoryAssignments(Map<String, String> keyToCanonicalCategory) {
-    final normalized = <String, String>{};
-    for (final e in keyToCanonicalCategory.entries) {
-      final k = e.key.trim();
-      final v = e.value.trim();
-      if (k.isEmpty || v.isEmpty) continue;
-      normalized[k] = v;
-    }
-    if (normalized.isEmpty) return;
-
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryOverrides);
-    for (final e in normalized.entries) {
-      nextAssign[e.key] = e.value;
-      nextOv[e.key] = e.value;
-    }
-    transactionCategoryAssignments = nextAssign;
-    categoryOverrides = nextOv;
-
-    Transaction applyCategory(Transaction x) {
-      final k = transactionCategoryKey(x);
-      final cat = normalized[k];
-      if (cat == null) return x;
-      final c = cat.trim();
-      if (c.isEmpty) return x;
-      return Transaction(
-        date: x.date,
-        description: x.description,
-        amount: x.amount,
-        accountId: x.accountId,
-        category: x.category,
-        balanceAfter: x.balanceAfter,
-        categoryId: c,
-        importId: x.importId,
-        fingerprint: x.fingerprint,
-        financialRole: x.financialRole,
-      );
-    }
-
-    final nextByAccount = <String, List<Transaction>>{};
-    for (final e in transactionsByAccount.entries) {
-      nextByAccount[e.key] = List.unmodifiable(
-        e.value.map(applyCategory).toList(),
-      );
-    }
-    transactionsByAccount = nextByAccount;
-
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    _persistTransactionCategoryAssignments();
+    transactionService.applyCategoryAssignments(
+      keyToCanonicalCategory,
+      categoryService: categoryService,
+    );
     refreshAllState();
   }
 
   Future<int> undoCategoryApplyBatch(
     List<AiAppliedCategoryChange> batch,
   ) async {
-    if (batch.isEmpty) return 0;
-
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryOverrides);
-
-    var undone = 0;
-    for (final c in batch) {
-      final current = nextAssign[c.key]?.trim();
-      if (current == null || current.isEmpty) continue;
-      if (current != c.newCategoryId) continue;
-
-      if (c.previousCategoryId == null ||
-          c.previousCategoryId!.trim().isEmpty) {
-        nextAssign.remove(c.key);
-        nextOv.remove(c.key);
-      } else {
-        nextAssign[c.key] = c.previousCategoryId!.trim();
-        nextOv[c.key] = c.previousCategoryId!.trim();
-      }
-      undone += 1;
-    }
-
-    transactionCategoryAssignments = nextAssign;
-    categoryOverrides = nextOv;
-
-    Transaction applyCategory(Transaction x) {
-      final k = transactionCategoryKey(x);
-      final cat = nextAssign[k];
-      return Transaction(
-        date: x.date,
-        description: x.description,
-        amount: x.amount,
-        accountId: x.accountId,
-        category: x.category,
-        balanceAfter: x.balanceAfter,
-        categoryId: cat,
-        importId: x.importId,
-        fingerprint: x.fingerprint,
-        financialRole: x.financialRole,
-      );
-    }
-
-    final nextByAccount = <String, List<Transaction>>{};
-    for (final e in transactionsByAccount.entries) {
-      nextByAccount[e.key] = List.unmodifiable(
-        e.value.map(applyCategory).toList(),
-      );
-    }
-    transactionsByAccount = nextByAccount;
-
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    _persistTransactionCategoryAssignments();
+    final undone = await transactionService.undoCategoryApplyBatch(
+      batch,
+      categoryService: categoryService,
+    );
+    if (undone == 0) return 0;
     refreshAllState();
     return undone;
   }
@@ -424,7 +346,6 @@ class AppState extends ChangeNotifier {
 
     transactionsByAccount = applied.transactionsByAccount;
     _removeTransactionMetadataForKeys(applied.removedKeys);
-
     _persistTransactionCategoryAssignments();
     _persistAiCategorySuggestions().catchError((_) {});
     refreshAllState();
@@ -432,58 +353,33 @@ class AppState extends ChangeNotifier {
   }
 
   void _persistCategoryCatalog() {
-    saveCategoryCatalog(
-      customCategories: customCategories,
-      categoryDisplayRenames: categoryDisplayRenames,
-      categoriesHiddenFromPicker: categoriesHiddenFromPicker,
-    ).catchError((_) {});
+    categoryCatalogService.persistCategoryCatalog();
   }
 
   void _persistTransactionCategoryAssignments() {
-    saveTransactionCategoryAssignments(
-      transactionCategoryAssignments,
-    ).catchError((_) {});
+    transactionService.persistTransactionCategoryAssignments();
   }
 
   /// Loads persisted per-transaction category picks (call once before [runApp]).
   Future<void> hydrateTransactionCategoryAssignments() async {
-    try {
-      transactionCategoryAssignments =
-          await loadTransactionCategoryAssignments();
-    } on Object {
-      transactionCategoryAssignments = {};
-    }
+    await transactionService.hydrateTransactionCategoryAssignments();
     notifyListeners();
   }
 
   Future<void> hydrateAiCategorySuggestions() async {
-    try {
-      aiCategorySuggestions = await loadAiCategorySuggestions();
-    } on Object {
-      aiCategorySuggestions = {};
-    }
+    await transactionService.hydrateAiCategorySuggestions();
     notifyListeners();
   }
 
   Future<void> _persistAiCategorySuggestions() async {
-    await saveAiCategorySuggestions(aiCategorySuggestions);
+    await transactionService.persistAiCategorySuggestions();
   }
 
   void _removeTransactionMetadataForKeys(Set<String> keys) {
-    if (keys.isEmpty) return;
-
-    final nextAssignments = Map<String, String>.from(
-      transactionCategoryAssignments,
-    )..removeWhere((k, _) => keys.contains(k));
-    final nextOverrides = Map<String, String>.from(categoryOverrides)
-      ..removeWhere((k, _) => keys.contains(k));
-    final nextAiSuggestions = Map<String, AiCategorySuggestion>.from(
-      aiCategorySuggestions,
-    )..removeWhere((k, _) => keys.contains(k));
-
-    transactionCategoryAssignments = nextAssignments;
-    categoryOverrides = nextOverrides;
-    aiCategorySuggestions = nextAiSuggestions;
+    transactionService.removeTransactionMetadataForKeys(
+      keys,
+      categoryService: categoryService,
+    );
   }
 
   /// Single source of truth for app-wide recomputation after any data mutation.
@@ -491,12 +387,9 @@ class AppState extends ChangeNotifier {
   /// This keeps Dashboard (global + account), monthly breakdowns, and dependent
   /// views in sync without requiring route-level/manual refresh hooks.
   void refreshAllState() {
-    final active = activeAccountId;
-    final List<Transaction> activeTx = active == null
-        ? const <Transaction>[]
-        : List.unmodifiable(
-            transactionsByAccount[active] ?? const <Transaction>[],
-          );
+    final activeTx = transactionService.activeTransactionsForAccount(
+      activeAccountId,
+    );
     transactions = activeTx;
     _recomputeDerived(
       activeAccountTransactions: activeTx,
@@ -509,59 +402,48 @@ class AppState extends ChangeNotifier {
 
   /// Deletes a single transaction row and refreshes derived dashboard state.
   Future<bool> deleteTransaction(Transaction transaction) async {
-    final result = await transactionRepository.deleteTransaction(transaction);
+    final result = await transactionService.deleteTransaction(
+      transaction,
+      categoryService: categoryService,
+    );
     if (!result.success) return false;
-
-    _removeTransactionMetadataForKeys(result.removedKeys);
-    _persistTransactionCategoryAssignments();
-    _persistAiCategorySuggestions().catchError((_) {});
     refreshAllState();
     return true;
   }
 
   /// Deletes all transactions for one account and refreshes derived dashboard state.
   Future<int> clearTransactionsForAccount(String accountId) async {
-    final result = await transactionRepository.clearTransactionsForAccount(
+    final result = await transactionService.clearTransactionsForAccount(
       accountId,
+      categoryService: categoryService,
     );
     if (!result.success) return 0;
-
-    _removeTransactionMetadataForKeys(result.removedKeys);
-    _persistTransactionCategoryAssignments();
-    _persistAiCategorySuggestions().catchError((_) {});
     refreshAllState();
     return result.removedCount;
   }
 
   List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
-    return csvImportService.csvImportBatchesForAccount(
-      accountId,
-      transactionsByAccount: transactionsByAccount,
-    );
+    return transactionService.csvImportBatchesForAccount(accountId);
   }
 
   Future<int> deleteTransactionsForImportBatch({
     required String accountId,
     required String importId,
   }) async {
-    final result = await transactionRepository.deleteTransactionsForImportBatch(
+    final result = await transactionService.deleteTransactionsForImportBatch(
       accountId: accountId,
       importId: importId,
+      categoryService: categoryService,
     );
     if (!result.success) return 0;
-
-    _removeTransactionMetadataForKeys(result.removedKeys);
-    _persistTransactionCategoryAssignments();
-    _persistAiCategorySuggestions().catchError((_) {});
     refreshAllState();
     return result.removedCount;
   }
 
   List<Transaction> uncategorizedImportedRowsGlobal() {
-    return csvImportService.uncategorizedImportedRowsGlobal(
+    return transactionService.uncategorizedImportedRowsGlobal(
       accounts: accounts,
-      allTransactions: allTransactions,
-      categoryOverrides: categoryOverrides,
+      categoryService: categoryService,
       categoryDisplayRenames: categoryDisplayRenames,
     );
   }
@@ -593,12 +475,10 @@ class AppState extends ChangeNotifier {
     );
     if (result.undone == 0) return 0;
 
-    transactionCategoryAssignments = result.transactionCategoryAssignments;
-    categoryOverrides = result.categoryOverrides;
-    transactionsByAccount = result.transactionsByAccount;
-    transactions = result.activeTransactions;
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    _persistTransactionCategoryAssignments();
+    transactions = transactionService.applyAiAutoApplyUndoResult(
+      result,
+      categoryService: categoryService,
+    );
     _recomputeDerived(
       activeAccountTransactions: transactions,
       allTransactionsForMetrics: allTransactions,
@@ -612,32 +492,39 @@ class AppState extends ChangeNotifier {
 
   /// Single entry for effective spend grouping (saved categoryId → override map → rules → CSV / keywords).
   String effectiveSpendGroupLabel(Transaction t) {
-    return resolveTransaction(
+    return transactionService.effectiveSpendGroupLabel(
       t,
+      categoryService: categoryService,
+      categoryDisplayRenames: categoryDisplayRenames,
+      merchantCategoryMemory: merchantCategoryMemory,
+      accounts: accounts,
       allTransactionsContext: allTransactions,
-    ).canonicalCategory;
+    );
   }
 
   /// Display label after renames — use for UI and "is Uncategorized?" checks on this app’s state.
   String effectiveCategoryDisplayLabel(Transaction t) {
-    return resolveTransaction(
+    return transactionService.effectiveCategoryDisplayLabel(
       t,
+      categoryService: categoryService,
+      categoryDisplayRenames: categoryDisplayRenames,
+      merchantCategoryMemory: merchantCategoryMemory,
+      accounts: accounts,
       allTransactionsContext: allTransactions,
-    ).displayCategory;
+    );
   }
 
   transaction_resolution.ResolvedTransaction resolveTransaction(
     Transaction t, {
     required List<Transaction> allTransactionsContext,
   }) {
-    final accountsById = {for (final a in accounts) a.id: a};
-    return transaction_resolution.resolveTransaction(
-      t: t,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
+    return transactionService.resolveTransaction(
+      t,
+      categoryService: categoryService,
+      categoryDisplayRenames: categoryDisplayRenames,
       merchantCategoryMemory: merchantCategoryMemory,
-      accountsById: accountsById,
-      allTransactions: allTransactionsContext,
+      accounts: accounts,
+      allTransactionsContext: allTransactionsContext,
     );
   }
 
@@ -645,22 +532,19 @@ class AppState extends ChangeNotifier {
     List<Transaction> txs, {
     required List<Transaction> allTransactionsContext,
   }) {
-    final accountsById = {for (final a in accounts) a.id: a};
-    return transaction_resolution.resolveTransactions(
+    return transactionService.resolveTransactions(
       txs,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
+      categoryService: categoryService,
+      categoryDisplayRenames: categoryDisplayRenames,
       merchantCategoryMemory: merchantCategoryMemory,
-      accountsById: accountsById,
-      allTransactions: allTransactionsContext,
+      accounts: accounts,
+      allTransactionsContext: allTransactionsContext,
     );
   }
 
   /// Built-in + custom categories shown in pickers (for AI allow-lists and review UI).
-  List<String> get allowedCategoryPickerLabels => categoryPickerCanonicals(
-    customCategories: customCategories,
-    hiddenLower: categoriesHiddenFromPicker,
-  );
+  List<String> get allowedCategoryPickerLabels =>
+      categoryCatalogService.allowedCategoryPickerLabels;
 
   /// Rows for [buildDashboardSnapshot] / Overview vs account-scoped views.
   List<Transaction> transactionsForDashboardScope(DashboardScope scope) {
@@ -673,10 +557,9 @@ class AppState extends ChangeNotifier {
 
   /// Uncategorized statement rows for [accountId] using the same rules as the dashboard.
   List<Transaction> uncategorizedImportedRowsForAccount(String accountId) {
-    return csvImportService.uncategorizedImportedRowsForAccount(
+    return transactionService.uncategorizedImportedRowsForAccount(
       accountId,
-      transactionsByAccount: transactionsByAccount,
-      categoryOverrides: categoryOverrides,
+      categoryService: categoryService,
       categoryDisplayRenames: categoryDisplayRenames,
     );
   }
@@ -795,17 +678,15 @@ class AppState extends ChangeNotifier {
     required String accountId,
     DateTime? reference,
   }) {
-    final result = csvImportService.loadFromCsv(
+    final result = transactionService.loadFromCsv(
       utf8Text,
       accountId: accountId,
       reference: reference,
       accounts: accounts,
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      transactionRepository: transactionRepository,
+      categoryService: categoryService,
     );
     _spendReference = result.spendReference;
     activeAccountId = result.activeAccountId;
-    categoryOverrides = result.categoryOverrides;
     transactions = result.transactions;
     totalBalance = result.totalBalance;
     _recomputeDerived(
@@ -819,7 +700,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _persistActiveAccountTransactionsIfAny() {
-    transactionRepository.persistActiveAccountTransactionsIfAny(
+    transactionService.persistActiveAccountTransactionsIfAny(
       activeAccountId: activeAccountId,
       transactions: transactions,
     );
