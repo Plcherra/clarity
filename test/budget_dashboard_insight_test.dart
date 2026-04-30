@@ -67,7 +67,7 @@ void main() {
     };
     state.activeAccountId = 'a';
     final month = state.activeBudgetYearMonth;
-    state.categoryMonthlyBudgetsByYearMonth = {
+    state.budgets.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,

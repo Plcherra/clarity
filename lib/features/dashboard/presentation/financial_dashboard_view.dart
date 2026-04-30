@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/app_state.dart';
+import '../../budgets/application/budget_performance.dart';
+import '../../budgets/domain/budget_models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../domain/dashboard_queries.dart';
 import '../domain/dashboard_snapshot.dart';

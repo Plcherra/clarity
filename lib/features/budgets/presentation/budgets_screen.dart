@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/app_state.dart';
+import '../domain/budget_models.dart';
 import '../../../core/formatting/formatting.dart';
 import 'budget_category_list.dart';
 import 'budgets_header.dart';

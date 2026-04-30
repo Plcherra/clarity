@@ -5,6 +5,8 @@ import '../../../core/formatting/formatting.dart';
 import '../../../core/storage/budgets/budget_keys.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../transactions/domain/spend_categories.dart';
+import '../application/budget_performance.dart';
+import '../domain/budget_models.dart';
 
 class BudgetCategoryRow {
   const BudgetCategoryRow({
@@ -80,9 +82,9 @@ class BudgetsViewModel {
   ];
 
   BudgetPeriodType initialPeriodType() =>
-      appState.resolvedActiveBudgetPeriodType;
+      appState.budgets.resolvedActiveBudgetPeriodType;
 
-  String initialPeriodKey() => appState.resolvedActiveBudgetPeriodKey;
+  String initialPeriodKey() => appState.budgets.resolvedActiveBudgetPeriodKey;
 
   ({DateTime? start, DateTime? end}) initialCustomRange({
     required BudgetPeriodType periodType,
@@ -91,7 +93,7 @@ class BudgetsViewModel {
     if (periodType != BudgetPeriodType.custom || periodKey.trim().isEmpty) {
       return (start: null, end: null);
     }
-    final range = appState.budgetPeriodRangeFor(
+    final range = appState.budgets.budgetPeriodRangeFor(
       periodType: BudgetPeriodType.custom,
       periodKey: periodKey,
     );
@@ -123,9 +125,9 @@ class BudgetsViewModel {
 
   List<String> periodKeys(BudgetPeriodType type) {
     return switch (type) {
-      BudgetPeriodType.monthly => appState.budgetMonthsForPicker(),
-      BudgetPeriodType.weekly => appState.budgetWeeksForPicker(),
-      BudgetPeriodType.custom => appState.customBudgetKeysForPicker(),
+      BudgetPeriodType.monthly => appState.budgets.budgetMonthsForPicker(),
+      BudgetPeriodType.weekly => appState.budgets.budgetWeeksForPicker(),
+      BudgetPeriodType.custom => appState.budgets.customBudgetKeysForPicker(),
     };
   }
 
@@ -136,7 +138,7 @@ class BudgetsViewModel {
   }) {
     if (periodType == BudgetPeriodType.weekly) {
       if (selectedPeriodKey.trim().isNotEmpty) return selectedPeriodKey;
-      return appState.budgetWeekStartKey(DateTime.now());
+      return appState.budgets.budgetWeekStartKey(DateTime.now());
     }
     if (periodType == BudgetPeriodType.monthly) {
       if (selectedPeriodKey.trim().isNotEmpty) return selectedPeriodKey;
@@ -161,7 +163,7 @@ class BudgetsViewModel {
     if (periodType == BudgetPeriodType.monthly) {
       return formatYearMonthLabel(periodKey);
     }
-    return appState.budgetPeriodLabel(
+    return appState.budgets.budgetPeriodLabel(
       periodType: periodType,
       periodKey: periodKey,
     );
@@ -199,7 +201,7 @@ class BudgetsViewModel {
   }
 
   String weeklyRangeLabel(String key) {
-    final range = appState.budgetPeriodRangeFor(
+    final range = appState.budgets.budgetPeriodRangeFor(
       periodType: BudgetPeriodType.weekly,
       periodKey: key,
     );
@@ -223,12 +225,12 @@ class BudgetsViewModel {
 
     if (nextType == BudgetPeriodType.custom) {
       if (customStart != null && customEnd != null) {
-        nextKey = appState.ensureCustomBudgetPeriod(customStart, customEnd);
+        nextKey = appState.budgets.ensureCustomBudgetPeriod(customStart, customEnd);
       } else {
         final customKeys = periodKeys(BudgetPeriodType.custom);
         if (customKeys.isNotEmpty) {
           nextKey = customKeys.first;
-          final range = appState.budgetPeriodRangeFor(
+          final range = appState.budgets.budgetPeriodRangeFor(
             periodType: BudgetPeriodType.custom,
             periodKey: nextKey,
           );
@@ -240,7 +242,7 @@ class BudgetsViewModel {
       }
     } else if (nextType == BudgetPeriodType.weekly) {
       final parsedCurrent = parseDateKey(currentPeriodKey);
-      nextKey = appState.budgetWeekStartKey(parsedCurrent ?? DateTime.now());
+      nextKey = appState.budgets.budgetWeekStartKey(parsedCurrent ?? DateTime.now());
     } else {
       final keys = periodKeys(nextType);
       nextKey = keys.isNotEmpty ? keys.first : '';
@@ -259,7 +261,7 @@ class BudgetsViewModel {
     required String periodKey,
   }) {
     final selectedRange = hasSelectedPeriod
-        ? appState.budgetPeriodRangeFor(
+        ? appState.budgets.budgetPeriodRangeFor(
             periodType: periodType,
             periodKey: periodKey,
           )
@@ -312,7 +314,7 @@ class BudgetsViewModel {
     for (final row in rows) {
       final spent = spentByDisplay[row.displayLabel] ?? 0.0;
       final budget = hasSelectedPeriod
-          ? appState.budgetForDisplayLabel(
+          ? appState.budgets.budgetForDisplayLabel(
               displayLabel: row.displayLabel,
               periodType: periodType,
               periodKey: periodKey,
@@ -370,7 +372,7 @@ class BudgetsViewModel {
     for (final row in rows) {
       final raw = controllers[row.canonical]?.text.trim() ?? '';
       final draftValue = _parseBudgetRaw(raw);
-      final currentValue = appState.budgetForDisplayLabel(
+      final currentValue = appState.budgets.budgetForDisplayLabel(
         displayLabel: row.displayLabel,
         periodType: periodType,
         periodKey: periodKey,
@@ -397,7 +399,7 @@ class BudgetsViewModel {
       final focus = focusNodes[row.canonical];
       final controller = controllers[row.canonical];
       if (focus == null || controller == null || focus.hasFocus) continue;
-      final budget = appState.budgetForDisplayLabel(
+      final budget = appState.budgets.budgetForDisplayLabel(
         displayLabel: row.displayLabel,
         periodType: periodType,
         periodKey: periodKey,

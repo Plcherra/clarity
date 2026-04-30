@@ -51,7 +51,7 @@ void main() {
       };
       state.activeAccountId = 'a';
       final month = state.activeBudgetYearMonth;
-      state.categoryMonthlyBudgetsByYearMonth = {
+      state.budgets.categoryMonthlyBudgetsByYearMonth = {
         month: {
           budgetDisplayKey('Grocery / Supermarket'): 100,
           budgetDisplayKey('Shopping'): 50,
@@ -59,15 +59,18 @@ void main() {
       };
       state.refreshAllState();
 
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.binding.setSurfaceSize(const Size(800, 3000));
+
       await tester.pumpWidget(MaterialApp(home: BudgetsScreen(appState: state)));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(
-        find.text('Spent \$30.00 · Remaining \$70.00'),
+        find.text('Spent \$30.00 · Left \$70.00'),
         findsOneWidget,
       );
       expect(
-        find.text('Spent \$60.00 · Overspent \$10.00'),
+        find.text('Spent \$60.00 · Over \$10.00'),
         findsOneWidget,
       );
     },
@@ -94,7 +97,7 @@ void main() {
       };
       state.activeAccountId = 'a';
       final month = state.activeBudgetYearMonth;
-      state.categoryMonthlyBudgetsByYearMonth = {
+      state.budgets.categoryMonthlyBudgetsByYearMonth = {
         month: {
           budgetDisplayKey('Grocery / Supermarket'): 100,
         },
@@ -102,16 +105,16 @@ void main() {
       state.refreshAllState();
 
       await tester.pumpWidget(MaterialApp(home: BudgetsScreen(appState: state)));
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(
-        find.text('Spent \$30.00 · Remaining \$70.00'),
+        find.text('Spent \$30.00 · Left \$70.00'),
         findsOneWidget,
       );
 
       await state.deleteTransaction(grocery);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(
-        find.text('Spent \$0.00 · Remaining \$100.00'),
+        find.text('Spent \$0.00 · Left \$100.00'),
         findsOneWidget,
       );
 
@@ -121,14 +124,14 @@ void main() {
       state.refreshAllState();
       await tester.pump();
       expect(
-        find.text('Spent \$30.00 · Remaining \$70.00'),
+        find.text('Spent \$30.00 · Left \$70.00'),
         findsOneWidget,
       );
 
       await state.deleteAccount('a');
       await tester.pump();
       expect(
-        find.text('Spent \$0.00 · Remaining \$100.00'),
+        find.text('Spent \$0.00 · Left \$100.00'),
         findsOneWidget,
       );
     },

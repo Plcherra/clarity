@@ -1,4 +1,6 @@
 import 'package:clarity/app/app_state.dart';
+import 'package:clarity/features/budgets/application/budget_performance.dart';
+import 'package:clarity/features/budgets/domain/budget_models.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
@@ -56,7 +58,7 @@ void main() {
       ],
     };
     final month = state.activeBudgetYearMonth;
-    state.categoryMonthlyBudgetsByYearMonth = {
+    state.budgets.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,
@@ -116,7 +118,7 @@ void main() {
       ],
     };
     final weekKey = state.budgetWeekStartKey(weekStart);
-    state.categoryWeeklyBudgetsByWeekStart = {
+    state.budgets.categoryWeeklyBudgetsByWeekStart = {
       weekKey: {
         budgetDisplayKey('Coffee / Quick Food'): 30,
         budgetDisplayKey('Transportation'): 30,
@@ -126,7 +128,7 @@ void main() {
       weekStart,
       weekStart.add(const Duration(days: 2)),
     );
-    state.categoryCustomBudgetsByKey = {
+    state.budgets.categoryCustomBudgetsByKey = {
       customKey: {
         budgetDisplayKey('Coffee / Quick Food'): 20,
       },

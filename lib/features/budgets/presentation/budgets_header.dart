@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../domain/budget_models.dart';
 
 class BudgetsHeader extends StatelessWidget {
   const BudgetsHeader({
