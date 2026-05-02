@@ -1,20 +1,25 @@
 import 'dart:io';
 
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/transactions/data/csv_parser.dart';
 import 'package:clarity/features/dashboard/domain/balance_resolve.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:clarity/features/transactions/domain/spend_categories.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const _kTestAccountId = 'test-acct';
 
-AppState _appStateForCsvImport() {
-  final s = AppState();
-  s.accounts = [
+AppComposition _appCompositionForCsvImport() {
+  final s = createTestAppComposition();
+  s.accountService.accounts = [
     Account(id: _kTestAccountId, name: 'Test', type: AccountType.checking),
   ];
   return s;
+}
+
+DashboardSnapshot _snapshot(AppComposition state) {
+  return state.ui.dashboard.buildSnapshot(const GlobalDashboardScope());
 }
 
 void main() {
@@ -25,17 +30,17 @@ void main() {
     expect(r.transactions.length, 12);
   });
 
-  test('AppState aggregates April 2024 spend and categories', () async {
+  test('AppComposition aggregates April 2024 spend and categories', () async {
     final csv = await File('test/fixtures/sample.csv').readAsString();
-    final state = _appStateForCsvImport();
-    state.loadFromCsv(
+    final state = _appCompositionForCsvImport();
+    state.transactionWorkflowService.loadFromCsv(
       csv,
       accountId: _kTestAccountId,
       reference: DateTime(2024, 4, 15),
     );
 
     expect(
-      state.spentThisMonth,
+      _snapshot(state).spentThisMonth,
       closeTo(
         42.10 +
             4.50 +
@@ -52,12 +57,12 @@ void main() {
       ),
     );
 
-    expect(state.topCategories.first.name, 'Housing');
-    expect(state.topCategories.first.amount, closeTo(1200, 0.01));
+    expect(_snapshot(state).topCategories.first.name, 'Housing');
+    expect(_snapshot(state).topCategories.first.amount, closeTo(1200, 0.01));
 
-    final april = state.monthlyGroups.singleWhere(
-      (g) => g.yearMonth == '2024-04',
-    );
+    final april = _snapshot(
+      state,
+    ).monthlyGroups.singleWhere((g) => g.yearMonth == '2024-04');
     expect(april.transactions.length, 12);
     expect(april.transactions.last.transaction.date.day, 12);
   });
@@ -133,10 +138,7 @@ void main() {
     );
     final key = transactionCategoryKey(t);
     expect(
-      spendGroupLabel(
-        t,
-        categoryOverrides: {key: 'Shopping'},
-      ),
+      spendGroupLabel(t, categoryOverrides: {key: 'Shopping'}),
       'Shopping',
     );
   });
@@ -152,25 +154,28 @@ void main() {
     expect(spendGroupLabel(t), 'Grocery / Supermarket');
   });
 
-  test('Ignored excluded from spentThisMonth income and topCategories', () async {
-    const csv = '''
+  test(
+    'Ignored excluded from spentThisMonth income and topCategories',
+    () async {
+      const csv = '''
 Date,Description,Amount
 2024-04-01,Normal shop,-50.00
 2024-04-02,ACH NSF RETURN,-25.00
 2024-04-03,Merchant refund REVERSAL,40.00''';
-    final state = _appStateForCsvImport();
-    state.loadFromCsv(
-      csv,
-      accountId: _kTestAccountId,
-      reference: DateTime(2024, 4, 15),
-    );
-    expect(state.spentThisMonth, closeTo(50, 0.01));
-    expect(state.incomeThisMonth, closeTo(0, 0.01));
-    expect(
-      state.topCategories.map((c) => c.name),
-      isNot(contains(kIgnoredCategoryLabel)),
-    );
-  });
+      final state = _appCompositionForCsvImport();
+      state.transactionWorkflowService.loadFromCsv(
+        csv,
+        accountId: _kTestAccountId,
+        reference: DateTime(2024, 4, 15),
+      );
+      expect(_snapshot(state).spentThisMonth, closeTo(50, 0.01));
+      expect(_snapshot(state).incomeThisMonth, closeTo(0, 0.01));
+      expect(
+        _snapshot(state).topCategories.map((c) => c.name),
+        isNot(contains(kIgnoredCategoryLabel)),
+      );
+    },
+  );
 
   // Rules feature removed; no dedicated rule-matching test.
 
@@ -214,11 +219,15 @@ Date,Description,Amount
       'Coffee / Quick Food',
     );
     expect(
-      suggestCategoryFromDescription('APPLE COM BILL 04/15 PURCHASE CUPERTINO CA'),
+      suggestCategoryFromDescription(
+        'APPLE COM BILL 04/15 PURCHASE CUPERTINO CA',
+      ),
       'Subscriptions',
     );
     expect(
-      suggestCategoryFromDescription('APPLE.COM/BILL 04/03 PURCHASE 866-712-7753 CA'),
+      suggestCategoryFromDescription(
+        'APPLE.COM/BILL 04/03 PURCHASE 866-712-7753 CA',
+      ),
       'Subscriptions',
     );
   });
@@ -234,36 +243,43 @@ Date,Description,Amount
     expect(spendGroupLabel(payroll), 'Income / Payroll');
   });
 
-  test('spendGroupLabel overrides bank CSV category when description is payroll', () {
-    final payroll = Transaction(
-      date: DateTime(2026, 4, 2),
-      description: 'Bom Dough LLC DES:PAYROLL ID:1047 INDN:Martins Pedro CO ID:XXXXX30473 PPD',
-      amount: 544.63,
-      accountId: 'a1',
-      category: 'Deposit',
-    );
-    expect(spendGroupLabel(payroll), 'Income / Payroll');
-  });
+  test(
+    'spendGroupLabel overrides bank CSV category when description is payroll',
+    () {
+      final payroll = Transaction(
+        date: DateTime(2026, 4, 2),
+        description:
+            'Bom Dough LLC DES:PAYROLL ID:1047 INDN:Martins Pedro CO ID:XXXXX30473 PPD',
+        amount: 544.63,
+        accountId: 'a1',
+        category: 'Deposit',
+      );
+      expect(spendGroupLabel(payroll), 'Income / Payroll');
+    },
+  );
 
-  test('keyword rules categorize common bank lines (no Uncategorized in top)', () {
-    const csv = '''
+  test(
+    'keyword rules categorize common bank lines (no Uncategorized in top)',
+    () {
+      const csv = '''
 Date,Description,Amount
 2026-04-03,Online Banking payment to CRD 5324 Confirmation# 1mizx3y4h,-486.18
 2026-04-06,QUICK FOOD MART 04/02 MOBILE PURCHASE CAMBRIDGE MA,-4.57
 2026-04-14,Zelle payment to Patrick Ferreira Conf# c3jm9dxct,-50.00
 2026-04-15,APPLE COM BILL 04/15 PURCHASE CUPERTINO CA,-64.78
 ''';
-    final state = _appStateForCsvImport();
-    state.loadFromCsv(
-      csv,
-      accountId: _kTestAccountId,
-      reference: DateTime(2026, 4, 15),
-    );
-    expect(
-      state.topCategories.any((c) => c.name == 'Uncategorized'),
-      false,
-    );
-  });
+      final state = _appCompositionForCsvImport();
+      state.transactionWorkflowService.loadFromCsv(
+        csv,
+        accountId: _kTestAccountId,
+        reference: DateTime(2026, 4, 15),
+      );
+      expect(
+        _snapshot(state).topCategories.any((c) => c.name == 'Uncategorized'),
+        false,
+      );
+    },
+  );
 
   test('topCategories excludes Income labels (expenses only)', () {
     const csv = '''
@@ -271,24 +287,24 @@ Date,Description,Amount
 2026-04-01,Bom Dough LLC payroll,-500.00
 2026-04-01,Uber ride,-100.00
 ''';
-    final state = _appStateForCsvImport();
-    state.loadFromCsv(
+    final state = _appCompositionForCsvImport();
+    state.transactionWorkflowService.loadFromCsv(
       csv,
       accountId: _kTestAccountId,
       reference: DateTime(2026, 4, 15),
     );
     expect(
-      state.topCategories.any(
+      _snapshot(state).topCategories.any(
         (c) => c.name.trimLeft().toLowerCase().startsWith('income'),
       ),
       false,
     );
-    expect(state.topCategories.first.name, 'Transportation');
-    expect(state.topCategories.first.amount, closeTo(100, 0.01));
+    expect(_snapshot(state).topCategories.first.name, 'Transportation');
+    expect(_snapshot(state).topCategories.first.amount, closeTo(100, 0.01));
   });
 
   test(
-    'AppState ignores other months for spend; monthly groups newest first',
+    'AppComposition ignores other months for spend; monthly groups newest first',
     () {
       const csv = '''
 Date,Description,Amount
@@ -296,22 +312,22 @@ Date,Description,Amount
 2026-04-01,April first,-5.00
 2025-12-01,December old,-999.00
 ''';
-      final state = _appStateForCsvImport();
-      state.loadFromCsv(
+      final state = _appCompositionForCsvImport();
+      state.transactionWorkflowService.loadFromCsv(
         csv,
         accountId: _kTestAccountId,
         reference: DateTime(2026, 4, 16),
       );
-      expect(state.monthlyGroups.length, 2);
-      expect(state.monthlyGroups.first.yearMonth, '2026-04');
-      expect(state.monthlyGroups.first.transactions.length, 2);
+      expect(_snapshot(state).monthlyGroups.length, 2);
+      expect(_snapshot(state).monthlyGroups.first.yearMonth, '2026-04');
+      expect(_snapshot(state).monthlyGroups.first.transactions.length, 2);
       expect(
-        state.monthlyGroups.first.transactions.any(
+        _snapshot(state).monthlyGroups.first.transactions.any(
           (l) => l.transaction.description.contains('December'),
         ),
         false,
       );
-      expect(state.spentThisMonth, closeTo(15, 0.01));
+      expect(_snapshot(state).spentThisMonth, closeTo(15, 0.01));
     },
   );
 

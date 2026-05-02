@@ -3,16 +3,15 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../core/storage/migrations/rules_wipe_migration.dart';
 import 'app.dart';
-import 'app_hydration.dart';
-import 'app_state.dart';
+import 'app_composition.dart';
 
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env', isOptional: true);
   await runRulesWipeMigrationIfNeeded();
 
-  final appState = AppState();
-  await hydrateAppStateForStartup(appState);
+  final composition = AppComposition();
+  await composition.startupService.hydrateForStartup();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -22,5 +21,10 @@ Future<void> bootstrap() async {
     }
   };
 
-  runApp(ClarityApp(appState: appState));
+  runApp(
+    ClarityApp(
+      ui: composition.ui,
+      profileController: composition.profileController,
+    ),
+  );
 }

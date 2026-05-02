@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/accounts/presentation/account_detail_screen.dart';
 import 'package:clarity/features/dashboard/presentation/dashboard_screen.dart';
@@ -7,14 +7,14 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('Account detail shows + Upload Transactions', (tester) async {
-    final state = AppState()
-      ..accounts = [
-        const Account(
-          id: 'a1',
-          name: 'Bank of America Checking',
-          type: AccountType.checking,
-        ),
-      ];
+    final state = createTestAppComposition();
+    state.accountService.accounts = [
+      const Account(
+        id: 'a1',
+        name: 'Bank of America Checking',
+        type: AccountType.checking,
+      ),
+    ];
 
     await tester.pumpWidget(
       MaterialApp(
@@ -32,14 +32,14 @@ void main() {
   testWidgets('Global overview does not show + Upload Transactions', (
     tester,
   ) async {
-    final state = AppState()
-      ..accounts = [
-        const Account(
-          id: 'a1',
-          name: 'Bank of America Checking',
-          type: AccountType.checking,
-        ),
-      ];
+    final state = createTestAppComposition();
+    state.accountService.accounts = [
+      const Account(
+        id: 'a1',
+        name: 'Bank of America Checking',
+        type: AccountType.checking,
+      ),
+    ];
 
     await tester.pumpWidget(
       MaterialApp(

@@ -3,16 +3,10 @@ import '../features/accounts/application/account_service.dart';
 import '../features/categories/application/category_catalog_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/transactions/application/category_service.dart';
+import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/data/csv_parser.dart';
-import '../features/transactions/domain/transaction_resolution.dart'
-    as transaction_resolution;
-
-typedef ResolveTransactionsForDashboard =
-    List<transaction_resolution.ResolvedTransaction> Function(
-      List<Transaction> txs, {
-      required List<Transaction> allTransactionsContext,
-    });
+import '../features/transactions/domain/transaction_resolution.dart' as tx_res;
 
 /// Coordinates dashboard recomputation from the app service graph.
 class DashboardRefreshCoordinator {
@@ -22,7 +16,8 @@ class DashboardRefreshCoordinator {
     required this.accountService,
     required this.categoryService,
     required this.categoryCatalogService,
-    required this.resolveTransactions,
+    required this.merchantService,
+    required this.notifyTransactionDataChanged,
   });
 
   final DashboardService dashboardService;
@@ -30,7 +25,22 @@ class DashboardRefreshCoordinator {
   final AccountService accountService;
   final CategoryService categoryService;
   final CategoryCatalogService categoryCatalogService;
-  final ResolveTransactionsForDashboard resolveTransactions;
+  final MerchantService merchantService;
+  final void Function() notifyTransactionDataChanged;
+
+  List<tx_res.ResolvedTransaction> _resolveTransactions(
+    List<Transaction> txs, {
+    required List<Transaction> allTransactionsContext,
+  }) {
+    return transactionService.resolveTransactions(
+      txs,
+      categoryService: categoryService,
+      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
+      merchantCategoryMemory: merchantService.merchantCategoryMemory,
+      accounts: accountService.accounts,
+      allTransactionsContext: allTransactionsContext,
+    );
+  }
 
   List<Transaction> refreshAllState() {
     final activeTx = dashboardService.refreshAllState(
@@ -41,9 +51,10 @@ class DashboardRefreshCoordinator {
       accounts: accountService.accounts,
       categoryOverrides: categoryService.categoryOverrides,
       categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
+      resolveTransactions: _resolveTransactions,
     );
     transactionService.transactions = activeTx;
+    notifyTransactionDataChanged();
     return activeTx;
   }
 
@@ -61,7 +72,7 @@ class DashboardRefreshCoordinator {
       accounts: accountService.accounts,
       categoryOverrides: categoryService.categoryOverrides,
       categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
+      resolveTransactions: _resolveTransactions,
     );
   }
 }

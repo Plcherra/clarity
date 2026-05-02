@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/dashboard/application/dashboard_service.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_metrics.dart';
@@ -155,7 +155,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: MonthDetailScreen(
-            controller: AppState().ui.dashboard,
+            controller: createTestAppComposition().ui.dashboard,
             group: group,
           ),
         ),

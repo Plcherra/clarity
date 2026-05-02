@@ -1,11 +1,18 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+double _spentThisMonth(AppComposition state) {
+  return state.ui.dashboard
+      .buildSnapshot(const GlobalDashboardScope())
+      .spentThisMonth;
+}
+
 void main() {
-  AppState stateWithAccounts(List<Account> accounts) {
-    final s = AppState();
-    s.accounts = accounts;
+  AppComposition stateWithAccounts(List<Account> accounts) {
+    final s = createTestAppComposition();
+    s.accountService.accounts = accounts;
     return s;
   }
 
@@ -37,19 +44,19 @@ Date,Description,Amount,Category
 2026-04-11,Uber ride,-50.00,Transportation
 ''';
 
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       checkingCsv,
       accountId: 'checking',
       reference: DateTime(2026, 4, 15),
     );
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       cap1Csv,
       accountId: 'cap1',
       reference: DateTime(2026, 4, 15),
     );
 
     // Purchases should count as spend; the checking payment should be excluded.
-    expect(state.spentThisMonth, closeTo(150.00, 0.01));
+    expect(_spentThisMonth(state), closeTo(150.00, 0.01));
   });
 
   test('unconfirmed CC payment still counts as expense (conservative)', () {
@@ -80,19 +87,19 @@ Date,Description,Amount,Category
 2026-04-11,Uber ride,-50.00,Transportation
 ''';
 
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       checkingCsv,
       accountId: 'checking',
       reference: DateTime(2026, 4, 15),
     );
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       cap1PurchasesOnlyCsv,
       accountId: 'cap1',
       reference: DateTime(2026, 4, 15),
     );
 
     // With no confirmed counterpart, treat the checking payment as real spend (for now).
-    expect(state.spentThisMonth, closeTo(450.00, 0.01));
+    expect(_spentThisMonth(state), closeTo(450.00, 0.01));
   });
 
   test('unrelated CC ledger does not exclude a different-institution payment', () {
@@ -133,24 +140,23 @@ Date,Description,Amount,Category
 2026-04-09,Market Basket,-100.00,Shopping
 ''';
 
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       checkingCsv,
       accountId: 'checking',
       reference: DateTime(2026, 4, 15),
     );
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       amexCsv,
       accountId: 'amex',
       reference: DateTime(2026, 4, 15),
     );
-    state.loadFromCsv(
+    state.transactionWorkflowService.loadFromCsv(
       cap1PurchasesOnlyCsv,
       accountId: 'cap1',
       reference: DateTime(2026, 4, 15),
     );
 
     // Capital One payment remains unconfirmed => counts as expense; Amex activity must not suppress it.
-    expect(state.spentThisMonth, closeTo(425.00, 0.01));
+    expect(_spentThisMonth(state), closeTo(425.00, 0.01));
   });
 }
-

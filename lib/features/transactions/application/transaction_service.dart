@@ -2,7 +2,6 @@ import '../../../core/models/models.dart';
 import '../../../core/storage/ai/ai_suggestion_storage.dart';
 import '../../../core/storage/transactions/transaction_category_storage.dart';
 import '../../../core/storage/transactions/transaction_storage.dart';
-import '../data/ai_categorization_service.dart' as data_ai;
 import '../data/csv_parser.dart';
 import '../data/csv_import_service.dart';
 import '../data/transaction_repository.dart';
@@ -10,7 +9,6 @@ import '../domain/spend_categories.dart';
 import '../domain/transaction_resolution.dart' as transaction_resolution;
 import 'ai_categorization_service.dart' as app_ai;
 import 'category_service.dart';
-import 'merchant_service.dart';
 
 typedef TransactionDashboardRecompute =
     void Function({
@@ -260,20 +258,6 @@ class TransactionService {
     return result;
   }
 
-  Future<bool> deleteTransactionWorkflow(
-    Transaction transaction, {
-    required CategoryService categoryService,
-    required void Function() refreshAllState,
-  }) async {
-    final result = await deleteTransaction(
-      transaction,
-      categoryService: categoryService,
-    );
-    if (!result.success) return false;
-    refreshAllState();
-    return true;
-  }
-
   Future<TransactionMutationResult> clearTransactionsForAccount(
     String accountId, {
     required CategoryService categoryService,
@@ -290,20 +274,6 @@ class TransactionService {
     persistTransactionCategoryAssignments();
     persistAiCategorySuggestions().catchError((_) {});
     return result;
-  }
-
-  Future<int> clearTransactionsForAccountWorkflow(
-    String accountId, {
-    required CategoryService categoryService,
-    required void Function() refreshAllState,
-  }) async {
-    final result = await clearTransactionsForAccount(
-      accountId,
-      categoryService: categoryService,
-    );
-    if (!result.success) return 0;
-    refreshAllState();
-    return result.removedCount;
   }
 
   Future<TransactionMutationResult> deleteTransactionsForImportBatch({
@@ -324,22 +294,6 @@ class TransactionService {
     persistTransactionCategoryAssignments();
     persistAiCategorySuggestions().catchError((_) {});
     return result;
-  }
-
-  Future<int> deleteTransactionsForImportBatchWorkflow({
-    required String accountId,
-    required String importId,
-    required CategoryService categoryService,
-    required void Function() refreshAllState,
-  }) async {
-    final result = await deleteTransactionsForImportBatch(
-      accountId: accountId,
-      importId: importId,
-      categoryService: categoryService,
-    );
-    if (!result.success) return 0;
-    refreshAllState();
-    return result.removedCount;
   }
 
   List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
@@ -393,131 +347,6 @@ class TransactionService {
     categoryService.categoryOverrides = result.categoryOverrides;
     transactions = result.transactions;
     return result;
-  }
-
-  void loadFromCsvWorkflow(
-    String utf8Text, {
-    required String accountId,
-    required DateTime? reference,
-    required List<Account> accounts,
-    required CategoryService categoryService,
-    required void Function(DateTime reference) setSpendReference,
-    required void Function(String accountId) setActiveAccountId,
-    required void Function(double totalBalance) setTotalBalance,
-    required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyChanged,
-    required void Function() persistCategoryCatalog,
-  }) {
-    final result = loadFromCsv(
-      utf8Text,
-      accountId: accountId,
-      reference: reference,
-      accounts: accounts,
-      categoryService: categoryService,
-    );
-    setSpendReference(result.spendReference);
-    setActiveAccountId(result.activeAccountId);
-    setTotalBalance(result.totalBalance);
-    recomputeDashboard(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: result.diagnostics,
-    );
-    notifyChanged();
-    persistCategoryCatalog();
-  }
-
-  bool needsImportAiAfterCsvUploadWorkflow(
-    String accountId, {
-    required app_ai.AiCategorizationApplicationService aiCategorizationService,
-    required List<Transaction> Function(String accountId)
-    uncategorizedImportedRowsForAccount,
-  }) {
-    return aiCategorizationService.needsImportAiAfterCsvUpload(
-      accountId,
-      uncategorizedImportedRowsForAccount: uncategorizedImportedRowsForAccount,
-    );
-  }
-
-  Future<void> startBackgroundImportAiCategorizationWorkflow(
-    String accountId, {
-    required app_ai.AiCategorizationApplicationService aiCategorizationService,
-    required bool importAiEngineConfigured,
-    required List<Transaction> Function(String accountId)
-    uncategorizedImportedRowsForAccount,
-    required MerchantService merchantService,
-    required List<String> allowedCategoryPickerLabels,
-    required List<AiAppliedCategoryChange> Function(Map<String, String>)
-    applyCategoriesWithMerchantLearning,
-    required void Function() notifyStatusChanged,
-  }) {
-    return aiCategorizationService.startBackgroundImportAiCategorization(
-      accountId,
-      importAiEngineConfigured: importAiEngineConfigured,
-      uncategorizedImportedRowsForAccount: uncategorizedImportedRowsForAccount,
-      merchantCategoryMemory: merchantService.merchantCategoryMemory,
-      applyPrefilledMerchantChunks: (prefilled) {
-        return merchantService.applyPrefilledMerchantChunks(
-          prefilled,
-          applyCategoriesWithMerchantLearning:
-              applyCategoriesWithMerchantLearning,
-        );
-      },
-      allowedCategoryPickerLabels: allowedCategoryPickerLabels,
-      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-      notifyStatusChanged: notifyStatusChanged,
-    );
-  }
-
-  Future<({int applied, int queuedForReview})>
-  autoCategorizeGlobalUncategorizedWorkflow({
-    required data_ai.AICategorizationService service,
-    required app_ai.AiCategorizationApplicationService aiCategorizationService,
-    required List<String> allowedCategoryPickerLabels,
-    required List<Transaction> uncategorizedImportedRowsGlobal,
-    required Future<void> Function() persistAiCategorySuggestions,
-    required void Function(Map<String, String> keyToCanonicalCategory)
-    bulkSetCategoryOverrides,
-    double autoApplyConfidenceThreshold = 0.90,
-  }) {
-    return aiCategorizationService.autoCategorizeGlobalUncategorized(
-      service: service,
-      allowedCategoryPickerLabels: allowedCategoryPickerLabels,
-      uncategorizedImportedRowsGlobal: uncategorizedImportedRowsGlobal,
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      aiCategorySuggestions: aiCategorySuggestions,
-      setAiCategorySuggestions: (next) => aiCategorySuggestions = next,
-      persistAiCategorySuggestions: persistAiCategorySuggestions,
-      bulkSetCategoryOverrides: bulkSetCategoryOverrides,
-      autoApplyConfidenceThreshold: autoApplyConfidenceThreshold,
-    );
-  }
-
-  Future<int> undoLastAiAutoApplyWorkflow({
-    required app_ai.AiCategorizationApplicationService aiCategorizationService,
-    required CategoryService categoryService,
-    required String? activeAccountId,
-    required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyChanged,
-  }) async {
-    final result = await aiCategorizationService.undoLastAiAutoApply(
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      categoryOverrides: categoryService.categoryOverrides,
-      transactionsByAccount: transactionsByAccount,
-      activeAccountId: activeAccountId,
-    );
-    if (result.undone == 0) return 0;
-
-    applyAiAutoApplyUndoResult(result, categoryService: categoryService);
-    recomputeDashboard(
-      activeAccountTransactions: transactions,
-      allTransactionsForMetrics: allTransactions,
-      transactionsForCsvDiagnostics: transactions,
-      diag: null,
-    );
-    notifyChanged();
-    return result.undone;
   }
 
   void persistActiveAccountTransactionsIfAny({

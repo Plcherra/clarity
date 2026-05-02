@@ -45,7 +45,7 @@ class ImportAiProgressBanner extends StatelessWidget {
   }
 }
 
-/// Banner while running, optional snack when [AppState.importAiSnackMessage] is set.
+/// Banner while running, optional snack from import AI status state.
 class ImportAiStatusHost extends StatefulWidget {
   const ImportAiStatusHost({
     super.key,

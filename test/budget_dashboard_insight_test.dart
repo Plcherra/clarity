@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
 import 'package:clarity/features/dashboard/presentation/dashboard_screen.dart';
@@ -34,12 +34,12 @@ void main() {
     });
 
     SharedPreferences.setMockInitialValues({});
-    final state = AppState();
-    state.accounts = const [
+    final state = createTestAppComposition();
+    state.accountService.accounts = const [
       Account(id: 'a', name: 'A', type: AccountType.checking),
       Account(id: 'b', name: 'B', type: AccountType.checking),
     ];
-    final ref = state.spendReference;
+    final ref = state.ui.budgets.spendReference;
     final groceryA = _tx(
       date: ref,
       accountId: 'a',
@@ -61,19 +61,21 @@ void main() {
       amount: -20,
       categoryId: 'Grocery / Supermarket',
     );
-    state.transactionsByAccount = {
+    state.transactionService.transactionsByAccount = {
       'a': [groceryA, shoppingA],
       'b': [groceryB],
     };
-    state.activeAccountId = 'a';
-    final month = state.activeBudgetYearMonth;
+    state.accountService.activeAccountId = 'a';
+    final month = state.budgetService.activeBudgetYearMonth(
+      state.ui.budgets.spendReference,
+    );
     state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,
       },
     };
-    state.refreshAllState();
+    state.dashboardRefreshCoordinator.refreshAllState();
 
     await tester.pumpWidget(
       MaterialApp(
@@ -86,7 +88,7 @@ void main() {
     expect(find.text('1/2 categories on track'), findsOneWidget);
     expect(find.text('Total overspent \$10.00'), findsOneWidget);
 
-    await state.deleteTransaction(shoppingA);
+    await state.transactionWorkflowService.deleteTransaction(shoppingA);
     await tester.pump();
 
     expect(find.text('2/2 categories on track'), findsOneWidget);

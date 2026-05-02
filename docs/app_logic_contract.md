@@ -5,12 +5,12 @@ from this file, fix the code or update this doc in the same change.
 
 ## 1. Where Transactions Live
 
-- Authoritative store: `TransactionService.transactionsByAccount`, exposed
-  through `AppState.transactionsByAccount` for compatibility.
+- Authoritative store: `TransactionService.transactionsByAccount`, still
+  available through `AppState.transactionsByAccount` in integration flows.
 - Active account slice: `TransactionService.transactions`, exposed through
   `AppState.transactions`, is the current account list used by account-scoped
   flows.
-- All rows: `AppState.allTransactions` flattens every account's list for global
+- All rows: `TransactionService.allTransactions` flattens every account's list for global
   metrics and internal payment matching.
 
 Imports append into the relevant account with dedupe semantics from
@@ -27,7 +27,7 @@ Scope is explicit via
 | `GlobalDashboardScope` | All imported rows: `allTransactions` |
 | `AccountDashboardScope(accountId)` | `transactionsByAccount[accountId] ?? []` |
 
-Single helper: `AppState.transactionsForDashboardScope` delegates to
+Single helper:
 [`DashboardService.transactionsForDashboardScope`](../lib/features/dashboard/application/dashboard_service.dart).
 Every screen that shows dashboard data should use the same scope as its parent
 [`FinancialDashboardView`](../lib/features/dashboard/presentation/financial_dashboard_view.dart)
@@ -81,13 +81,9 @@ Display-only layer: `spendGroupLabelForDisplay` =
 a row is Uncategorized for UI/review counts should use the display label unless
 pre-rename logic is intentional.
 
-State compatibility APIs:
-
-- `AppState.effectiveSpendGroupLabel`
-- `AppState.effectiveCategoryDisplayLabel`
-
-Both delegate to transaction/category services and should stay aligned with the
-domain helpers.
+Application services and UI controllers should call
+`TransactionService.effectiveCategoryDisplayLabel` / transaction resolution
+helpers directly instead of adding `AppState` query wrappers.
 
 ## 6. Central Transaction Resolution
 

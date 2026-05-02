@@ -17,7 +17,10 @@ void main() {
     test('matches case-insensitively', () {
       const allowed = ['Shopping', 'Food & Drink'];
       expect(normalizeSuggestionToAllowed('shopping', allowed), 'Shopping');
-      expect(normalizeSuggestionToAllowed('FOOD & DRINK', allowed), 'Food & Drink');
+      expect(
+        normalizeSuggestionToAllowed('FOOD & DRINK', allowed),
+        'Food & Drink',
+      );
     });
 
     test('returns null when not in list', () {
@@ -32,7 +35,8 @@ void main() {
     test('parses suggestions and normalizes categories', () {
       const allowed = ['Shopping', 'Transportation'];
       final keys = {'a|2024-01-01T12:00:00.000|10.0|X|'}.toSet();
-      const json = '{"suggestions":[{"key":"a|2024-01-01T12:00:00.000|10.0|X|","categoryId":"shopping"},'
+      const json =
+          '{"suggestions":[{"key":"a|2024-01-01T12:00:00.000|10.0|X|","categoryId":"shopping"},'
           '{"key":"missing","categoryId":"Transportation"}]}';
       // Note: second key not in expectedKeys so skipped
       final out = parseSuggestionsFromResponseContent(json, allowed, keys);

@@ -1,10 +1,10 @@
 import 'dart:io';
 
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Runs import so [AppState] emits kDebugMode CSV diagnostics to the console.
+/// Runs import so [AppComposition] emits kDebugMode CSV diagnostics to the console.
 /// Run:
 /// `CLARITY_RUN_DEBUG_CSV_TESTS=1 flutter test test/debug_csv_import_print_test.dart --reporter expanded`
 void main() {
@@ -21,11 +21,11 @@ Date,Description,Amount
 2025-01-31,Gamma,-3.00
 2026-12-31,Odd future row,-9.00
 ''';
-      final state = AppState();
-      state.accounts = [
+      final state = createTestAppComposition();
+      state.accountService.accounts = [
         Account(id: 'debug', name: 'Debug', type: AccountType.checking),
       ];
-      state.loadFromCsv(
+      state.transactionWorkflowService.loadFromCsv(
         csv,
         accountId: 'debug',
         reference: DateTime(2025, 1, 15),

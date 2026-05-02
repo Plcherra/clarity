@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 
-import 'app_state.dart';
+import '../features/profile/application/profile_controller.dart';
 import '../features/shell/presentation/home_shell.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
+import 'ui_dependencies.dart';
 
 final class ClarityApp extends StatelessWidget {
-  const ClarityApp({super.key, required this.appState});
+  const ClarityApp({
+    super.key,
+    required this.ui,
+    required this.profileController,
+  });
 
-  final AppState appState;
+  final AppUiDependencies ui;
+  final ProfileController profileController;
 
   static ThemeData _buildTheme() {
     const seed = Color(0xFF1C1B19);
@@ -94,15 +100,18 @@ final class ClarityApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: appState,
+      listenable: profileController,
       builder: (context, _) {
         return MaterialApp(
           title: 'Clarity',
           debugShowCheckedModeBanner: false,
           theme: _buildTheme(),
-          home: appState.localProfile == null
-              ? OnboardingScreen(appState: appState)
-              : HomeShell(ui: appState.ui),
+          home: profileController.localProfile == null
+              ? OnboardingScreen(
+                  saveLocalProfile: profileController.setLocalProfile,
+                  ui: ui,
+                )
+              : HomeShell(ui: ui),
         );
       },
     );

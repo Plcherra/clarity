@@ -10,9 +10,8 @@ const double _kReviewHorizontalPadding = 24;
 const double _kReviewScrollTopPadding = 8;
 const double _kReviewScrollBottomPadding = 32;
 
-/// Full-screen flow: one uncategorized transaction at a time (always the next
-/// in queue as [AppState] updates). Category picker and save-rule behavior
-/// match the list view — only presentation differs.
+/// Full-screen flow: one uncategorized transaction at a time. Category picker
+/// and save-rule behavior match the list view — only presentation differs.
 ///
 /// [scope] must match the dashboard that opened this screen ([GlobalDashboardScope]
 /// for Overview, [AccountDashboardScope] for an account).

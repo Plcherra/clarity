@@ -1,7 +1,5 @@
 import '../../../core/models/models.dart';
-import '../../categories/application/category_catalog_service.dart';
 import '../domain/spend_categories.dart';
-import 'transaction_service.dart';
 
 class CategoryMutationResult {
   const CategoryMutationResult({
@@ -37,19 +35,6 @@ class CategoryService {
     applyCategoriesWithMerchantLearning({key: cat});
   }
 
-  void setCategoryOverrideWorkflow(
-    Transaction t,
-    String category, {
-    required void Function(Map<String, String>)
-    applyCategoriesWithMerchantLearning,
-  }) {
-    setCategoryOverride(
-      t,
-      category,
-      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-    );
-  }
-
   /// Assigns categories for many [transactionCategoryKey]s at once.
   void bulkSetCategoryOverrides(
     Map<String, String> keyToCanonicalCategory, {
@@ -57,17 +42,6 @@ class CategoryService {
     applyCategoriesWithMerchantLearning,
   }) {
     applyCategoriesWithMerchantLearning(keyToCanonicalCategory);
-  }
-
-  void bulkSetCategoryOverridesWorkflow(
-    Map<String, String> keyToCanonicalCategory, {
-    required void Function(Map<String, String>)
-    applyCategoriesWithMerchantLearning,
-  }) {
-    bulkSetCategoryOverrides(
-      keyToCanonicalCategory,
-      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-    );
   }
 
   /// Adds a new category name (if needed), assigns [t], and persists catalog changes.
@@ -88,32 +62,6 @@ class CategoryService {
       persistCategoryCatalog();
     }
     setCategoryOverride(t, name);
-  }
-
-  void createCategoryAndAssignWorkflow(
-    Transaction t,
-    String rawName, {
-    required CategoryCatalogService categoryCatalogService,
-    required void Function(Map<String, String>)
-    applyCategoriesWithMerchantLearning,
-  }) {
-    createCategoryAndAssign(
-      t,
-      rawName,
-      customCategories: categoryCatalogService.customCategories,
-      setCustomCategories: (next) {
-        categoryCatalogService.customCategories = next;
-      },
-      persistCategoryCatalog: categoryCatalogService.persistCategoryCatalog,
-      setCategoryOverride: (transaction, category) {
-        setCategoryOverrideWorkflow(
-          transaction,
-          category,
-          applyCategoriesWithMerchantLearning:
-              applyCategoriesWithMerchantLearning,
-        );
-      },
-    );
   }
 
   /// Deletes a category from the picker and clears assignments using it.
@@ -184,38 +132,6 @@ class CategoryService {
       transactions: nextTransactions,
       shouldPersistActiveAccountTransactions: true,
     );
-  }
-
-  void deleteCategoryWorkflow(
-    String canonicalLabel, {
-    required CategoryCatalogService categoryCatalogService,
-    required TransactionService transactionService,
-    required String? activeAccountId,
-    required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyChanged,
-  }) {
-    final result = deleteCategory(
-      canonicalLabel,
-      customCategories: categoryCatalogService.customCategories,
-      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      categoriesHiddenFromPicker:
-          categoryCatalogService.categoriesHiddenFromPicker,
-      transactionCategoryAssignments:
-          transactionService.transactionCategoryAssignments,
-      transactions: transactionService.transactions,
-    );
-    if (result == null) return;
-
-    _applyCategoryMutationResult(
-      result,
-      categoryCatalogService: categoryCatalogService,
-      transactionService: transactionService,
-      activeAccountId: activeAccountId,
-      recomputeDashboard: recomputeDashboard,
-      notifyChanged: notifyChanged,
-    );
-    transactionService.persistTransactionCategoryAssignments();
-    categoryCatalogService.persistCategoryCatalog();
   }
 
   /// Renames a category. Built-ins are display-only; custom categories update assignments.
@@ -298,73 +214,5 @@ class CategoryService {
       transactions: nextTransactions,
       shouldPersistActiveAccountTransactions: true,
     );
-  }
-
-  void renameCategoryWorkflow(
-    String oldLabel,
-    String newLabel, {
-    required CategoryCatalogService categoryCatalogService,
-    required TransactionService transactionService,
-    required String? activeAccountId,
-    required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyChanged,
-  }) {
-    final result = renameCategory(
-      oldLabel,
-      newLabel,
-      customCategories: categoryCatalogService.customCategories,
-      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      categoriesHiddenFromPicker:
-          categoryCatalogService.categoriesHiddenFromPicker,
-      transactionCategoryAssignments:
-          transactionService.transactionCategoryAssignments,
-      transactions: transactionService.transactions,
-    );
-    if (result == null) return;
-
-    _applyCategoryMutationResult(
-      result,
-      categoryCatalogService: categoryCatalogService,
-      transactionService: transactionService,
-      activeAccountId: activeAccountId,
-      recomputeDashboard: recomputeDashboard,
-      notifyChanged: notifyChanged,
-    );
-    if (result.shouldPersistActiveAccountTransactions) {
-      transactionService.persistTransactionCategoryAssignments();
-    }
-    categoryCatalogService.persistCategoryCatalog();
-  }
-
-  void _applyCategoryMutationResult(
-    CategoryMutationResult result, {
-    required CategoryCatalogService categoryCatalogService,
-    required TransactionService transactionService,
-    required String? activeAccountId,
-    required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyChanged,
-  }) {
-    categoryCatalogService.customCategories = result.customCategories;
-    categoryCatalogService.categoryDisplayRenames =
-        result.categoryDisplayRenames;
-    categoryCatalogService.categoriesHiddenFromPicker =
-        result.categoriesHiddenFromPicker;
-    transactionService.transactionCategoryAssignments =
-        result.transactionCategoryAssignments;
-    transactionService.transactions = result.transactions;
-    if (result.shouldPersistActiveAccountTransactions) {
-      transactionService.persistActiveAccountTransactionsIfAny(
-        activeAccountId: activeAccountId,
-        transactions: transactionService.transactions,
-      );
-    }
-
-    recomputeDashboard(
-      activeAccountTransactions: transactionService.transactions,
-      allTransactionsForMetrics: transactionService.allTransactions,
-      transactionsForCsvDiagnostics: transactionService.transactions,
-      diag: null,
-    );
-    notifyChanged();
   }
 }

@@ -6,7 +6,7 @@ import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';
 
-/// Loads AI suggestions then shows review; call after [AppState.loadFromCsv] when needed.
+/// Loads AI suggestions then shows review after account CSV import when needed.
 ///
 /// **Cancel / skip:** pops with [onFinished] and does not persist categories.
 class AiCategorizationFlowScreen extends StatefulWidget {
@@ -230,7 +230,7 @@ class _ErrorBody extends StatelessWidget {
   }
 }
 
-/// Review AI picks: per-row dropdown, save batches to [AppState.bulkSetCategoryOverrides].
+/// Review AI picks: per-row dropdown, save batches through the transaction controller.
 ///
 /// Cancel: use [onSkip] without saving (categories stay uncategorized).
 class AiCategoryReviewScreen extends StatefulWidget {

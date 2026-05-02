@@ -7,10 +7,10 @@ longer need it.
 
 Current audit:
 
-- `AppState` is 827 lines.
+- `AppState` is 427 lines.
 - It creates and wires feature services.
-- It still exposes a large compatibility API used by `AppUiDependencies` and
-  many tests.
+- It still exposes compatibility getters/setters, startup hydration, budget
+  mutations, account mutations, and refresh coordination.
 - Feature UI mostly listens to scoped controllers in `AppUiDependencies`, not
   directly to all of `AppState`.
 - `ClarityApp` still listens to `AppState` for profile/onboarding routing.
@@ -29,6 +29,9 @@ Current audit:
 - `accountService`
 - `aiCategorizationService`
 - `_dashboard`
+- `_dashboardRefresh`
+- `categoryWorkflowService`
+- `transactionWorkflowService`
 - `ui`
 
 Keep this role for now. This is the part that is appropriate for a composition
@@ -65,8 +68,6 @@ Account and transaction state:
 
 - `activeAccountId`
 - `accounts`
-- `transactionRepository`
-- `csvImportService`
 - `transactionsByAccount`
 - `allTransactions`
 - `transactions`
@@ -93,15 +94,9 @@ Category and AI state:
 - `customCategories`
 - `categoryDisplayRenames`
 - `categoriesHiddenFromPicker`
-- `allowedCategoryPickerLabels`
-- `importAiCategorizationRunning`
-- `importAiProgressCompleted`
-- `importAiProgressTotal`
-- `importAiSnackMessage`
-- `importAiEngineConfigured`
 
-Most of these are delegates. They should be removed from UI usage first, then
-from tests where practical.
+Most of these are delegates kept only where integration tests or workflow
+coordination still use them directly.
 
 ### Cross-Feature Coordination
 
@@ -117,52 +112,20 @@ Dashboard refresh:
 
 Transactions and CSV:
 
-- `loadFromCsv`
-- `deleteTransaction`
-- `clearTransactionsForAccount`
-- `csvImportBatchesForAccount`
-- `deleteTransactionsForImportBatch`
-- `uncategorizedImportedRowsGlobal`
-- `uncategorizedImportedRowsForAccount`
+- moved to `TransactionWorkflowService`
 
 Category / merchant learning:
 
-- `applyCategoriesWithMerchantLearning`
-- `_applyCategoryAssignments`
-- `undoCategoryApplyBatch`
-- `setCategoryOverride`
-- `bulkSetCategoryOverrides`
-- `createCategoryAndAssign`
-- `deleteCategory`
-- `renameCategory`
+- moved to `CategoryWorkflowService`
 
 AI import:
 
-- `needsImportAiAfterCsvUpload`
-- `consumeImportAiSnackMessage`
-- `startBackgroundImportAiCategorization`
-- `autoCategorizeGlobalUncategorized`
-- `_persistAiCategorySuggestions`
-- `undoLastAiAutoApply`
+- moved to `TransactionWorkflowService`
 
 Budget / dashboard queries:
 
-- `activeBudgetYearMonth`
-- `budgetWeekStartKey`
-- `ensureCustomBudgetPeriod`
 - `setActiveBudgetPeriod`
-- `monthlyBudgetForDisplayLabel`
 - `commitBudgetDraft`
-- `commitMonthlyBudgetDraft`
-- `budgetPerformanceForScope`
-- `spentByDisplayCategoryForScope`
-- `spentByDisplayCategoryForScopeInRange`
-- `spentThisMonthByDisplayCategory`
-- `transactionsForDashboardScope`
-- `effectiveSpendGroupLabel`
-- `effectiveCategoryDisplayLabel`
-- `resolveTransaction`
-- `resolveTransactions`
 
 Reset:
 
@@ -237,10 +200,10 @@ callbacks into the existing compatibility facade until later workflow phases.
 Why next: many workflows depend on refresh. Clean this before CSV import.
 
 Completed: added `lib/app/dashboard_refresh_coordinator.dart`.
-`AppState.refreshAllState()` and `_syncDashboardAfterTransactionWorkflow()` now
-delegate dashboard recompute wiring to it, while notifications stay in
-`AppState`. Hydration/dedupe recompute paths now use the same transaction
-workflow sync delegate.
+Dashboard refresh and workflow recompute wiring now live in the coordinator.
+`AppState` no longer exposes `refreshAllState()`; workflow services call the
+coordinator directly while notification callbacks still originate from
+`AppState`.
 
 ## Phase 5 - Reduce Test Dependence On AppState
 
@@ -262,44 +225,84 @@ Completed: converted pure dashboard/query tests away from `AppState`:
 `DashboardService` directly. Workflow/UI tests still use `AppState` where they
 intentionally cover full app coordination.
 
+## Phase 5b - Remove Moved AppState Query Delegates
+
+- [x] Remove read/query delegates whose callers now use services/controllers.
+- [x] Remove App UI bindings for read-only callbacks that can be computed from
+      injected services.
+- [x] Move dashboard refresh transaction resolution out of `AppState`.
+- [x] Keep integration workflow methods that are still intentionally exercised
+      through `AppState`.
+
+Completed: removed `AppState` wrappers for transaction resolution, dashboard
+scope queries, budget performance/spend queries, import AI status reads,
+uncategorized queue reads, import batch reads, budget period key helpers, and
+other moved read delegates. `AppUiDependencies` and
+`DashboardRefreshCoordinator` now use their injected services directly for those
+paths.
+
 ## Phase 6 - Move Remaining Category / Merchant Coordination
 
-- [ ] Review `applyCategoriesWithMerchantLearning`.
-- [ ] Review `_applyCategoryAssignments`.
-- [ ] Review `undoCategoryApplyBatch`.
-- [ ] Review `setCategoryOverride`.
-- [ ] Review `bulkSetCategoryOverrides`.
-- [ ] Review `createCategoryAndAssign`.
-- [ ] Review `deleteCategory`.
-- [ ] Review `renameCategory`.
-- [ ] Move only if the target service can own the workflow without depending on
+- [x] Review `applyCategoriesWithMerchantLearning`.
+- [x] Review `_applyCategoryAssignments`.
+- [x] Review `undoCategoryApplyBatch`.
+- [x] Review `setCategoryOverride`.
+- [x] Review `bulkSetCategoryOverrides`.
+- [x] Review `createCategoryAndAssign`.
+- [x] Review `deleteCategory`.
+- [x] Review `renameCategory`.
+- [x] Move only if the target service can own the workflow without depending on
       the whole app.
 
 Why after tests: this area touches transactions, merchant memory, category
 catalog, dashboard refresh, and persistence.
 
+Completed: added `CategoryWorkflowService` for category assignment, merchant
+learning, undo, create, delete, and rename coordination. `AppState` no longer
+contains those workflow methods, and `TransactionUiController` now uses the
+workflow service directly. Removed the old `CategoryService` workflow wrappers
+so `CategoryService` keeps the lower-level category mutation helpers while the
+new workflow service owns cross-service coordination.
+
 ## Phase 7 - Move CSV / Import Coordination
 
-- [ ] Review `loadFromCsv`.
-- [ ] Review `deleteTransaction`.
-- [ ] Review `clearTransactionsForAccount`.
-- [ ] Review `deleteTransactionsForImportBatch`.
-- [ ] Review `needsImportAiAfterCsvUpload`.
-- [ ] Review `startBackgroundImportAiCategorization`.
-- [ ] Review `autoCategorizeGlobalUncategorized`.
-- [ ] Decide whether this belongs in a transaction workflow coordinator before
+- [x] Review `loadFromCsv`.
+- [x] Review `deleteTransaction`.
+- [x] Review `clearTransactionsForAccount`.
+- [x] Review `deleteTransactionsForImportBatch`.
+- [x] Review `needsImportAiAfterCsvUpload`.
+- [x] Review `startBackgroundImportAiCategorization`.
+- [x] Review `autoCategorizeGlobalUncategorized`.
+- [x] Decide whether this belongs in a transaction workflow coordinator before
       changing code.
 
 Why late: CSV/import is the broadest workflow and easiest place to accidentally
 rebuild the god object under another name.
 
+Completed: added `TransactionWorkflowService` in the transactions application
+layer for CSV import, transaction deletion, import batch deletion, import AI,
+global AI categorization, and AI undo coordination. `AppState` no longer exposes
+those workflow methods, UI controllers call the transaction workflow service
+directly, and tests that still need integration behavior use
+`state.transactionWorkflowService`. Removed the old transaction `*Workflow`
+helpers from `TransactionService` so the coordination logic exists in one place.
+`AppState` was 427 lines after Phase 7.
+
 ## Phase 8 - Remove Compatibility Delegates
 
-- [ ] Remove getters/setters that are no longer used by UI controllers or tests.
-- [ ] Keep service fields only if they are intentional composition-root access.
-- [ ] Keep `AppState` public methods only for app-shell/profile/startup or
+- [x] Remove getters/setters that are no longer used by UI controllers or tests.
+- [x] Keep service fields only if they are intentional composition-root access.
+- [x] Keep `AppState` public methods only for app-shell/profile/startup or
       clearly documented temporary compatibility.
-- [ ] Re-run import searches after each removal.
+- [x] Re-run import searches after each removal.
+
+Completed: removed the broad compatibility getter/setter facade for accounts,
+transactions, dashboard derived fields, category state, AI suggestion state, and
+merchant memory. Integration tests now read/write through feature services or
+scoped UI snapshots instead of `AppState` delegates. `AppState` is now 294
+lines and still owns startup hydration, profile/onboarding routing,
+account/budget mutation callbacks, service composition, and refresh
+coordination.
 
 Target final shape:
 

@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
 import 'package:clarity/features/budgets/presentation/budgets_screen.dart';
@@ -27,11 +27,11 @@ void main() {
     'Budgets screen shows remaining and overspent from actual transactions',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final state = AppState();
-      state.accounts = const [
+      final state = createTestAppComposition();
+      state.accountService.accounts = const [
         Account(id: 'a', name: 'A', type: AccountType.checking),
       ];
-      final ref = state.spendReference;
+      final ref = state.ui.budgets.spendReference;
       final grocery = _tx(
         date: ref,
         accountId: 'a',
@@ -46,18 +46,20 @@ void main() {
         amount: -60,
         categoryId: 'Shopping',
       );
-      state.transactionsByAccount = {
+      state.transactionService.transactionsByAccount = {
         'a': [grocery, shopping],
       };
-      state.activeAccountId = 'a';
-      final month = state.activeBudgetYearMonth;
+      state.accountService.activeAccountId = 'a';
+      final month = state.budgetService.activeBudgetYearMonth(
+        state.ui.budgets.spendReference,
+      );
       state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
         month: {
           budgetDisplayKey('Grocery / Supermarket'): 100,
           budgetDisplayKey('Shopping'): 50,
         },
       };
-      state.refreshAllState();
+      state.dashboardRefreshCoordinator.refreshAllState();
 
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.binding.setSurfaceSize(const Size(800, 3000));
@@ -76,11 +78,11 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
-    final state = AppState();
-    state.accounts = const [
+    final state = createTestAppComposition();
+    state.accountService.accounts = const [
       Account(id: 'a', name: 'A', type: AccountType.checking),
     ];
-    final ref = state.spendReference;
+    final ref = state.ui.budgets.spendReference;
     final grocery = _tx(
       date: ref,
       accountId: 'a',
@@ -88,15 +90,17 @@ void main() {
       amount: -30,
       categoryId: 'Grocery / Supermarket',
     );
-    state.transactionsByAccount = {
+    state.transactionService.transactionsByAccount = {
       'a': [grocery],
     };
-    state.activeAccountId = 'a';
-    final month = state.activeBudgetYearMonth;
+    state.accountService.activeAccountId = 'a';
+    final month = state.budgetService.activeBudgetYearMonth(
+      state.ui.budgets.spendReference,
+    );
     state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
       month: {budgetDisplayKey('Grocery / Supermarket'): 100},
     };
-    state.refreshAllState();
+    state.dashboardRefreshCoordinator.refreshAllState();
 
     await tester.pumpWidget(
       MaterialApp(home: BudgetsScreen(controller: state.ui.budgets)),
@@ -104,18 +108,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Spent \$30.00 · Left \$70.00'), findsOneWidget);
 
-    await state.deleteTransaction(grocery);
+    await state.transactionWorkflowService.deleteTransaction(grocery);
     await tester.pumpAndSettle();
     expect(find.text('Spent \$0.00 · Left \$100.00'), findsOneWidget);
 
-    state.transactionsByAccount = {
+    state.transactionService.transactionsByAccount = {
       'a': [grocery],
     };
-    state.refreshAllState();
+    state.dashboardRefreshCoordinator.refreshAllState();
     await tester.pump();
     expect(find.text('Spent \$30.00 · Left \$70.00'), findsOneWidget);
 
-    await state.deleteAccount('a');
+    await state.accountWorkflowService.deleteAccount('a');
     await tester.pump();
     expect(find.text('Spent \$0.00 · Left \$100.00'), findsOneWidget);
   });

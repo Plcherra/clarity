@@ -1,11 +1,18 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+double _spentThisMonth(AppComposition state) {
+  return state.ui.dashboard
+      .buildSnapshot(const GlobalDashboardScope())
+      .spentThisMonth;
+}
 
 void main() {
   test('confirmed CC payment excludes checking outflow from spend', () {
-    final state = AppState();
-    state.accounts = [
+    final state = createTestAppComposition();
+    state.accountService.accounts = [
       const Account(
         id: 'checking',
         name: 'BofA Checking',
@@ -33,16 +40,24 @@ Date,Description,Amount
 ''';
 
     // Import both sides.
-    state.loadFromCsv(checkingCsv, accountId: 'checking', reference: DateTime(2026, 4, 15));
-    state.loadFromCsv(cap1Csv, accountId: 'cap1', reference: DateTime(2026, 4, 15));
+    state.transactionWorkflowService.loadFromCsv(
+      checkingCsv,
+      accountId: 'checking',
+      reference: DateTime(2026, 4, 15),
+    );
+    state.transactionWorkflowService.loadFromCsv(
+      cap1Csv,
+      accountId: 'cap1',
+      reference: DateTime(2026, 4, 15),
+    );
 
     // Only the underlying purchases should count as expense spending (300).
-    expect(state.spentThisMonth, closeTo(300, 0.01));
+    expect(_spentThisMonth(state), closeTo(300, 0.01));
   });
 
   test('unconfirmed CC payment still counts as expense (conservative)', () {
-    final state = AppState();
-    state.accounts = [
+    final state = createTestAppComposition();
+    state.accountService.accounts = [
       const Account(
         id: 'checking',
         name: 'BofA Checking',
@@ -68,54 +83,72 @@ Date,Description,Amount
 2026-04-04,Purchase B,-200.00
 ''';
 
-    state.loadFromCsv(checkingCsv, accountId: 'checking', reference: DateTime(2026, 4, 15));
-    state.loadFromCsv(cap1Csv, accountId: 'cap1', reference: DateTime(2026, 4, 15));
+    state.transactionWorkflowService.loadFromCsv(
+      checkingCsv,
+      accountId: 'checking',
+      reference: DateTime(2026, 4, 15),
+    );
+    state.transactionWorkflowService.loadFromCsv(
+      cap1Csv,
+      accountId: 'cap1',
+      reference: DateTime(2026, 4, 15),
+    );
 
     // Without the +300 counterpart payment row, the checking payment stays counted.
-    expect(state.spentThisMonth, closeTo(600, 0.01));
+    expect(_spentThisMonth(state), closeTo(600, 0.01));
   });
 
-  test('Amex activity does not suppress Capital One payment without counterpart', () {
-    final state = AppState();
-    state.accounts = [
-      const Account(
-        id: 'checking',
-        name: 'BofA Checking',
-        institution: 'Bank of America',
-        type: AccountType.checking,
-      ),
-      const Account(
-        id: 'cap1',
-        name: 'Capital One',
-        institution: 'Capital One',
-        type: AccountType.creditCard,
-      ),
-      const Account(
-        id: 'amex',
-        name: 'Amex',
-        institution: 'American Express',
-        type: AccountType.creditCard,
-      ),
-    ];
+  test(
+    'Amex activity does not suppress Capital One payment without counterpart',
+    () {
+      final state = createTestAppComposition();
+      state.accountService.accounts = [
+        const Account(
+          id: 'checking',
+          name: 'BofA Checking',
+          institution: 'Bank of America',
+          type: AccountType.checking,
+        ),
+        const Account(
+          id: 'cap1',
+          name: 'Capital One',
+          institution: 'Capital One',
+          type: AccountType.creditCard,
+        ),
+        const Account(
+          id: 'amex',
+          name: 'Amex',
+          institution: 'American Express',
+          type: AccountType.creditCard,
+        ),
+      ];
 
-    const checkingCsv = '''
+      const checkingCsv = '''
 Date,Description,Amount
 2026-04-05,Capital One payment thank you,-300.00
 ''';
 
-    // Amex has a +300 payment row, but the checking description hints Capital One.
-    // This must NOT be treated as a confirmed match.
-    const amexCsv = '''
+      // Amex has a +300 payment row, but the checking description hints Capital One.
+      // This must NOT be treated as a confirmed match.
+      const amexCsv = '''
 Date,Description,Amount
 2026-04-06,Payment Received,300.00
 2026-04-04,Purchase,-10.00
 ''';
 
-    state.loadFromCsv(checkingCsv, accountId: 'checking', reference: DateTime(2026, 4, 15));
-    state.loadFromCsv(amexCsv, accountId: 'amex', reference: DateTime(2026, 4, 15));
+      state.transactionWorkflowService.loadFromCsv(
+        checkingCsv,
+        accountId: 'checking',
+        reference: DateTime(2026, 4, 15),
+      );
+      state.transactionWorkflowService.loadFromCsv(
+        amexCsv,
+        accountId: 'amex',
+        reference: DateTime(2026, 4, 15),
+      );
 
-    // No confirmed counterpart in Capital One ledger, so payment remains counted.
-    expect(state.spentThisMonth, closeTo(310, 0.01));
-  });
+      // No confirmed counterpart in Capital One ledger, so payment remains counted.
+      expect(_spentThisMonth(state), closeTo(310, 0.01));
+    },
+  );
 }
-

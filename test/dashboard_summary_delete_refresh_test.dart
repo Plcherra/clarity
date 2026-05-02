@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/formatting/formatting.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
@@ -7,20 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-DashboardSnapshot _globalSnapshot(AppState s) {
-  return buildDashboardSnapshot(
-    scope: const GlobalDashboardScope(),
-    reference: s.spendReference,
-    accounts: s.accounts,
-    allTransactions: s.allTransactions,
-    scopedTransactions: s.allTransactions,
-    categoryOverrides: s.categoryOverrides,
-    categoryDisplayRenamesLower: s.categoryDisplayRenames,
-    scopedBalanceFromStatement: null,
-  );
+DashboardSnapshot _globalSnapshot(AppComposition s) {
+  return s.ui.dashboard.buildSnapshot(const GlobalDashboardScope());
 }
 
-String _summaryLine(AppState s) {
+String _summaryLine(AppComposition s) {
   final snap = _globalSnapshot(s);
   return 'Income ${formatMoney(snap.incomeThisMonth)} · '
       'Spending ${formatMoney(snap.spentThisMonth)}';
@@ -47,13 +38,13 @@ void main() {
     'Dashboard summary refreshes after transaction, CSV batch, and account delete',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final state = AppState();
-      state.accounts = const [
+      final state = createTestAppComposition();
+      state.accountService.accounts = const [
         Account(id: 'a', name: 'A', type: AccountType.checking),
         Account(id: 'b', name: 'B', type: AccountType.checking),
       ];
 
-      final ref = state.spendReference;
+      final ref = state.ui.budgets.spendReference;
       final tA1 = _tx(
         date: DateTime(ref.year, ref.month, 5, 12),
         description: 'Store A',
@@ -83,11 +74,11 @@ void main() {
         importId: '300',
       );
 
-      state.transactionsByAccount = {
+      state.transactionService.transactionsByAccount = {
         'a': [tA1, tA2, tA3],
         'b': [tB1],
       };
-      state.activeAccountId = 'a';
+      state.accountService.activeAccountId = 'a';
 
       await tester.pumpWidget(
         MaterialApp(
@@ -99,13 +90,13 @@ void main() {
       final initial = _summaryLine(state);
       expect(find.text(initial), findsOneWidget);
 
-      await state.deleteTransaction(tA1);
+      await state.transactionWorkflowService.deleteTransaction(tA1);
       await tester.pump();
       final afterSingleDelete = _summaryLine(state);
       expect(afterSingleDelete, isNot(initial));
       expect(find.text(afterSingleDelete), findsOneWidget);
 
-      await state.deleteTransactionsForImportBatch(
+      await state.transactionWorkflowService.deleteTransactionsForImportBatch(
         accountId: 'a',
         importId: '100',
       );
@@ -114,7 +105,7 @@ void main() {
       expect(afterBatchDelete, isNot(afterSingleDelete));
       expect(find.text(afterBatchDelete), findsOneWidget);
 
-      await state.deleteAccount('b');
+      await state.accountWorkflowService.deleteAccount('b');
       await tester.pump();
       final afterAccountDelete = _summaryLine(state);
       expect(afterAccountDelete, isNot(afterBatchDelete));

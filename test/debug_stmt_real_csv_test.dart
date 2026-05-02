@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -22,11 +22,11 @@ void main() {
         fail('Missing CSV at $path — set CLARITY_STMT_CSV or add stmt.csv');
       }
       final text = await file.readAsString();
-      final state = AppState();
-      state.accounts = [
+      final state = createTestAppComposition();
+      state.accountService.accounts = [
         Account(id: 'debug', name: 'Debug', type: AccountType.checking),
       ];
-      state.loadFromCsv(
+      state.transactionWorkflowService.loadFromCsv(
         text,
         accountId: 'debug',
         reference: DateTime(2025, 1, 15),

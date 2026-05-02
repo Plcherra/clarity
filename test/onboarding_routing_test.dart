@@ -1,4 +1,4 @@
-import 'package:clarity/app/app_state.dart';
+import 'helpers/app_composition_test_fixture.dart';
 import 'package:clarity/core/storage/profile/profile_storage.dart';
 import 'package:clarity/features/onboarding/presentation/onboarding_screen.dart';
 import 'package:clarity/features/shell/presentation/home_shell.dart';
@@ -11,10 +11,15 @@ void main() {
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
-    final state = AppState();
+    final state = createTestAppComposition();
 
     await tester.pumpWidget(
-      MaterialApp(home: OnboardingScreen(appState: state)),
+      MaterialApp(
+        home: OnboardingScreen(
+          saveLocalProfile: state.profileController.setLocalProfile,
+          ui: state.ui,
+        ),
+      ),
     );
 
     expect(find.text('Welcome to Clarity'), findsOneWidget);
@@ -22,15 +27,15 @@ void main() {
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    expect(state.localProfile, isNotNull);
-    expect(state.localProfile!.displayName, 'Test User');
+    expect(state.profileController.localProfile, isNotNull);
+    expect(state.profileController.localProfile!.displayName, 'Test User');
     expect(find.byType(HomeShell), findsOneWidget);
   });
 
   testWidgets('HomeShell shows when profile already exists', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    final state = AppState();
-    await state.setLocalProfile(
+    final state = createTestAppComposition();
+    await state.profileController.setLocalProfile(
       LocalProfile(
         displayName: 'Already',
         createdAtUtcIso: DateTime.utc(2026).toIso8601String(),
