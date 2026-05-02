@@ -37,7 +37,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (!mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(
-          builder: (context) => HomeShell(appState: widget.appState),
+          builder: (context) => HomeShell(ui: widget.appState.ui),
         ),
       );
     } finally {
@@ -119,10 +119,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                                 children: [
                                   Text('Continue'),
                                   SizedBox(width: 8),
-                                  Icon(
-                                    Icons.arrow_forward_rounded,
-                                    size: 20,
-                                  ),
+                                  Icon(Icons.arrow_forward_rounded, size: 20),
                                 ],
                               ),
                       ),
@@ -137,4 +134,3 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 }
-

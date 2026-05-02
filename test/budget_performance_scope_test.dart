@@ -1,7 +1,8 @@
-import 'package:clarity/app/app_state.dart';
 import 'package:clarity/features/budgets/domain/budget_models.dart';
 import 'package:clarity/core/models/models.dart';
 import 'package:clarity/core/storage/budgets/budget_keys.dart';
+import 'package:clarity/features/budgets/application/budget_service.dart';
+import 'package:clarity/features/dashboard/application/dashboard_service.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -21,15 +22,22 @@ Transaction _tx({
   );
 }
 
+List<Transaction> _allTransactions(
+  Map<String, List<Transaction>> transactionsByAccount,
+) {
+  return transactionsByAccount.values.expand((txs) => txs).toList();
+}
+
 void main() {
   test('budget performance is correct for global and account scopes', () async {
-    final state = AppState();
-    state.accounts = const [
+    final budgetService = BudgetService();
+    final dashboardService = DashboardService();
+    const accounts = [
       Account(id: 'a', name: 'A', type: AccountType.checking),
       Account(id: 'b', name: 'B', type: AccountType.checking),
     ];
-    final ref = state.spendReference;
-    state.transactionsByAccount = {
+    final ref = DateTime(2026, 4, 15);
+    final transactionsByAccount = {
       'a': [
         _tx(
           accountId: 'a',
@@ -56,17 +64,40 @@ void main() {
         ),
       ],
     };
-    final month = state.activeBudgetYearMonth;
-    state.budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
+    final month = budgetService.activeBudgetYearMonth(ref);
+    budgetService.repository.categoryMonthlyBudgetsByYearMonth = {
       month: {
         budgetDisplayKey('Grocery / Supermarket'): 100,
         budgetDisplayKey('Shopping'): 50,
       },
     };
-    state.refreshAllState();
+    Map<String, double> spentByDisplayCategoryForScopeInRange(
+      DashboardScope scope, {
+      required DateTime start,
+      required DateTime end,
+    }) {
+      return dashboardService.spentByDisplayCategoryForScopeInRange(
+        scope: scope,
+        start: start,
+        end: end,
+        allTransactions: _allTransactions(transactionsByAccount),
+        transactionsByAccount: transactionsByAccount,
+        categoryOverrides: const {},
+        categoryDisplayRenames: const {},
+        merchantCategoryMemory: const {},
+        accounts: accounts,
+      );
+    }
 
-    final global = state.budgetPerformanceForScope(
+    final global = budgetService.budgetPerformanceForScope(
       const GlobalDashboardScope(),
+      customCategories: const [],
+      categoriesHiddenFromPicker: const <String>{},
+      categoryDisplayRenames: const {},
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
+      periodType: BudgetPeriodType.monthly,
+      periodKey: month,
     );
     expect(global.budgetedCategoryCount, 2);
     expect(global.onTrackCategoryCount, 1);
@@ -76,8 +107,15 @@ void main() {
     expect(global.topOverspendingCategories.length, 1);
     expect(global.topOverspendingCategories.first.displayLabel, 'Shopping');
 
-    final accountB = state.budgetPerformanceForScope(
+    final accountB = budgetService.budgetPerformanceForScope(
       const AccountDashboardScope('b'),
+      customCategories: const [],
+      categoriesHiddenFromPicker: const <String>{},
+      categoryDisplayRenames: const {},
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
+      periodType: BudgetPeriodType.monthly,
+      periodKey: month,
     );
     expect(accountB.budgetedCategoryCount, 2);
     expect(accountB.onTrackCategoryCount, 2);
@@ -87,12 +125,11 @@ void main() {
   });
 
   test('budget performance supports weekly and custom periods', () async {
-    final state = AppState();
-    state.accounts = const [
-      Account(id: 'a', name: 'A', type: AccountType.checking),
-    ];
+    final budgetService = BudgetService();
+    final dashboardService = DashboardService();
+    const accounts = [Account(id: 'a', name: 'A', type: AccountType.checking)];
     final weekStart = DateTime(2026, 4, 8); // Wednesday start, user-selected.
-    state.transactionsByAccount = {
+    final transactionsByAccount = {
       'a': [
         _tx(
           accountId: 'a',
@@ -118,24 +155,45 @@ void main() {
         ),
       ],
     };
-    final weekKey = state.budgetWeekStartKey(weekStart);
-    state.budgetService.repository.categoryWeeklyBudgetsByWeekStart = {
+    final weekKey = budgetService.budgetWeekStartKey(weekStart);
+    budgetService.repository.categoryWeeklyBudgetsByWeekStart = {
       weekKey: {
         budgetDisplayKey('Coffee / Quick Food'): 30,
         budgetDisplayKey('Transportation'): 30,
       },
     };
-    final customKey = state.ensureCustomBudgetPeriod(
+    final customKey = budgetService.ensureCustomBudgetPeriod(
       weekStart,
       weekStart.add(const Duration(days: 2)),
     );
-    state.budgetService.repository.categoryCustomBudgetsByKey = {
+    budgetService.repository.categoryCustomBudgetsByKey = {
       customKey: {budgetDisplayKey('Coffee / Quick Food'): 20},
     };
-    state.refreshAllState();
+    Map<String, double> spentByDisplayCategoryForScopeInRange(
+      DashboardScope scope, {
+      required DateTime start,
+      required DateTime end,
+    }) {
+      return dashboardService.spentByDisplayCategoryForScopeInRange(
+        scope: scope,
+        start: start,
+        end: end,
+        allTransactions: _allTransactions(transactionsByAccount),
+        transactionsByAccount: transactionsByAccount,
+        categoryOverrides: const {},
+        categoryDisplayRenames: const {},
+        merchantCategoryMemory: const {},
+        accounts: accounts,
+      );
+    }
 
-    final weekly = state.budgetPerformanceForScope(
+    final weekly = budgetService.budgetPerformanceForScope(
       const GlobalDashboardScope(),
+      customCategories: const [],
+      categoriesHiddenFromPicker: const <String>{},
+      categoryDisplayRenames: const {},
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
       periodType: BudgetPeriodType.weekly,
       periodKey: weekKey,
     );
@@ -143,8 +201,13 @@ void main() {
     expect(weekly.totalSpent, 65);
     expect(weekly.totalOverspent, 10);
 
-    final custom = state.budgetPerformanceForScope(
+    final custom = budgetService.budgetPerformanceForScope(
       const GlobalDashboardScope(),
+      customCategories: const [],
+      categoriesHiddenFromPicker: const <String>{},
+      categoryDisplayRenames: const {},
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
       periodType: BudgetPeriodType.custom,
       periodKey: customKey,
     );

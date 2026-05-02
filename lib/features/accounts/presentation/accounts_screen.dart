@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/models/models.dart';
 import 'account_detail_screen.dart';
 
 class AccountsScreen extends StatelessWidget {
-  const AccountsScreen({super.key, required this.appState});
+  const AccountsScreen({super.key, required this.controller});
 
-  final AppState appState;
+  final AccountUiController controller;
 
   Future<void> _showAddAccountDialog(BuildContext context) async {
     await showDialog<void>(
@@ -21,7 +21,7 @@ class AccountsScreen extends StatelessWidget {
             institution: institution,
             currentBalance: balance,
           );
-          final ok = await appState.addAccount(account);
+          final ok = await controller.addAccount(account);
           if (!dialogContext.mounted) return;
           if (!ok) {
             ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -40,9 +40,9 @@ class AccountsScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final accounts = appState.accounts;
+        final accounts = controller.accounts;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Accounts'),
@@ -104,7 +104,7 @@ class AccountsScreen extends StatelessWidget {
                           Navigator.of(context).push<void>(
                             MaterialPageRoute<void>(
                               builder: (context) => AccountDetailScreen(
-                                appState: appState,
+                                controller: controller,
                                 accountId: a.id,
                               ),
                             ),
@@ -136,7 +136,8 @@ class _AddAccountDialog extends StatefulWidget {
     AccountType type,
     String? institution,
     double? balance,
-  ) onCreate;
+  )
+  onCreate;
 
   @override
   State<_AddAccountDialog> createState() => _AddAccountDialogState();
@@ -210,13 +211,11 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
                 for (final t in AccountType.values)
                   ButtonSegment<AccountType>(
                     value: t,
-                    label: Text(
-                      switch (t) {
-                        AccountType.checking => 'Checking',
-                        AccountType.savings => 'Savings',
-                        AccountType.creditCard => 'Card',
-                      },
-                    ),
+                    label: Text(switch (t) {
+                      AccountType.checking => 'Checking',
+                      AccountType.savings => 'Savings',
+                      AccountType.creditCard => 'Card',
+                    }),
                   ),
               ],
               selected: {_type},
@@ -259,4 +258,3 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
     );
   }
 }
-

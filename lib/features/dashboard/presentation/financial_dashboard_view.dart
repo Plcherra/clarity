@@ -1,10 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../budgets/domain/budget_models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
-import '../domain/dashboard_queries.dart';
 import '../domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
@@ -14,7 +13,10 @@ import 'month_detail_screen.dart';
 import '../../transactions/presentation/transaction_review_screen.dart';
 
 typedef SnapshotBuilder =
-    DashboardSnapshot Function(AppState appState, DashboardScope scope);
+    DashboardSnapshot Function(
+      DashboardUiController controller,
+      DashboardScope scope,
+    );
 
 const double _sectionGap = 32.0;
 
@@ -27,7 +29,7 @@ Color _balanceColor(double v) {
 class FinancialDashboardView extends StatefulWidget {
   const FinancialDashboardView({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.scope,
     required this.buildSnapshot,
     this.showBackButton = false,
@@ -37,7 +39,7 @@ class FinancialDashboardView extends StatefulWidget {
     this.onDeleteAccount,
   });
 
-  final AppState appState;
+  final DashboardUiController controller;
   final DashboardScope scope;
   final SnapshotBuilder buildSnapshot;
   final bool showBackButton;
@@ -63,18 +65,13 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: widget.appState,
+      listenable: widget.controller,
       builder: (context, _) {
-        final appState = widget.appState;
+        final controller = widget.controller;
         final scope = widget.scope;
-        final snap = widget.buildSnapshot(appState, scope);
-        final budgetPerformance = appState.budgetPerformanceForScope(scope);
-        final uncategorizedQueue = uncategorizedTransactionsForDashboardScope(
-          scope,
-          scopedTransactions: appState.transactionsForDashboardScope(scope),
-          categoryOverrides: appState.categoryOverrides,
-          categoryDisplayRenamesLower: appState.categoryDisplayRenames,
-        );
+        final snap = widget.buildSnapshot(controller, scope);
+        final budgetPerformance = controller.budgetPerformanceForScope(scope);
+        final uncategorizedQueue = controller.uncategorizedQueue(scope);
         final attentionCount = uncategorizedQueue.length;
         final scrollBody = DecoratedBox(
           decoration: BoxDecoration(
@@ -122,8 +119,9 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                         onPressed: () {
                           Navigator.of(context).push<void>(
                             MaterialPageRoute<void>(
-                              builder: (context) =>
-                                  BudgetsScreen(appState: appState),
+                              builder: (context) => BudgetsScreen(
+                                controller: controller.ui.budgets,
+                              ),
                             ),
                           );
                         },
@@ -137,7 +135,7 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                             Navigator.of(context).push<void>(
                               MaterialPageRoute<void>(
                                 builder: (context) => TransactionReviewScreen(
-                                  appState: appState,
+                                  controller: controller.ui.transactions,
                                   scope: scope,
                                 ),
                               ),
@@ -193,7 +191,7 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                       const SizedBox(height: 16),
                       _MonthlyGroupsList(
                         groups: snap.monthlyGroups,
-                        appState: appState,
+                        controller: controller,
                       ),
                     ]),
                   ),
@@ -236,7 +234,10 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
             ],
           ),
           body: widget.showBackButton
-              ? ImportAiStatusHost(appState: appState, child: scrollBody)
+              ? ImportAiStatusHost(
+                  controller: controller.ui.importAiStatus,
+                  child: scrollBody,
+                )
               : scrollBody,
         );
       },
@@ -672,10 +673,10 @@ class _BurnRateCard extends StatelessWidget {
 }
 
 class _MonthlyGroupsList extends StatelessWidget {
-  const _MonthlyGroupsList({required this.groups, required this.appState});
+  const _MonthlyGroupsList({required this.groups, required this.controller});
 
   final List<MonthlyBankGroup> groups;
-  final AppState appState;
+  final DashboardUiController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -703,7 +704,7 @@ class _MonthlyGroupsList extends StatelessWidget {
       children: [
         for (var i = 0; i < groups.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _MonthCard(group: groups[i], appState: appState),
+          _MonthCard(group: groups[i], controller: controller),
         ],
       ],
     );
@@ -711,10 +712,10 @@ class _MonthlyGroupsList extends StatelessWidget {
 }
 
 class _MonthCard extends StatelessWidget {
-  const _MonthCard({required this.group, required this.appState});
+  const _MonthCard({required this.group, required this.controller});
 
   final MonthlyBankGroup group;
-  final AppState appState;
+  final DashboardUiController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -736,7 +737,7 @@ class _MonthCard extends StatelessWidget {
           Navigator.of(context).push<void>(
             MaterialPageRoute<void>(
               builder: (context) =>
-                  MonthDetailScreen(appState: appState, group: group),
+                  MonthDetailScreen(controller: controller, group: group),
             ),
           );
         },

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../data/ai_categorization_service.dart';
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';
@@ -12,12 +12,12 @@ import '../domain/spend_categories.dart';
 class AiCategorizationFlowScreen extends StatefulWidget {
   const AiCategorizationFlowScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.accountId,
     required this.onFinished,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final String accountId;
   final VoidCallback onFinished;
 
@@ -28,7 +28,8 @@ class AiCategorizationFlowScreen extends StatefulWidget {
 
 enum _FlowPhase { loading, error, review }
 
-class _AiCategorizationFlowScreenState extends State<AiCategorizationFlowScreen> {
+class _AiCategorizationFlowScreenState
+    extends State<AiCategorizationFlowScreen> {
   _FlowPhase _phase = _FlowPhase.loading;
   Object? _error;
   Map<String, String?> _aiSuggestions = {};
@@ -53,21 +54,24 @@ class _AiCategorizationFlowScreenState extends State<AiCategorizationFlowScreen>
       _phase = _FlowPhase.loading;
       _error = null;
     });
-    final unc = widget.appState
-        .uncategorizedImportedRowsForAccount(widget.accountId);
+    final unc = widget.controller.uncategorizedImportedRowsForAccount(
+      widget.accountId,
+    );
     if (unc.isEmpty) {
       if (!mounted) return;
       widget.onFinished();
       return;
     }
     try {
-      final allowed = widget.appState.allowedCategoryPickerLabels;
+      final allowed = widget.controller.allowedCategoryPickerLabels;
       final prefilled = <String, String?>{};
       final toFetch = <Transaction>[];
       for (final t in unc) {
         final k = transactionCategoryKey(t);
         final mk = transactionMerchantKeyLower(t);
-        final memo = mk.isNotEmpty ? widget.appState.merchantCategoryMemory[mk] : null;
+        final memo = mk.isNotEmpty
+            ? widget.controller.merchantCategoryMemory[mk]
+            : null;
         if (memo != null && memo.trim().isNotEmpty) {
           prefilled[k] = memo.trim();
         } else {
@@ -123,50 +127,50 @@ class _AiCategorizationFlowScreenState extends State<AiCategorizationFlowScreen>
       ),
       body: switch (_phase) {
         _FlowPhase.loading => Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 36,
-                    height: 36,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: theme.colorScheme.primary.withValues(alpha: 0.85),
-                    ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: theme.colorScheme.primary.withValues(alpha: 0.85),
                   ),
-                  const SizedBox(height: 28),
-                  Text(
-                    'Fetching suggestions',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.2,
-                    ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  'Fetching suggestions',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.2,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'This may take a moment for larger statements.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                    ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'This may take a moment for larger statements.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+        ),
         _FlowPhase.error => _ErrorBody(
-            error: _error,
-            onRetry: _runFetch,
-            onSkip: _finish,
-          ),
+          error: _error,
+          onRetry: _runFetch,
+          onSkip: _finish,
+        ),
         _FlowPhase.review => AiCategoryReviewScreen(
-            appState: widget.appState,
-            transactions: _transactions,
-            initialSuggestions: _aiSuggestions,
-            onSkip: _finish,
-          ),
+          controller: widget.controller,
+          transactions: _transactions,
+          initialSuggestions: _aiSuggestions,
+          onSkip: _finish,
+        ),
       },
     );
   }
@@ -207,10 +211,7 @@ class _ErrorBody extends StatelessWidget {
             color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
           ),
           const SizedBox(height: 20),
-          Text(
-            msg,
-            style: theme.textTheme.bodyLarge?.copyWith(height: 1.45),
-          ),
+          Text(msg, style: theme.textTheme.bodyLarge?.copyWith(height: 1.45)),
           const SizedBox(height: 28),
           FilledButton.icon(
             onPressed: onRetry,
@@ -235,13 +236,13 @@ class _ErrorBody extends StatelessWidget {
 class AiCategoryReviewScreen extends StatefulWidget {
   const AiCategoryReviewScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.transactions,
     required this.initialSuggestions,
     required this.onSkip,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final List<Transaction> transactions;
   final Map<String, String?> initialSuggestions;
   final VoidCallback onSkip;
@@ -268,7 +269,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
     }
   }
 
-  List<String> get _allowed => widget.appState.allowedCategoryPickerLabels;
+  List<String> get _allowed => widget.controller.allowedCategoryPickerLabels;
 
   List<Transaction> get _filteredTransactions {
     final f = _filterCategory?.trim();
@@ -312,8 +313,9 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       );
       return;
     }
-    final backfillBatch =
-        widget.appState.applyCategoriesWithMerchantLearning(toSave);
+    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
+      toSave,
+    );
     if (!mounted) return;
     final n = toSave.length;
     final snack = ScaffoldMessenger.of(context);
@@ -329,7 +331,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
             : SnackBarAction(
                 label: 'Undo',
                 onPressed: () async {
-                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
                 },
               ),
       ),
@@ -350,13 +352,16 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('No categories selected. Choose one per row or tap Cancel.'),
+          content: Text(
+            'No categories selected. Choose one per row or tap Cancel.',
+          ),
         ),
       );
       return;
     }
-    final backfillBatch =
-        widget.appState.applyCategoriesWithMerchantLearning(toSave);
+    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
+      toSave,
+    );
     if (!mounted) return;
     final n = toSave.length;
     final snack = ScaffoldMessenger.of(context);
@@ -372,7 +377,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
             : SnackBarAction(
                 label: 'Undo',
                 onPressed: () async {
-                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
                 },
               ),
       ),
@@ -428,10 +433,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
                 child: Text('— All categories —'),
               ),
               ..._allowed.map(
-                (c) => DropdownMenuItem<String?>(
-                  value: c,
-                  child: Text(c),
-                ),
+                (c) => DropdownMenuItem<String?>(value: c, child: Text(c)),
               ),
             ],
             onChanged: (v) => setState(() => _filterCategory = v),
@@ -471,9 +473,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
                 elevation: 0,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(
-                    color: cs.outline.withValues(alpha: 0.12),
-                  ),
+                  side: BorderSide(color: cs.outline.withValues(alpha: 0.12)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -571,4 +571,3 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
     return null;
   }
 }
-

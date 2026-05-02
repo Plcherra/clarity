@@ -1,14 +1,14 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/io/file_reader.dart';
 import '../../accounts/presentation/account_selection_screen.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key, required this.appState});
+  const UploadScreen({super.key, required this.controller});
 
-  final AppState appState;
+  final AccountUiController controller;
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -38,7 +38,7 @@ class _UploadScreenState extends State<UploadScreen> {
       await Navigator.of(context).push<void>(
         MaterialPageRoute<void>(
           builder: (context) => AccountSelectionScreen(
-            appState: widget.appState,
+            controller: widget.controller,
             pendingCsvText: text,
           ),
         ),
@@ -125,4 +125,3 @@ class _UploadScreenState extends State<UploadScreen> {
     );
   }
 }
-

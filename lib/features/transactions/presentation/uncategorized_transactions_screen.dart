@@ -1,27 +1,23 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../domain/bank_statement_monthly.dart';
-import '../../dashboard/domain/dashboard_queries.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
-import '../widgets/transaction_category_dropdown.dart';
+import 'widgets/transaction_category_dropdown.dart';
 
 /// All statement rows whose effective category is Uncategorized, newest first.
 class UncategorizedTransactionsScreen extends StatelessWidget {
-  const UncategorizedTransactionsScreen({super.key, required this.appState});
+  const UncategorizedTransactionsScreen({super.key, required this.controller});
 
-  final AppState appState;
+  final TransactionUiController controller;
 
   /// Uncategorized rows for global Overview (all accounts), newest first.
-  static List<BankStatementLine> uncategorizedLines(AppState state) {
+  static List<BankStatementLine> uncategorizedLines(
+    TransactionUiController controller,
+  ) {
     const scope = GlobalDashboardScope();
-    return uncategorizedTransactionsForDashboardScope(
-      scope,
-      scopedTransactions: state.transactionsForDashboardScope(scope),
-      categoryOverrides: state.categoryOverrides,
-      categoryDisplayRenamesLower: state.categoryDisplayRenames,
-    );
+    return controller.uncategorizedQueue(scope);
   }
 
   @override
@@ -30,9 +26,9 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final lines = uncategorizedLines(appState);
+        final lines = uncategorizedLines(controller);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),
@@ -91,7 +87,7 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
                                   alpha: 0.35,
                                 ),
                               ),
-                            _LineTile(line: lines[i], appState: appState),
+                            _LineTile(line: lines[i], controller: controller),
                           ],
                         ],
                       ),
@@ -105,10 +101,10 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
 }
 
 class _LineTile extends StatelessWidget {
-  const _LineTile({required this.line, required this.appState});
+  const _LineTile({required this.line, required this.controller});
 
   final BankStatementLine line;
-  final AppState appState;
+  final TransactionUiController controller;
 
   @override
   Widget build(BuildContext context) {
@@ -151,7 +147,7 @@ class _LineTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     TransactionCategoryField(
-                      appState: appState,
+                      controller: controller,
                       transaction: tx,
                       displayCategory: line.suggestedCategory,
                     ),
@@ -198,7 +194,7 @@ class _LineTile extends StatelessWidget {
                         ),
                       );
                       if (confirm != true) return;
-                      final deleted = await appState.deleteTransaction(tx);
+                      final deleted = await controller.deleteTransaction(tx);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(

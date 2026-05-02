@@ -16,8 +16,8 @@ bool _descWordMatch(String haystackLower, String wordLower) {
 
 /// Bank-style lines to drop from spending, income rollups, and category charts.
 ///
-/// Matched on the raw description (case-insensitive). Checked after manual overrides,
-/// before saved [categoryRules] and keyword/CSV inference.
+/// Matched on the raw description (case-insensitive). Checked after manual
+/// overrides and before keyword/CSV inference.
 ///
 /// Phrase substrings use plain [String.contains]. Short tokens use whole-word
 /// matching so descriptions like `Transfer` do not match `NSF`.
@@ -262,7 +262,8 @@ String? _trySuggestRemainingBuckets(String haystackLower) {
   return null;
 }
 
-bool isBuiltInSpendCategory(String name) => kSelectableSpendCategories.contains(name);
+bool isBuiltInSpendCategory(String name) =>
+    kSelectableSpendCategories.contains(name);
 
 /// Built-in names plus [custom], sorted case-insensitively, deduped.
 List<String> mergedSortedCategories(Iterable<String> custom) {
@@ -310,10 +311,7 @@ String spendGroupLabelForDisplay(
   Map<String, String>? categoryOverrides,
   Map<String, String>? categoryDisplayRenamesLower,
 }) {
-  final base = spendGroupLabel(
-    t,
-    categoryOverrides: categoryOverrides,
-  );
+  final base = spendGroupLabel(t, categoryOverrides: categoryOverrides);
   return applyCategoryDisplayRenames(base, categoryDisplayRenamesLower ?? {});
 }
 
@@ -339,7 +337,8 @@ bool isIncomeCategoryLabel(String label) =>
 /// Resolves the label used for grouping spending (CSV category or keyword bucket).
 ///
 /// Order: [Transaction.categoryId] (persisted manual choice), then [categoryOverrides]
-/// for the same row key, then description rules, then heuristics / CSV category.
+/// for the same row key, then returned/reversed description checks, then
+/// heuristics / CSV category.
 ///
 /// Rules are intentionally not supported; only manual per-transaction picks and
 /// built-in keyword inference are used.
@@ -383,4 +382,3 @@ String spendGroupLabel(
   }
   return suggested;
 }
-

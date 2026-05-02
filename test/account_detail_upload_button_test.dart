@@ -18,7 +18,10 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: AccountDetailScreen(appState: state, accountId: 'a1'),
+        home: AccountDetailScreen(
+          controller: state.ui.accounts,
+          accountId: 'a1',
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -39,7 +42,9 @@ void main() {
       ];
 
     await tester.pumpWidget(
-      MaterialApp(home: DashboardScreen(appState: state, isRoot: true)),
+      MaterialApp(
+        home: DashboardScreen(controller: state.ui.dashboard, isRoot: true),
+      ),
     );
     await tester.pumpAndSettle();
 

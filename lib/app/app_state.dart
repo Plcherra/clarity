@@ -23,13 +23,16 @@ import '../features/transactions/application/transaction_service.dart';
 import '../features/profile/application/profile_service.dart';
 import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/domain/budget_models.dart';
+import 'dashboard_refresh_coordinator.dart';
+import 'ui_dependencies.dart';
 
 export '../features/transactions/data/csv_import_service.dart'
     show CsvImportBatchSummary;
 
-/// Holds parsed statement data and derived aggregates.
-/// Monthly category budgets ([hydratePersistedBudgets] / [commitMonthlyBudgetDraft])
-/// are persisted separately from CSV data.
+/// Composition root and compatibility facade for app-wide services.
+///
+/// Feature data and workflows live in services; this class wires them together,
+/// preserves older public entry points, and coordinates scoped UI refreshes.
 class AppState extends ChangeNotifier {
   LocalProfile? get localProfile => profileService.localProfile;
   set localProfile(LocalProfile? value) {
@@ -48,6 +51,88 @@ class AppState extends ChangeNotifier {
       app_ai.AiCategorizationApplicationService();
 
   final DashboardService _dashboard = DashboardService();
+  late final DashboardRefreshCoordinator _dashboardRefresh =
+      DashboardRefreshCoordinator(
+        dashboardService: _dashboard,
+        transactionService: transactionService,
+        accountService: accountService,
+        categoryService: categoryService,
+        categoryCatalogService: categoryCatalogService,
+        resolveTransactions: resolveTransactions,
+      );
+  late final AppUiDependencies ui = AppUiDependencies(
+    AppUiControllerBindings(
+      dashboardService: _dashboard,
+      transactionService: transactionService,
+      categoryService: categoryService,
+      categoryCatalogService: categoryCatalogService,
+      merchantService: merchantService,
+      accountService: accountService,
+      budgetService: budgetService,
+      aiCategorizationService: aiCategorizationService,
+      resolveTransaction: resolveTransaction,
+      clearTransactionsForAccount: clearTransactionsForAccount,
+      deleteTransaction: deleteTransaction,
+      uncategorizedImportedRowsGlobal: uncategorizedImportedRowsGlobal,
+      uncategorizedImportedRowsForAccount: uncategorizedImportedRowsForAccount,
+      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
+      undoCategoryApplyBatch: undoCategoryApplyBatch,
+      undoLastAiAutoApply: undoLastAiAutoApply,
+      setCategoryOverride: setCategoryOverride,
+      createCategoryAndAssign: createCategoryAndAssign,
+      deleteCategory: deleteCategory,
+      renameCategory: renameCategory,
+      addAccount: addAccount,
+      deleteAccount: deleteAccount,
+      loadFromCsv: loadFromCsv,
+      needsImportAiAfterCsvUpload: needsImportAiAfterCsvUpload,
+      importAiEngineConfigured: () => importAiEngineConfigured,
+      startBackgroundImportAiCategorization:
+          startBackgroundImportAiCategorization,
+      csvImportBatchesForAccount: csvImportBatchesForAccount,
+      deleteTransactionsForImportBatch: deleteTransactionsForImportBatch,
+      setActiveBudgetPeriod: setActiveBudgetPeriod,
+      commitBudgetDraft: commitBudgetDraft,
+      budgetPerformanceForScope: budgetPerformanceForScope,
+      spentByDisplayCategoryForScopeInRange:
+          spentByDisplayCategoryForScopeInRange,
+      consumeImportAiSnackMessage: consumeImportAiSnackMessage,
+    ),
+  );
+
+  void _notifyProfileChanged() {
+    notifyListeners();
+  }
+
+  void _notifyDashboardAndBudgetsChanged() {
+    ui.notifyDashboard();
+    ui.notifyBudgets();
+  }
+
+  void _notifyCategoryCatalogChanged() {
+    ui.notifyTransactions();
+    ui.notifyBudgets();
+    ui.notifyDashboard();
+  }
+
+  void _notifyAccountsChanged() {
+    ui.notifyAccounts();
+    ui.notifyDashboard();
+  }
+
+  void _notifyTransactionDataChanged() {
+    ui.notifyDataChanged();
+  }
+
+  void _notifyImportAiStatusChanged() {
+    ui.notifyImportAiStatus();
+  }
+
+  @override
+  void dispose() {
+    ui.dispose();
+    super.dispose();
+  }
 
   /// The account currently being viewed/reviewed in UI flows.
   String? get activeAccountId => accountService.activeAccountId;
@@ -203,7 +288,7 @@ class AppState extends ChangeNotifier {
       merchantService: merchantService,
       allowedCategoryPickerLabels: allowedCategoryPickerLabels,
       applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-      notifyListeners: notifyListeners,
+      notifyStatusChanged: _notifyImportAiStatusChanged,
     );
   }
 
@@ -229,29 +314,25 @@ class AppState extends ChangeNotifier {
     categoryCatalogService.categoriesHiddenFromPicker = value;
   }
 
-  // Rules feature removed: no persisted categorization rules.
-
   /// Same instant used for monthly aggregates (defaults to import time / [loadFromCsv]).
   DateTime get spendReference => _dashboard.spendReference;
 
   /// Loads persisted budgets from disk (call once before [runApp]).
   Future<void> hydratePersistedBudgets() async {
     await budgetService.hydratePersistedBudgets(reference: spendReference);
-    notifyListeners();
+    _notifyDashboardAndBudgetsChanged();
   }
-
-  // Rules feature removed.
 
   /// Loads custom category names and picker metadata from disk (call once before [runApp]).
   Future<void> hydratePersistedCategoryCatalog() async {
     await categoryCatalogService.hydratePersistedCategoryCatalog();
-    notifyListeners();
+    _notifyCategoryCatalogChanged();
   }
 
   /// Loads persisted accounts from disk (call once before [runApp]).
   Future<void> hydratePersistedAccounts() async {
     await accountService.hydratePersistedAccounts();
-    notifyListeners();
+    _notifyAccountsChanged();
   }
 
   /// Loads persisted transactions across all accounts (call once before [runApp]).
@@ -260,17 +341,13 @@ class AppState extends ChangeNotifier {
       activeAccountId: activeAccountId,
     );
     transactions = result.activeTransactions;
-    _dashboard.recomputeDerivedState(
+    _syncDashboardAfterTransactionWorkflow(
       activeAccountTransactions: transactions,
       allTransactionsForMetrics: allTransactions,
       transactionsForCsvDiagnostics: transactions,
       diag: null,
-      accounts: accounts,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
     );
-    notifyListeners();
+    _notifyTransactionDataChanged();
   }
 
   /// One-time migration: remove duplicated transactions caused by unstable v1 fingerprints.
@@ -286,29 +363,25 @@ class AppState extends ChangeNotifier {
     if (!result.changed) return;
 
     transactions = result.activeTransactions;
-    _dashboard.recomputeDerivedState(
+    _syncDashboardAfterTransactionWorkflow(
       activeAccountTransactions: transactions,
       allTransactionsForMetrics: allTransactions,
       transactionsForCsvDiagnostics: transactions,
       diag: null,
-      accounts: accounts,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
     );
-    notifyListeners();
+    _notifyTransactionDataChanged();
   }
 
   Future<void> hydrateLocalProfile() async {
     await profileService.hydrateLocalProfile();
-    notifyListeners();
+    _notifyProfileChanged();
   }
 
   Future<void> setLocalProfile(LocalProfile profile) async {
     await profileService.setLocalProfile(profile);
     // Switch merchant memory namespace to the new profile.
     await hydrateMerchantCategoryMemory();
-    notifyListeners();
+    _notifyProfileChanged();
   }
 
   String _userNamespaceForMerchantMemory() {
@@ -319,7 +392,7 @@ class AppState extends ChangeNotifier {
     await merchantService.hydrateMerchantCategoryMemory(
       _userNamespaceForMerchantMemory(),
     );
-    notifyListeners();
+    _notifyTransactionDataChanged();
   }
 
   /// Applies explicit category assignments, then learns merchant memory and backfills
@@ -356,76 +429,50 @@ class AppState extends ChangeNotifier {
     return undone;
   }
 
-  /// Appends [account], persists, and notifies. Returns false if save fails.
+  /// Appends [account], persists, and refreshes account/dashboard UI.
   Future<bool> addAccount(Account account) async {
     final ok = await accountService.addAccount(account);
-    if (ok) notifyListeners();
+    if (ok) _notifyAccountsChanged();
     return ok;
   }
 
   /// Deletes one account and all its transactions + related keyed metadata.
   Future<bool> deleteAccount(String accountId) async {
-    final applied = await accountService.deleteAccount(
+    return accountService.deleteAccountWorkflow(
       accountId: accountId,
       transactionsByAccount: transactionsByAccount,
+      transactionService: transactionService,
+      categoryService: categoryService,
+      refreshAllState: refreshAllState,
     );
-    if (applied == null) return false;
-
-    transactionsByAccount = applied.transactionsByAccount;
-    _removeTransactionMetadataForKeys(applied.removedKeys);
-    _persistTransactionCategoryAssignments();
-    _persistAiCategorySuggestions().catchError((_) {});
-    refreshAllState();
-    return true;
   }
 
   void _persistCategoryCatalog() {
     categoryCatalogService.persistCategoryCatalog();
   }
 
-  void _persistTransactionCategoryAssignments() {
-    transactionService.persistTransactionCategoryAssignments();
-  }
-
   /// Loads persisted per-transaction category picks (call once before [runApp]).
   Future<void> hydrateTransactionCategoryAssignments() async {
     await transactionService.hydrateTransactionCategoryAssignments();
-    notifyListeners();
+    _notifyTransactionDataChanged();
   }
 
   Future<void> hydrateAiCategorySuggestions() async {
     await transactionService.hydrateAiCategorySuggestions();
-    notifyListeners();
+    ui.notifyTransactions();
   }
 
   Future<void> _persistAiCategorySuggestions() async {
     await transactionService.persistAiCategorySuggestions();
   }
 
-  void _removeTransactionMetadataForKeys(Set<String> keys) {
-    transactionService.removeTransactionMetadataForKeys(
-      keys,
-      categoryService: categoryService,
-    );
-  }
-
-  /// Single source of truth for app-wide recomputation after any data mutation.
+  /// Compatibility refresh delegate used after mutations that affect many views.
   ///
   /// This keeps Dashboard (global + account), monthly breakdowns, and dependent
   /// views in sync without requiring route-level/manual refresh hooks.
   void refreshAllState() {
-    final activeTx = _dashboard.refreshAllState(
-      activeAccountId: activeAccountId,
-      activeTransactionsForAccount:
-          transactionService.activeTransactionsForAccount,
-      allTransactionsForMetrics: allTransactions,
-      accounts: accounts,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
-    );
-    transactions = activeTx;
-    notifyListeners();
+    _dashboardRefresh.refreshAllState();
+    _notifyTransactionDataChanged();
   }
 
   void _syncDashboardAfterTransactionWorkflow({
@@ -434,15 +481,11 @@ class AppState extends ChangeNotifier {
     required List<Transaction> transactionsForCsvDiagnostics,
     required CsvParseDiagnostics? diag,
   }) {
-    _dashboard.recomputeDerivedState(
+    _dashboardRefresh.syncAfterTransactionWorkflow(
       activeAccountTransactions: activeAccountTransactions,
       allTransactionsForMetrics: allTransactionsForMetrics,
       transactionsForCsvDiagnostics: transactionsForCsvDiagnostics,
-      diag: diag,
-      accounts: accounts,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-      resolveTransactions: resolveTransactions,
+      diagnostics: diag,
     );
   }
 
@@ -510,11 +553,11 @@ class AppState extends ChangeNotifier {
       categoryService: categoryService,
       activeAccountId: activeAccountId,
       recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
-      notifyListeners: notifyListeners,
+      notifyChanged: _notifyTransactionDataChanged,
     );
   }
 
-  /// Single entry for effective spend grouping (saved categoryId → override map → rules → CSV / keywords).
+  /// Compatibility entry for effective spend grouping.
   String effectiveSpendGroupLabel(Transaction t) {
     return transactionService.effectiveSpendGroupLabel(
       t,
@@ -579,7 +622,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Uncategorized statement rows for [accountId] using the same rules as the dashboard.
+  /// Uncategorized statement rows for [accountId] using dashboard category resolution.
   List<Transaction> uncategorizedImportedRowsForAccount(String accountId) {
     return transactionService.uncategorizedImportedRowsForAccount(
       accountId,
@@ -587,8 +630,6 @@ class AppState extends ChangeNotifier {
       categoryDisplayRenames: categoryDisplayRenames,
     );
   }
-
-  // Rules feature removed.
 
   /// Active calendar month key derived from spend reference (budget UX).
   String get activeBudgetYearMonth =>
@@ -606,7 +647,7 @@ class AppState extends ChangeNotifier {
     required String key,
   }) {
     budgetService.setActiveBudgetPeriod(type: type, key: key);
-    notifyListeners();
+    _notifyDashboardAndBudgetsChanged();
   }
 
   double? monthlyBudgetForDisplayLabel(
@@ -735,7 +776,7 @@ class AppState extends ChangeNotifier {
         totalBalance = balance;
       },
       recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
-      notifyListeners: notifyListeners,
+      notifyChanged: _notifyTransactionDataChanged,
       persistCategoryCatalog: _persistCategoryCatalog,
     );
   }
@@ -757,7 +798,7 @@ class AppState extends ChangeNotifier {
     );
   }
 
-  /// Adds a new category name (if needed), assigns [t], and notifies.
+  /// Adds a new category name if needed, then assigns [t].
   void createCategoryAndAssign(Transaction t, String rawName) {
     categoryService.createCategoryAndAssignWorkflow(
       t,
@@ -775,7 +816,7 @@ class AppState extends ChangeNotifier {
       transactionService: transactionService,
       activeAccountId: activeAccountId,
       recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
-      notifyListeners: notifyListeners,
+      notifyChanged: _notifyTransactionDataChanged,
     );
   }
 
@@ -788,7 +829,7 @@ class AppState extends ChangeNotifier {
       transactionService: transactionService,
       activeAccountId: activeAccountId,
       recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
-      notifyListeners: notifyListeners,
+      notifyChanged: _notifyTransactionDataChanged,
     );
   }
 
@@ -801,7 +842,7 @@ class AppState extends ChangeNotifier {
     customCategories = const [];
     categoryDisplayRenames = const {};
     categoriesHiddenFromPicker = <String>{};
-    notifyListeners();
+    ui.notifyAll();
     _persistCategoryCatalog();
   }
 }

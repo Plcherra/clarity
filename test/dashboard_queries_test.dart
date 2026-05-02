@@ -1,9 +1,29 @@
-import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/application/dashboard_service.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_queries.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
+import 'package:clarity/features/transactions/application/category_service.dart';
+import 'package:clarity/features/transactions/application/transaction_service.dart';
 import 'package:clarity/features/transactions/domain/spend_categories.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+List<Transaction> _allTransactions(
+  Map<String, List<Transaction>> transactionsByAccount,
+) {
+  return transactionsByAccount.values.expand((txs) => txs).toList();
+}
+
+List<Transaction> _transactionsForScope({
+  required DashboardService dashboard,
+  required DashboardScope scope,
+  required Map<String, List<Transaction>> transactionsByAccount,
+}) {
+  return dashboard.transactionsForDashboardScope(
+    scope: scope,
+    allTransactions: _allTransactions(transactionsByAccount),
+    transactionsByAccount: transactionsByAccount,
+  );
+}
 
 void main() {
   group('dashboard_queries', () {
@@ -14,30 +34,35 @@ void main() {
         amount: -4,
         accountId: 'a',
       );
-      final state = AppState();
-      state.accounts = [
+      final dashboard = DashboardService();
+      final accounts = [
         const Account(id: 'a', name: 'A', type: AccountType.checking),
       ];
-      state.transactionsByAccount = {
+      final transactionsByAccount = {
         'a': [t1],
       };
       const scope = GlobalDashboardScope();
       final ref = DateTime(2026, 4, 15);
+      final scopedTransactions = _transactionsForScope(
+        dashboard: dashboard,
+        scope: scope,
+        transactionsByAccount: transactionsByAccount,
+      );
       final snap = buildDashboardSnapshot(
         scope: scope,
         reference: ref,
-        accounts: state.accounts,
-        allTransactions: state.allTransactions,
-        scopedTransactions: state.transactionsForDashboardScope(scope),
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        accounts: accounts,
+        allTransactions: _allTransactions(transactionsByAccount),
+        scopedTransactions: scopedTransactions,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: const {},
         scopedBalanceFromStatement: null,
       );
       final fromQueries = monthlyGroupsForDashboardScope(
         scope,
-        scopedTransactions: state.transactionsForDashboardScope(scope),
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        scopedTransactions: scopedTransactions,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: const {},
       );
       expect(fromQueries.length, snap.monthlyGroups.length);
       for (var i = 0; i < fromQueries.length; i++) {
@@ -56,39 +81,44 @@ void main() {
         amount: -2,
         accountId: 'b',
       );
-      final state = AppState();
-      state.transactionsByAccount = {
+      final dashboard = DashboardService();
+      final transactionsByAccount = {
         'b': [obscure],
       };
-      state.accounts = [
+      final accounts = [
         const Account(id: 'b', name: 'B', type: AccountType.checking),
       ];
       const scope = GlobalDashboardScope();
+      final scopedTransactions = _transactionsForScope(
+        dashboard: dashboard,
+        scope: scope,
+        transactionsByAccount: transactionsByAccount,
+      );
       final snap = buildDashboardSnapshot(
         scope: scope,
         reference: DateTime(2026, 4, 15),
-        accounts: state.accounts,
-        allTransactions: state.allTransactions,
-        scopedTransactions: state.transactionsForDashboardScope(scope),
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        accounts: accounts,
+        allTransactions: _allTransactions(transactionsByAccount),
+        scopedTransactions: scopedTransactions,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: const {},
         scopedBalanceFromStatement: null,
       );
       expect(
         uncategorizedCountForDashboardScope(
           scope,
-          scopedTransactions: state.transactionsForDashboardScope(scope),
-          categoryOverrides: state.categoryOverrides,
-          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+          scopedTransactions: scopedTransactions,
+          categoryOverrides: const {},
+          categoryDisplayRenamesLower: const {},
         ),
         snap.uncategorizedCount,
       );
       expect(
         uncategorizedTransactionsForDashboardScope(
           scope,
-          scopedTransactions: state.transactionsForDashboardScope(scope),
-          categoryOverrides: state.categoryOverrides,
-          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+          scopedTransactions: scopedTransactions,
+          categoryOverrides: const {},
+          categoryDisplayRenamesLower: const {},
         ).length,
         snap.uncategorizedCount,
       );
@@ -101,43 +131,48 @@ void main() {
         amount: -2,
         accountId: 'b',
       );
-      final state = AppState();
-      state.transactionsByAccount = {
+      final dashboard = DashboardService();
+      final transactionsByAccount = {
         'b': [tx],
       };
-      state.accounts = [
+      final accounts = [
         const Account(id: 'b', name: 'B', type: AccountType.checking),
       ];
       // Rename Uncategorized -> something else: should remove it from needs-attention.
-      state.categoryDisplayRenames = {'uncategorized': 'Needs manual'};
+      const categoryDisplayRenames = {'uncategorized': 'Needs manual'};
 
       const scope = GlobalDashboardScope();
+      final scopedTransactions = _transactionsForScope(
+        dashboard: dashboard,
+        scope: scope,
+        transactionsByAccount: transactionsByAccount,
+      );
       final snap = buildDashboardSnapshot(
         scope: scope,
         reference: DateTime(2026, 4, 15),
-        accounts: state.accounts,
-        allTransactions: state.allTransactions,
-        scopedTransactions: state.transactionsForDashboardScope(scope),
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        accounts: accounts,
+        allTransactions: _allTransactions(transactionsByAccount),
+        scopedTransactions: scopedTransactions,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: categoryDisplayRenames,
         scopedBalanceFromStatement: null,
       );
 
       expect(
         uncategorizedCountForDashboardScope(
           scope,
-          scopedTransactions: state.transactionsForDashboardScope(scope),
-          categoryOverrides: state.categoryOverrides,
-          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+          scopedTransactions: scopedTransactions,
+          categoryOverrides: const {},
+          categoryDisplayRenamesLower: categoryDisplayRenames,
         ),
         0,
       );
       expect(
         uncategorizedTransactionsForDashboardScope(
           scope,
-          scopedTransactions: state.transactionsForDashboardScope(scope),
-          categoryOverrides: state.categoryOverrides,
-          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+          scopedTransactions: scopedTransactions,
+          categoryOverrides: const {},
+          categoryDisplayRenamesLower: categoryDisplayRenames,
         ),
         isEmpty,
       );
@@ -151,13 +186,21 @@ void main() {
         amount: -1,
         accountId: 'x',
       );
-      final state = AppState();
+      final transactionService = TransactionService();
+      final categoryService = CategoryService();
       expect(
-        state.effectiveCategoryDisplayLabel(t),
+        transactionService.effectiveCategoryDisplayLabel(
+          t,
+          categoryService: categoryService,
+          categoryDisplayRenames: const {},
+          merchantCategoryMemory: const {},
+          accounts: const [],
+          allTransactionsContext: const [],
+        ),
         spendGroupLabelForDisplay(
           t,
-          categoryOverrides: state.categoryOverrides,
-          categoryDisplayRenamesLower: state.categoryDisplayRenames,
+          categoryOverrides: categoryService.categoryOverrides,
+          categoryDisplayRenamesLower: const {},
         ),
       );
     });

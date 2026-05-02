@@ -30,9 +30,7 @@ final class ClarityApp extends StatelessWidget {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         elevation: 2,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       appBarTheme: AppBarTheme(
         centerTitle: false,
@@ -82,10 +80,7 @@ final class ClarityApp extends StatelessWidget {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: const Color(0xFF1C1B19).withValues(alpha: 0.75),
-          textStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-            fontSize: 15,
-          ),
+          textStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -107,10 +102,9 @@ final class ClarityApp extends StatelessWidget {
           theme: _buildTheme(),
           home: appState.localProfile == null
               ? OnboardingScreen(appState: appState)
-              : HomeShell(appState: appState),
+              : HomeShell(ui: appState.ui),
         );
       },
     );
   }
 }
-

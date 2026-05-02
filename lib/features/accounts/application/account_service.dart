@@ -1,6 +1,8 @@
 import '../../../core/models/models.dart';
 import '../../../core/storage/accounts/account_storage.dart';
 import '../../../core/storage/transactions/transaction_storage.dart';
+import '../../transactions/application/category_service.dart';
+import '../../transactions/application/transaction_service.dart';
 import '../../transactions/domain/spend_categories.dart';
 
 /// Non-null when an account row was deleted and storage was updated successfully.
@@ -74,5 +76,29 @@ class AccountService {
       removedKeys: removedKeys,
       transactionsByAccount: nextByAccount,
     );
+  }
+
+  Future<bool> deleteAccountWorkflow({
+    required String accountId,
+    required Map<String, List<Transaction>> transactionsByAccount,
+    required TransactionService transactionService,
+    required CategoryService categoryService,
+    required void Function() refreshAllState,
+  }) async {
+    final applied = await deleteAccount(
+      accountId: accountId,
+      transactionsByAccount: transactionsByAccount,
+    );
+    if (applied == null) return false;
+
+    transactionService.transactionsByAccount = applied.transactionsByAccount;
+    transactionService.removeTransactionMetadataForKeys(
+      applied.removedKeys,
+      categoryService: categoryService,
+    );
+    transactionService.persistTransactionCategoryAssignments();
+    transactionService.persistAiCategorySuggestions().catchError((_) {});
+    refreshAllState();
+    return true;
   }
 }

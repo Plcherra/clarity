@@ -36,7 +36,7 @@ void main() {
         createdAtUtcIso: DateTime.utc(2026).toIso8601String(),
       ),
     );
-    await tester.pumpWidget(MaterialApp(home: HomeShell(appState: state)));
+    await tester.pumpWidget(MaterialApp(home: HomeShell(ui: state.ui)));
     await tester.pumpAndSettle();
     expect(find.byType(HomeShell), findsOneWidget);
     // Dashboard tab is present.

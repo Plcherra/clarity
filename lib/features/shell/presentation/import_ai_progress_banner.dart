@@ -1,23 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 
 /// Top banner: `Categorizing transactions… X of Y (Z%)`.
 class ImportAiProgressBanner extends StatelessWidget {
-  const ImportAiProgressBanner({
-    super.key,
-    required this.appState,
-  });
+  const ImportAiProgressBanner({super.key, required this.controller});
 
-  final AppState appState;
+  final ImportAiStatusController controller;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final total = appState.importAiProgressTotal;
-    final done = appState.importAiProgressCompleted;
+    final total = controller.importAiProgressTotal;
+    final done = controller.importAiProgressCompleted;
     final pct = total > 0 ? ((done / total) * 100).round() : 0;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: 0.85),
@@ -52,11 +49,11 @@ class ImportAiProgressBanner extends StatelessWidget {
 class ImportAiStatusHost extends StatefulWidget {
   const ImportAiStatusHost({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.child,
   });
 
-  final AppState appState;
+  final ImportAiStatusController controller;
   final Widget child;
 
   @override
@@ -67,22 +64,22 @@ class _ImportAiStatusHostState extends State<ImportAiStatusHost> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: widget.appState,
+      listenable: widget.controller,
       builder: (context, _) {
         SchedulerBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          final msg = widget.appState.consumeImportAiSnackMessage();
+          final msg = widget.controller.consumeImportAiSnackMessage();
           if (msg != null && msg.isNotEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(msg)),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(msg)));
           }
         });
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (widget.appState.importAiCategorizationRunning)
-              ImportAiProgressBanner(appState: widget.appState),
+            if (widget.controller.importAiCategorizationRunning)
+              ImportAiProgressBanner(controller: widget.controller),
             Expanded(child: widget.child),
           ],
         );

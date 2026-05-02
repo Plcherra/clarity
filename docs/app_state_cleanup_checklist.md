@@ -58,14 +58,23 @@ passes catalog/transaction/dashboard callbacks.
 
 ## Phase 6 - UI Dependency Cleanup
 
-- [ ] Stop passing full `AppState` into dashboard screens
-- [ ] Stop passing full `AppState` into transaction screens/widgets
-- [ ] Stop passing full `AppState` into account screens
-- [ ] Stop passing full `AppState` into budget screens
+- [x] Stop passing full `AppState` into dashboard screens
+- [x] Stop passing full `AppState` into transaction screens/widgets
+- [x] Stop passing full `AppState` into account screens
+- [x] Stop passing full `AppState` into budget screens
+
+Completed: feature UI now receives narrow controllers from `AppUiDependencies`
+instead of taking `AppState` directly; controllers temporarily delegate to
+`AppState` while Phase 7 removes the remaining composition-root coupling.
 
 ## Phase 7 - Final Shrink
 
-- [ ] Keep `AppState` only as a thin composition root
-- [ ] Remove direct feature logic from `AppState`
-- [ ] Replace broad `notifyListeners()` with scoped listenables/controllers
+- [x] Keep `AppState` only as a thin composition root
+- [x] Remove direct feature logic from `AppState`
+- [x] Replace broad `notifyListeners()` with scoped listenables/controllers
 - [ ] Delete `AppState` if it becomes unnecessary
+
+Completed: feature UI now listens to scoped controllers, AppState no longer
+broadcasts every feature data mutation through `notifyListeners()`, and account
+delete coordination moved behind `AccountService`. AppState remains as the
+bootstrap/test compatibility facade, so deletion is intentionally deferred.

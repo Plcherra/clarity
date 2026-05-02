@@ -5,8 +5,8 @@ import '../domain/budget_models.dart';
 
 /// Persisted monthly / weekly / custom budget amounts and active period selection.
 ///
-/// Does not depend on [ChangeNotifier]; [AppState] owns this repository and calls
-/// `notifyListeners` / `refreshAllState` after mutations that affect UI.
+/// Does not depend on [ChangeNotifier]. UI refresh is coordinated by the
+/// application layer after mutations that affect visible budget/dashboard state.
 class BudgetRepository {
   /// Month-aware budget amounts:
   /// `YYYY-MM` -> ([budgetDisplayKey] of display label -> amount).
@@ -34,10 +34,7 @@ class BudgetRepository {
       categoryCustomBudgetsByKey = snapshot.custom;
       customBudgetRangesByKey = {
         for (final e in snapshot.customRanges.entries)
-          e.key: BudgetPeriodRange(
-            start: e.value.start,
-            end: e.value.end,
-          ),
+          e.key: BudgetPeriodRange(start: e.value.start, end: e.value.end),
       };
     } on Object {
       categoryMonthlyBudgetsByYearMonth = {};
@@ -94,19 +91,21 @@ class BudgetRepository {
 
   List<String> budgetMonthsForPicker({DateTime? start}) {
     final defaults = defaultBudgetYearMonths(start: start);
-    final extras = categoryMonthlyBudgetsByYearMonth.keys
-        .where((k) => !defaults.contains(k))
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
+    final extras =
+        categoryMonthlyBudgetsByYearMonth.keys
+            .where((k) => !defaults.contains(k))
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
     return [...defaults, ...extras];
   }
 
   List<String> budgetWeeksForPicker({DateTime? start}) {
     final defaults = defaultBudgetWeeks(start: start);
-    final extras = categoryWeeklyBudgetsByWeekStart.keys
-        .where((k) => !defaults.contains(k))
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
+    final extras =
+        categoryWeeklyBudgetsByWeekStart.keys
+            .where((k) => !defaults.contains(k))
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
     return [...defaults, ...extras];
   }
 
@@ -159,7 +158,8 @@ class BudgetRepository {
         categoryMonthlyBudgetsByYearMonth[periodKey] ?? const {},
       BudgetPeriodType.weekly =>
         categoryWeeklyBudgetsByWeekStart[periodKey] ?? const {},
-      BudgetPeriodType.custom => categoryCustomBudgetsByKey[periodKey] ?? const {},
+      BudgetPeriodType.custom =>
+        categoryCustomBudgetsByKey[periodKey] ?? const {},
     };
     return Map<String, double>.from(raw);
   }
@@ -169,9 +169,10 @@ class BudgetRepository {
     required BudgetPeriodType periodType,
     required String periodKey,
   }) {
-    return budgetsForPeriod(periodType: periodType, periodKey: periodKey)[
-      budgetDisplayKey(displayLabel)
-    ];
+    return budgetsForPeriod(
+      periodType: periodType,
+      periodKey: periodKey,
+    )[budgetDisplayKey(displayLabel)];
   }
 
   BudgetPeriodRange? budgetPeriodRangeFor({
@@ -195,7 +196,9 @@ class BudgetRepository {
     );
     if (range == null) return periodKey;
     return switch (periodType) {
-      BudgetPeriodType.monthly => formatYearMonthLabel(budgetYearMonthKey(range.start)),
+      BudgetPeriodType.monthly => formatYearMonthLabel(
+        budgetYearMonthKey(range.start),
+      ),
       BudgetPeriodType.weekly =>
         '${formatShortDate(range.start)} – ${formatShortDate(range.end)}',
       BudgetPeriodType.custom =>
@@ -265,12 +268,15 @@ class BudgetRepository {
     };
 
     final target = switch (periodType) {
-      BudgetPeriodType.monthly =>
-        Map<String, double>.from(nextByMonth[periodKey] ?? const {}),
-      BudgetPeriodType.weekly =>
-        Map<String, double>.from(nextByWeek[periodKey] ?? const {}),
-      BudgetPeriodType.custom =>
-        Map<String, double>.from(nextByCustom[periodKey] ?? const {}),
+      BudgetPeriodType.monthly => Map<String, double>.from(
+        nextByMonth[periodKey] ?? const {},
+      ),
+      BudgetPeriodType.weekly => Map<String, double>.from(
+        nextByWeek[periodKey] ?? const {},
+      ),
+      BudgetPeriodType.custom => Map<String, double>.from(
+        nextByCustom[periodKey] ?? const {},
+      ),
     };
     for (final e in draftByNormalizedDisplayKey.entries) {
       final value = e.value;

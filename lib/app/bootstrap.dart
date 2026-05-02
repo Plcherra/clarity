@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
-import 'app_state.dart';
 import '../core/storage/migrations/rules_wipe_migration.dart';
 import 'app.dart';
+import 'app_hydration.dart';
+import 'app_state.dart';
 
 Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -11,15 +12,7 @@ Future<void> bootstrap() async {
   await runRulesWipeMigrationIfNeeded();
 
   final appState = AppState();
-  await appState.hydratePersistedBudgets();
-  await appState.hydratePersistedCategoryCatalog();
-  await appState.hydratePersistedAccounts();
-  await appState.hydratePersistedTransactions();
-  await appState.hydrateTransactionCategoryAssignments();
-  await appState.hydrateAiCategorySuggestions();
-  await appState.dedupePersistedTransactionsIfNeeded();
-  await appState.hydrateLocalProfile();
-  await appState.hydrateMerchantCategoryMemory();
+  await hydrateAppStateForStartup(appState);
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -31,4 +24,3 @@ Future<void> bootstrap() async {
 
   runApp(ClarityApp(appState: appState));
 }
-

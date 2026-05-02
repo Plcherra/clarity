@@ -1,20 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/models/models.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import '../../../core/formatting/formatting.dart';
-import '../../transactions/domain/spend_categories.dart' show transactionCategoryKey;
-import '../../transactions/widgets/transaction_category_dropdown.dart';
+import '../../transactions/presentation/widgets/transaction_category_dropdown.dart';
 
 class MonthDetailScreen extends StatelessWidget {
   const MonthDetailScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.group,
   });
 
-  final AppState appState;
+  final DashboardUiController controller;
 
   /// Month block from the same [DashboardSnapshot.monthlyGroups] list the user tapped.
   final MonthlyBankGroup group;
@@ -25,48 +24,22 @@ class MonthDetailScreen extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final scopedAccountIds = group.transactions
-            .map((e) => e.transaction.accountId)
-            .toSet();
-        final hasScopedStorageEntry = scopedAccountIds.any(
-          appState.transactionsByAccount.containsKey,
-        );
-        final allTransactions = appState.allTransactions;
-        final lines = <BankStatementLine>[];
-        if (hasScopedStorageEntry) {
-          final byKey = <String, Transaction>{
-            for (final t in allTransactions) transactionCategoryKey(t): t,
-          };
-          for (final line in group.transactions) {
-            final k = transactionCategoryKey(line.transaction);
-            final current = byKey[k];
-            if (current == null) continue;
-            final resolved = appState.resolveTransaction(
-              current,
-              allTransactionsContext: allTransactions,
-            );
-            lines.add(
-              BankStatementLine(
-                transaction: current,
-                suggestedCategory: resolved.displayCategory,
-              ),
-            );
-          }
-        } else {
-          lines.addAll(group.transactions);
-        }
+        final lines = controller.refreshedLinesForMonth(group);
 
-        final monthTotal = lines.fold<double>(0, (sum, e) => sum + e.transaction.amount);
+        final monthTotal = lines.fold<double>(
+          0,
+          (sum, e) => sum + e.transaction.amount,
+        );
         final accountIds = lines.map((e) => e.transaction.accountId).toSet();
         final clearAccountId = accountIds.length == 1 ? accountIds.first : null;
         final title = formatYearMonthLabel(group.yearMonth);
         final totalColor = monthTotal < 0
             ? const Color(0xFFC41E3A)
             : monthTotal > 0
-                ? const Color(0xFF1B7A4C)
-                : cs.onSurface;
+            ? const Color(0xFF1B7A4C)
+            : cs.onSurface;
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),
@@ -112,9 +85,8 @@ class MonthDetailScreen extends StatelessWidget {
                       ),
                     );
                     if (confirm != true) return;
-                    final deleted = await appState.clearTransactionsForAccount(
-                      clearAccountId,
-                    );
+                    final deleted = await controller
+                        .clearTransactionsForAccount(clearAccountId);
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -134,7 +106,10 @@ class MonthDetailScreen extends StatelessWidget {
             children: [
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 22,
+                ),
                 decoration: BoxDecoration(
                   color: cs.surface,
                   borderRadius: BorderRadius.circular(22),
@@ -207,9 +182,15 @@ class MonthDetailScreen extends StatelessWidget {
                               Divider(
                                 height: 1,
                                 thickness: 1,
-                                color: cs.outlineVariant.withValues(alpha: 0.35),
+                                color: cs.outlineVariant.withValues(
+                                  alpha: 0.35,
+                                ),
                               ),
-                            _LineTile(line: lines[i], appState: appState),
+                            _LineTile(
+                              line: lines[i],
+                              transactionController: controller.ui.transactions,
+                              onDeleteTransaction: controller.deleteTransaction,
+                            ),
                           ],
                         ],
                       ),
@@ -223,10 +204,15 @@ class MonthDetailScreen extends StatelessWidget {
 }
 
 class _LineTile extends StatelessWidget {
-  const _LineTile({required this.line, required this.appState});
+  const _LineTile({
+    required this.line,
+    required this.transactionController,
+    required this.onDeleteTransaction,
+  });
 
   final BankStatementLine line;
-  final AppState appState;
+  final TransactionUiController transactionController;
+  final Future<bool> Function(Transaction transaction) onDeleteTransaction;
 
   @override
   Widget build(BuildContext context) {
@@ -234,8 +220,9 @@ class _LineTile extends StatelessWidget {
     final cs = theme.colorScheme;
     final tx = line.transaction;
     final muted = cs.onSurface.withValues(alpha: 0.42);
-    final amountColor =
-        tx.amount < 0 ? const Color(0xFFC41E3A) : const Color(0xFF1B7A4C);
+    final amountColor = tx.amount < 0
+        ? const Color(0xFFC41E3A)
+        : const Color(0xFF1B7A4C);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
@@ -268,7 +255,7 @@ class _LineTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     TransactionCategoryField(
-                      appState: appState,
+                      controller: transactionController,
                       transaction: tx,
                       displayCategory: line.suggestedCategory,
                     ),
@@ -314,7 +301,7 @@ class _LineTile extends StatelessWidget {
                         ),
                       );
                       if (confirm != true) return;
-                      final deleted = await appState.deleteTransaction(tx);
+                      final deleted = await onDeleteTransaction(tx);
                       if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
@@ -327,7 +314,7 @@ class _LineTile extends StatelessWidget {
                       );
                     },
                     visualDensity: VisualDensity.compact,
-                ),
+                  ),
                 ],
               ),
             ],
@@ -337,4 +324,3 @@ class _LineTile extends StatelessWidget {
     );
   }
 }
-

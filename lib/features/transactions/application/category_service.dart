@@ -192,7 +192,7 @@ class CategoryService {
     required TransactionService transactionService,
     required String? activeAccountId,
     required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyListeners,
+    required void Function() notifyChanged,
   }) {
     final result = deleteCategory(
       canonicalLabel,
@@ -212,7 +212,7 @@ class CategoryService {
       transactionService: transactionService,
       activeAccountId: activeAccountId,
       recomputeDashboard: recomputeDashboard,
-      notifyListeners: notifyListeners,
+      notifyChanged: notifyChanged,
     );
     transactionService.persistTransactionCategoryAssignments();
     categoryCatalogService.persistCategoryCatalog();
@@ -307,7 +307,7 @@ class CategoryService {
     required TransactionService transactionService,
     required String? activeAccountId,
     required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyListeners,
+    required void Function() notifyChanged,
   }) {
     final result = renameCategory(
       oldLabel,
@@ -328,7 +328,7 @@ class CategoryService {
       transactionService: transactionService,
       activeAccountId: activeAccountId,
       recomputeDashboard: recomputeDashboard,
-      notifyListeners: notifyListeners,
+      notifyChanged: notifyChanged,
     );
     if (result.shouldPersistActiveAccountTransactions) {
       transactionService.persistTransactionCategoryAssignments();
@@ -342,7 +342,7 @@ class CategoryService {
     required TransactionService transactionService,
     required String? activeAccountId,
     required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyListeners,
+    required void Function() notifyChanged,
   }) {
     categoryCatalogService.customCategories = result.customCategories;
     categoryCatalogService.categoryDisplayRenames =
@@ -365,6 +365,6 @@ class CategoryService {
       transactionsForCsvDiagnostics: transactionService.transactions,
       diag: null,
     );
-    notifyListeners();
+    notifyChanged();
   }
 }

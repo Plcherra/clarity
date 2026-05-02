@@ -10,15 +10,13 @@ Record **what we chose** so refactors do not re-litigate the same questions. Upd
 | **Per-account view** | **Account** scope on account detail — same snapshot pipeline, scoped transactions. |
 | **Banner “needs attention” vs Review** | Same definition: `uncategorizedTransactionCount` / `uncategorizedBankStatementLines` on **`transactionsForDashboardScope(scope)`** — was fixed so Overview and `TransactionReviewScreen` share scope. |
 | **Month detail** | Driven by **passed `MonthlyBankGroup`** from snapshot list, not `AppState.monthlyGroups` lookup for Overview. |
-| **Rules** | **Persisted globally** (`category_rules_storage`); **not** cleared on normal import; integrated in `spendGroupLabel` **after** overrides, **before** CSV/heuristics in the stack described in [`app_logic_contract.md`](app_logic_contract.md). |
-| **Rules UI** | Not linked from the main dashboard overflow (reduces “split brain” with AI). Rules engine still applies via `spendGroupLabel`. `RulesManagementScreen` remains in codebase for a future entry point or deep link. **Debug:** one line under Overview title compares `reviewQueue` vs `snap.uncategorizedCount` in debug builds only. |
-| **AI categorization** | Optional path when `OPENAI_API_KEY` present (see [`constants.dart`](../lib/constants.dart)); flows from account creation / CSV import entry points; not a substitute for the manual review list unless product expands it. |
+| **Rules** | Removed from active app behavior. The one-time migration deletes old persisted rules data; categorization now uses saved category IDs, manual overrides, merchant memory, keywords, and CSV labels. |
+| **AI categorization** | Optional path when `OPENAI_API_KEY` is present in app `.env` for now (see [`constants.dart`](../lib/core/constants/constants.dart)); should move behind backend/Supabase before production auth/API work. |
 | **Financial semantics** | `FinancialRole` + `effectiveFinancialRole` used for spend/income in snapshot (with global context for internal payments). |
 
 ## Open / product choices (explicitly not locked here unless stated)
 
-- Whether **Budgets** tab sums should be global vs account (verify [`budgets_screen.dart`](../lib/screens/budgets_screen.dart) when touching budgets).
-- Whether to **hide** Rules from primary UI long-term (engine stays even if nav changes).
+- Whether **Budgets** tab sums should be global vs account (verify [`budgets_screen.dart`](../lib/features/budgets/presentation/budgets_screen.dart) when touching budgets).
 - **Append vs replace** on re-import: follow `AppState` / CSV import implementation in each path.
 
 ## When you change behavior

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../../app/ui_dependencies.dart';
 // (rules disabled) keep normalization helpers local to rule subsystem only.
-import '../../../core/models/models.dart';
-import '../domain/spend_categories.dart';
+import '../../../../core/models/models.dart';
+import '../../domain/spend_categories.dart';
 
 /// Minimum length for a saved description rule pattern (after normalization).
 const int kMinCategoryRulePatternLength = 3;
@@ -21,12 +21,12 @@ const double _kCategoryPickerPanelHeight = 280;
 class TransactionCategoryField extends StatefulWidget {
   const TransactionCategoryField({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.transaction,
     required this.displayCategory,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final Transaction transaction;
   final String displayCategory;
 
@@ -66,10 +66,7 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
         onTap: _toggleCategoryMenu,
         borderRadius: BorderRadius.circular(999),
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 4,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: const Color(0xFFF0EDE8),
             borderRadius: BorderRadius.circular(999),
@@ -92,15 +89,12 @@ class _TransactionCategoryFieldState extends State<TransactionCategoryField> {
         return _CategoryMenuOverlay(
           layerLink: _categoryAnchorLink,
           dialogContext: context,
-          appState: widget.appState,
+          controller: widget.controller,
           transaction: widget.transaction,
           onClose: () => _categoryMenuPortal.hide(),
         );
       },
-      child: CompositedTransformTarget(
-        link: _categoryAnchorLink,
-        child: chip,
-      ),
+      child: CompositedTransformTarget(link: _categoryAnchorLink, child: chip),
     );
   }
 }
@@ -171,7 +165,7 @@ class _CategoryMenuOverlay extends StatefulWidget {
   const _CategoryMenuOverlay({
     required this.layerLink,
     required this.dialogContext,
-    required this.appState,
+    required this.controller,
     required this.transaction,
     required this.onClose,
   });
@@ -180,7 +174,7 @@ class _CategoryMenuOverlay extends StatefulWidget {
 
   /// Context for dialogs after the overlay is removed (e.g. parent [TransactionCategoryField]).
   final BuildContext dialogContext;
-  final AppState appState;
+  final TransactionUiController controller;
   final Transaction transaction;
   final VoidCallback onClose;
 
@@ -214,7 +208,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
     if (prev == null || c == null) return;
     final t = c.text.trim();
     if (t.isNotEmpty) {
-      widget.appState.renameCategory(prev, t);
+      widget.controller.renameCategory(prev, t);
     }
     c.dispose();
     _renameController = null;
@@ -233,7 +227,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
         if (ctrl != null) {
           final t = ctrl.text.trim();
           if (t.isNotEmpty) {
-            widget.appState.renameCategory(prev, t);
+            widget.controller.renameCategory(prev, t);
           }
           ctrl.dispose();
           _renameController = null;
@@ -252,7 +246,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
     if (_editingCanonical != canonical || _renameController == null) return;
     final t = _renameController!.text.trim();
     if (t.isNotEmpty) {
-      widget.appState.renameCategory(canonical, t);
+      widget.controller.renameCategory(canonical, t);
     }
     setState(() {
       _renameController?.dispose();
@@ -263,14 +257,14 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
 
   void _selectCategoryAndClose(String canonical) {
     _commitPendingEditIfAny();
-    widget.appState.setCategoryOverride(widget.transaction, canonical);
+    widget.controller.setCategoryOverride(widget.transaction, canonical);
     widget.onClose();
   }
 
   void _submitNew() {
     final raw = _newController.text;
     if (raw.trim().isEmpty) return;
-    widget.appState.createCategoryAndAssign(widget.transaction, raw);
+    widget.controller.createCategoryAndAssign(widget.transaction, raw);
     _newController.clear();
     widget.onClose();
   }
@@ -296,7 +290,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
                 _renameController = null;
                 _editingCanonical = null;
               }
-              widget.appState.deleteCategory(canonical);
+              widget.controller.deleteCategory(canonical);
               widget.onClose();
             },
             child: const Text('Delete'),
@@ -327,10 +321,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minWidth: 88,
-                  minHeight: 44,
-                ),
+                constraints: const BoxConstraints(minWidth: 88, minHeight: 44),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: editing && _renameController != null
@@ -418,11 +409,11 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
             children: [
               Expanded(
                 child: ListenableBuilder(
-                  listenable: widget.appState,
+                  listenable: widget.controller,
                   builder: (context, _) {
                     final names = categoryPickerCanonicals(
-                      customCategories: widget.appState.customCategories,
-                      hiddenLower: widget.appState.categoriesHiddenFromPicker,
+                      customCategories: widget.controller.customCategories,
+                      hiddenLower: widget.controller.categoriesHiddenFromPicker,
                     );
                     if (names.isEmpty) {
                       return Center(
@@ -446,7 +437,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
                         final canonical = names[i];
                         final label = applyCategoryDisplayRenames(
                           canonical,
-                          widget.appState.categoryDisplayRenames,
+                          widget.controller.categoryDisplayRenames,
                         );
                         return _categoryRow(
                           theme: theme,
@@ -502,4 +493,3 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
     );
   }
 }
-

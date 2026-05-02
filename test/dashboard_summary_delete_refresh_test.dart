@@ -90,7 +90,9 @@ void main() {
       state.activeAccountId = 'a';
 
       await tester.pumpWidget(
-        MaterialApp(home: DashboardScreen(appState: state, isRoot: true)),
+        MaterialApp(
+          home: DashboardScreen(controller: state.ui.dashboard, isRoot: true),
+        ),
       );
       await tester.pump();
 

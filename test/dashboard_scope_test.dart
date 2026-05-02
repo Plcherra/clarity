@@ -1,5 +1,6 @@
 import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/application/dashboard_service.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_metrics.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:clarity/features/dashboard/presentation/month_detail_screen.dart';
@@ -54,30 +55,34 @@ void main() {
 
   group('transactionsForDashboardScope', () {
     test('global includes all accounts; account scope is one list', () {
+      final dashboardService = DashboardService();
       final obscureB = _tx(
         accountId: 'b',
         description: 'zzz solo uncategorized on b',
         amount: -12,
       );
-      final state = AppState();
-      state.accounts = [
-        const Account(id: 'a', name: 'Checking A', type: AccountType.checking),
-        const Account(id: 'b', name: 'Checking B', type: AccountType.checking),
-      ];
-      state.transactionsByAccount = {
+      final transactionsByAccount = <String, List<Transaction>>{
         'a': [],
         'b': [obscureB],
       };
-      state.activeAccountId = 'a';
+      final allTransactions = transactionsByAccount.values
+          .expand((txs) => txs)
+          .toList();
 
-      final globalTxs = state.transactionsForDashboardScope(
-        const GlobalDashboardScope(),
+      final globalTxs = dashboardService.transactionsForDashboardScope(
+        scope: const GlobalDashboardScope(),
+        allTransactions: allTransactions,
+        transactionsByAccount: transactionsByAccount,
       );
-      final accountATxs = state.transactionsForDashboardScope(
-        const AccountDashboardScope('a'),
+      final accountATxs = dashboardService.transactionsForDashboardScope(
+        scope: const AccountDashboardScope('a'),
+        allTransactions: allTransactions,
+        transactionsByAccount: transactionsByAccount,
       );
-      final accountBTxs = state.transactionsForDashboardScope(
-        const AccountDashboardScope('b'),
+      final accountBTxs = dashboardService.transactionsForDashboardScope(
+        scope: const AccountDashboardScope('b'),
+        allTransactions: allTransactions,
+        transactionsByAccount: transactionsByAccount,
       );
 
       expect(globalTxs.length, 1);
@@ -86,13 +91,13 @@ void main() {
 
       final globalUncat = uncategorizedBankStatementLines(
         globalTxs,
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: const {},
       );
       final aUncat = uncategorizedBankStatementLines(
         accountATxs,
-        categoryOverrides: state.categoryOverrides,
-        categoryDisplayRenamesLower: state.categoryDisplayRenames,
+        categoryOverrides: const {},
+        categoryDisplayRenamesLower: const {},
       );
 
       expect(globalUncat.length, greaterThan(0));
@@ -149,7 +154,10 @@ void main() {
       );
       await tester.pumpWidget(
         MaterialApp(
-          home: MonthDetailScreen(appState: AppState(), group: group),
+          home: MonthDetailScreen(
+            controller: AppState().ui.dashboard,
+            group: group,
+          ),
         ),
       );
       expect(find.text('2 transactions'), findsOneWidget);

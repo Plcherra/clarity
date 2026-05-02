@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';
@@ -8,11 +8,11 @@ import '../domain/spend_categories.dart';
 class AiLowConfidenceReviewScreen extends StatefulWidget {
   const AiLowConfidenceReviewScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     this.autoApplyThreshold = 0.90,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final double autoApplyThreshold;
 
   @override
@@ -20,7 +20,8 @@ class AiLowConfidenceReviewScreen extends StatefulWidget {
       _AiLowConfidenceReviewScreenState();
 }
 
-class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScreen> {
+class _AiLowConfidenceReviewScreenState
+    extends State<AiLowConfidenceReviewScreen> {
   late Map<String, String?> _choice;
 
   @override
@@ -29,16 +30,17 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
     _choice = {};
   }
 
-  List<String> get _allowed => widget.appState.allowedCategoryPickerLabels;
+  List<String> get _allowed => widget.controller.allowedCategoryPickerLabels;
 
   List<Transaction> get _items {
-    final unc = widget.appState.uncategorizedImportedRowsGlobal();
+    final unc = widget.controller.uncategorizedImportedRowsGlobal();
     final out = <Transaction>[];
     for (final t in unc) {
       final k = transactionCategoryKey(t);
-      final already = widget.appState.transactionCategoryAssignments[k]?.trim();
+      final already = widget.controller.transactionCategoryAssignments[k]
+          ?.trim();
       if (already != null && already.isNotEmpty) continue;
-      final s = widget.appState.aiCategorySuggestions[k];
+      final s = widget.controller.aiCategorySuggestions[k];
       if (s == null) continue;
       final cat = s.suggestedCanonical?.trim();
       if (cat == null || cat.isEmpty) continue;
@@ -60,8 +62,9 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
       toSave[k] = v;
     }
     if (toSave.isEmpty) return;
-    final backfillBatch =
-        widget.appState.applyCategoriesWithMerchantLearning(toSave);
+    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
+      toSave,
+    );
     if (!mounted) return;
     final snack = ScaffoldMessenger.of(context);
     snack.clearSnackBars();
@@ -76,7 +79,7 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
             : SnackBarAction(
                 label: 'Undo',
                 onPressed: () async {
-                  await widget.appState.undoCategoryApplyBatch(backfillBatch);
+                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
                 },
               ),
       ),
@@ -96,7 +99,7 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
           IconButton(
             tooltip: 'Undo last AI auto-apply',
             onPressed: () async {
-              final undone = await widget.appState.undoLastAiAutoApply();
+              final undone = await widget.controller.undoLastAiAutoApply();
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
@@ -136,7 +139,7 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
               itemBuilder: (context, i) {
                 final t = items[i];
                 final k = transactionCategoryKey(t);
-                final s = widget.appState.aiCategorySuggestions[k]!;
+                final s = widget.controller.aiCategorySuggestions[k]!;
                 final confPct = (s.confidence * 100).round();
                 final selected = _choice[k];
                 return Material(
@@ -206,4 +209,3 @@ class _AiLowConfidenceReviewScreenState extends State<AiLowConfidenceReviewScree
     return null;
   }
 }
-

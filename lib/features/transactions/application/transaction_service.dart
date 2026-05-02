@@ -405,7 +405,7 @@ class TransactionService {
     required void Function(String accountId) setActiveAccountId,
     required void Function(double totalBalance) setTotalBalance,
     required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyListeners,
+    required void Function() notifyChanged,
     required void Function() persistCategoryCatalog,
   }) {
     final result = loadFromCsv(
@@ -424,7 +424,7 @@ class TransactionService {
       transactionsForCsvDiagnostics: transactions,
       diag: result.diagnostics,
     );
-    notifyListeners();
+    notifyChanged();
     persistCategoryCatalog();
   }
 
@@ -450,7 +450,7 @@ class TransactionService {
     required List<String> allowedCategoryPickerLabels,
     required List<AiAppliedCategoryChange> Function(Map<String, String>)
     applyCategoriesWithMerchantLearning,
-    required void Function() notifyListeners,
+    required void Function() notifyStatusChanged,
   }) {
     return aiCategorizationService.startBackgroundImportAiCategorization(
       accountId,
@@ -466,7 +466,7 @@ class TransactionService {
       },
       allowedCategoryPickerLabels: allowedCategoryPickerLabels,
       applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-      notifyListeners: notifyListeners,
+      notifyStatusChanged: notifyStatusChanged,
     );
   }
 
@@ -499,7 +499,7 @@ class TransactionService {
     required CategoryService categoryService,
     required String? activeAccountId,
     required TransactionDashboardRecompute recomputeDashboard,
-    required void Function() notifyListeners,
+    required void Function() notifyChanged,
   }) async {
     final result = await aiCategorizationService.undoLastAiAutoApply(
       transactionCategoryAssignments: transactionCategoryAssignments,
@@ -516,7 +516,7 @@ class TransactionService {
       transactionsForCsvDiagnostics: transactions,
       diag: null,
     );
-    notifyListeners();
+    notifyChanged();
     return result.undone;
   }
 

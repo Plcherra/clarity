@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../domain/budget_models.dart';
 import '../../../core/formatting/formatting.dart';
 import 'budget_category_list.dart';
@@ -10,9 +10,9 @@ import 'budgets_viewmodel.dart';
 /// Monthly budgets per category (picker list). Hidden categories are omitted here;
 /// their persisted amounts remain until edited elsewhere (Rule A).
 class BudgetsScreen extends StatefulWidget {
-  const BudgetsScreen({super.key, required this.appState});
+  const BudgetsScreen({super.key, required this.controller});
 
-  final AppState appState;
+  final BudgetUiController controller;
 
   @override
   State<BudgetsScreen> createState() => _BudgetsScreenState();
@@ -34,7 +34,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   @override
   void initState() {
     super.initState();
-    _viewModel = BudgetsViewModel(appState: widget.appState);
+    _viewModel = BudgetsViewModel(controller: widget.controller);
     _selectedType = _viewModel.initialPeriodType();
     _selectedPeriodKey = _viewModel.initialPeriodKey();
     final customRange = _viewModel.initialCustomRange(
@@ -80,7 +80,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
   void _activatePeriod(BudgetPeriodType type, String key) {
     if (key.trim().isEmpty) return;
-    widget.appState.setActiveBudgetPeriod(type: type, key: key);
+    widget.controller.setActiveBudgetPeriod(type: type, key: key);
   }
 
   Future<bool> _confirmPeriodSwitchIfNeeded() async {
@@ -168,7 +168,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     if (!mounted || picked == null) return;
     if (!await _confirmPeriodSwitchIfNeeded()) return;
 
-    final key = widget.appState.budgetWeekStartKey(picked);
+    final key = widget.controller.budgetWeekStartKey(picked);
     setState(() => _selectedPeriodKey = key);
     _activatePeriod(BudgetPeriodType.weekly, key);
   }
@@ -193,7 +193,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         _customEnd = DateTime(picked.year, picked.month, picked.day);
       }
       if (_customStart != null && _customEnd != null) {
-        _selectedPeriodKey = widget.appState.ensureCustomBudgetPeriod(
+        _selectedPeriodKey = widget.controller.ensureCustomBudgetPeriod(
           _customStart!,
           _customEnd!,
         );
@@ -207,7 +207,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   Future<bool> _save(List<BudgetCategoryRow> rows) async {
     if (_selectedPeriodKey.trim().isEmpty) return false;
     final draft = _viewModel.buildDraft(rows: rows, controllers: _controllers);
-    final ok = await widget.appState.commitBudgetDraft(
+    final ok = await widget.controller.commitBudgetDraft(
       _selectedType,
       _selectedPeriodKey,
       draft,
@@ -245,7 +245,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     );
 
     return ListenableBuilder(
-      listenable: widget.appState,
+      listenable: widget.controller,
       builder: (context, _) {
         final keys = _viewModel.periodKeys(_selectedType);
         _selectedPeriodKey = _viewModel.normalizeSelectedPeriodKey(

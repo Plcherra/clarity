@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/storage/budgets/budget_keys.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
@@ -61,12 +61,12 @@ class BudgetCategoryListItemData {
 }
 
 class BudgetsViewModel {
-  BudgetsViewModel({required this.appState});
+  BudgetsViewModel({required this.controller});
 
-  final AppState appState;
+  final BudgetUiController controller;
   final ValueNotifier<bool> hasUnsavedChanges = ValueNotifier<bool>(false);
 
-  BudgetService get _budgets => appState.budgetService;
+  BudgetService get _budgets => controller.budgetService;
 
   static const List<String> _months = [
     'January',
@@ -105,14 +105,14 @@ class BudgetsViewModel {
 
   List<BudgetCategoryRow> sortedRows() {
     final canonicals = categoryPickerCanonicals(
-      customCategories: appState.customCategories,
-      hiddenLower: appState.categoriesHiddenFromPicker,
+      customCategories: controller.customCategories,
+      hiddenLower: controller.categoriesHiddenFromPicker,
     );
     final rows = <BudgetCategoryRow>[];
     for (final canonical in canonicals) {
       final displayLabel = applyCategoryDisplayRenames(
         canonical,
-        appState.categoryDisplayRenames,
+        controller.categoryDisplayRenames,
       );
       rows.add(
         BudgetCategoryRow(canonical: canonical, displayLabel: displayLabel),
@@ -146,7 +146,7 @@ class BudgetsViewModel {
       if (selectedPeriodKey.trim().isNotEmpty) return selectedPeriodKey;
       return availableKeys.isNotEmpty
           ? availableKeys.first
-          : _budgets.activeBudgetYearMonth(appState.spendReference);
+          : _budgets.activeBudgetYearMonth(controller.spendReference);
     }
     if (selectedPeriodKey.trim().isEmpty && availableKeys.isNotEmpty) {
       return availableKeys.first;
@@ -270,14 +270,14 @@ class BudgetsViewModel {
         : null;
     final spentByDisplay = selectedRange == null
         ? const <String, double>{}
-        : appState.spentByDisplayCategoryForScopeInRange(
+        : controller.spentByDisplayCategoryForScopeInRange(
             const GlobalDashboardScope(),
             start: selectedRange.start,
             end: selectedRange.end,
           );
 
     final performance = hasSelectedPeriod
-        ? appState.budgetPerformanceForScope(
+        ? controller.budgetPerformanceForScope(
             const GlobalDashboardScope(),
             periodType: periodType,
             periodKey: periodKey,

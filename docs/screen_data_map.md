@@ -1,19 +1,24 @@
-# Screen → data map
+# Screen Data Map
 
-For maintainers. Lists **primary** sources; always confirm in code when refactoring.
+For maintainers. Lists primary sources; always confirm in code when refactoring.
 
-Shared helpers: [`dashboard_queries.dart`](../lib/dashboard_queries.dart) (`monthlyGroupsForDashboardScope`, uncategorized helpers) — same results as [`buildDashboardSnapshot`](../lib/dashboard_snapshot.dart) for matching scope.
+Shared helpers: [`dashboard_queries.dart`](../lib/features/dashboard/domain/dashboard_queries.dart)
+(`monthlyGroupsForDashboardScope`, uncategorized helpers) match
+[`buildDashboardSnapshot`](../lib/features/dashboard/domain/dashboard_snapshot.dart)
+for the same scope.
 
 | Screen / surface | Scope | Transaction source | Grouping / uncategorized | Category / display |
 |------------------|-------|--------------------|---------------------------|---------------------|
-| Overview [`DashboardScreen`](../lib/screens/dashboard_screen.dart) | `GlobalDashboardScope` | `buildDashboardSnapshot` → `scopedTransactions` = `allTransactions` | `DashboardSnapshot.monthlyGroups`; **banner + review:** [`uncategorizedTransactionsForDashboardScope`](../lib/dashboard_queries.dart) (not `snap.uncategorizedCount` for the red card) | Snapshot uses `spendGroupLabel` + `spendGroupLabelForDisplay` + `effectiveFinancialRole` |
-| Account detail [`AccountDetailScreen`](../lib/screens/account_detail_screen.dart) | `AccountDashboardScope(id)` | Same snapshot builder, scoped rows for that account | `snap.monthlyGroups` | Same |
-| [`FinancialDashboardView`](../lib/screens/financial_dashboard_view.dart) | Passed in `scope` | Parent passes `scopedTransactions` into `buildDashboardSnapshot` | Month cards: `snap.monthlyGroups`; **attention count:** [`uncategorizedTransactionsForDashboardScope`](../lib/dashboard_queries.dart) `.length` (same list as [`TransactionReviewScreen`](../lib/screens/transaction_review_screen.dart)) | Rules screen not linked from dashboard (engine unchanged). Debug: one-line `reviewQueue` vs `snapUncat` in debug builds |
-| [`TransactionReviewScreen`](../lib/screens/transaction_review_screen.dart) | **Must equal** parent `scope` | `transactionsForDashboardScope(scope)` | Queue: `uncategorizedBankStatementLines(...)` | Same maps as `AppState` |
-| [`MonthDetailScreen`](../lib/screens/month_detail_screen.dart) | Same as dashboard that pushed it | **Does not** load by month key from state; uses **`MonthlyBankGroup group`** arg | Rows = `group.transactions` | Pickers use `appState` |
-| [`UncategorizedTransactionsScreen`](../lib/screens/uncategorized_transactions_screen.dart) | Global (static helper) | `uncategorizedLines` → `GlobalDashboardScope` + `uncategorizedBankStatementLines` | Full list global overview | — |
-| [`RulesManagementScreen`](../lib/screens/rules_management_screen.dart) | N/A | Reads `AppState.categoryRules` (persisted) | — | Edits rules; `spendGroupLabel` applies rules after overrides, before CSV/heuristics (see contract) |
-| [`AiCategorizationFlowScreen`](../lib/screens/ai_category_review_screen.dart) | Account/import batch | Rows from import + uncategorized helpers for that account | — | AI suggests; user accept → persisted category fields |
-| [`HomeShell`](../lib/screens/home_shell.dart) tabs | — | Dashboard / Accounts / Budgets each own child | — | — |
+| Overview [`DashboardScreen`](../lib/features/dashboard/presentation/dashboard_screen.dart) | `GlobalDashboardScope` | `DashboardUiController.buildSnapshot` -> `buildDashboardSnapshot` -> all transactions | `DashboardSnapshot.monthlyGroups`; banner + review use `uncategorizedTransactionsForDashboardScope` | Snapshot uses transaction resolution, display renames, and financial role |
+| Account detail [`AccountDetailScreen`](../lib/features/accounts/presentation/account_detail_screen.dart) | `AccountDashboardScope(id)` | `AccountUiController.buildSnapshotForAccount` -> `buildDashboardSnapshot` with that account's rows | `snap.monthlyGroups` | Same |
+| [`FinancialDashboardView`](../lib/features/dashboard/presentation/financial_dashboard_view.dart) | Passed in `scope` | Parent supplies the snapshot builder for the chosen scope | Month cards use `snap.monthlyGroups`; attention count uses the same uncategorized helper as review | Debug builds show `reviewQueue` vs `snapUncat` for drift checks |
+| [`TransactionReviewScreen`](../lib/features/transactions/presentation/transaction_review_screen.dart) | Must equal parent dashboard scope | `TransactionUiController.uncategorizedQueue(scope)` | `uncategorizedBankStatementLines(...)` | Uses category/display maps exposed by `TransactionUiController` |
+| [`MonthDetailScreen`](../lib/features/dashboard/presentation/month_detail_screen.dart) | Same as dashboard that pushed it | Uses the passed `MonthlyBankGroup group`; does not reload by month key from state | Rows = `group.transactions`, refreshed through `DashboardUiController.refreshedLinesForMonth` | Category picker uses `TransactionUiController` |
+| [`UncategorizedTransactionsScreen`](../lib/features/transactions/presentation/uncategorized_transactions_screen.dart) | Caller-provided transaction controller/scope | Controller uncategorized helpers | Full uncategorized list for the selected scope | Category picker uses `TransactionUiController` |
+| [`AiCategorizationFlowScreen`](../lib/features/transactions/presentation/ai_category_review_screen.dart) | Account/import flow | Import uncategorized helpers for that account | AI suggestions are pending until saved | Accepted suggestions persist as category assignments |
+| [`HomeShell`](../lib/features/shell/presentation/home_shell.dart) tabs | N/A | Receives `AppUiDependencies` and passes scoped controllers to child features | Dashboard / Accounts / Budgets each own child UI | Import AI banner listens to `ImportAiStatusController` |
 
-**Residual gotcha:** `AppState.monthlyGroups` is **active-account statement groups** only. It is **not** the list behind global Overview month cards. Use **`DashboardSnapshot.monthlyGroups`** for UI tied to `FinancialDashboardView` / `buildDashboardSnapshot`.
+Residual gotcha: `AppState.monthlyGroups` is active-account statement groups
+only. It is not the list behind global Overview month cards. Use
+`DashboardSnapshot.monthlyGroups` for UI tied to `FinancialDashboardView` /
+`buildDashboardSnapshot`.

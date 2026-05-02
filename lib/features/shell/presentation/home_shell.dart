@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import 'import_ai_progress_banner.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../budgets/presentation/budgets_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.appState});
+  const HomeShell({super.key, required this.ui});
 
-  final AppState appState;
+  final AppUiDependencies ui;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -24,14 +24,14 @@ class _HomeShellState extends State<HomeShell> {
     final cs = theme.colorScheme;
 
     final pages = <Widget>[
-      DashboardScreen(appState: widget.appState, isRoot: true),
-      AccountsScreen(appState: widget.appState),
-      BudgetsScreen(appState: widget.appState),
+      DashboardScreen(controller: widget.ui.dashboard, isRoot: true),
+      AccountsScreen(controller: widget.ui.accounts),
+      BudgetsScreen(controller: widget.ui.budgets),
     ];
 
     return Scaffold(
       body: ImportAiStatusHost(
-        appState: widget.appState,
+        controller: widget.ui.importAiStatus,
         child: IndexedStack(index: _idx, children: pages),
       ),
       bottomNavigationBar: NavigationBar(
@@ -64,4 +64,3 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 }
-

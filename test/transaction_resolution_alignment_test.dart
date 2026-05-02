@@ -1,5 +1,5 @@
-import 'package:clarity/app/app_state.dart';
 import 'package:clarity/core/models/models.dart';
+import 'package:clarity/features/dashboard/application/dashboard_service.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_queries.dart';
 import 'package:clarity/features/dashboard/domain/dashboard_snapshot.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -16,6 +16,12 @@ Transaction _tx({
     amount: amount,
     accountId: accountId,
   );
+}
+
+List<Transaction> _allTransactions(
+  Map<String, List<Transaction>> transactionsByAccount,
+) {
+  return transactionsByAccount.values.expand((txs) => txs).toList();
 }
 
 void main() {
@@ -42,33 +48,40 @@ void main() {
           date: DateTime(2026, 4, 12, 12),
         );
 
-        final state = AppState();
-        state.accounts = [
+        final dashboardService = DashboardService();
+        final accounts = [
           const Account(id: 'a', name: 'A', type: AccountType.checking),
           const Account(id: 'b', name: 'B', type: AccountType.checking),
         ];
-        state.transactionsByAccount = {
+        final transactionsByAccount = {
           'a': [dataRowUncatA, skippedSummaryRow],
           'b': [dataRowUncatB],
         };
+        final allTransactions = _allTransactions(transactionsByAccount);
 
         void assertScope(DashboardScope scope, int expected) {
+          final scopedTransactions = dashboardService
+              .transactionsForDashboardScope(
+                scope: scope,
+                allTransactions: allTransactions,
+                transactionsByAccount: transactionsByAccount,
+              );
           final queue = uncategorizedTransactionsForDashboardScope(
             scope,
-            scopedTransactions: state.transactionsForDashboardScope(scope),
-            categoryOverrides: state.categoryOverrides,
-            categoryDisplayRenamesLower: state.categoryDisplayRenames,
+            scopedTransactions: scopedTransactions,
+            categoryOverrides: const {},
+            categoryDisplayRenamesLower: const {},
           );
           expect(queue.length, expected);
 
           final snap = buildDashboardSnapshot(
             scope: scope,
             reference: DateTime(2026, 4, 15),
-            accounts: state.accounts,
-            allTransactions: state.allTransactions,
-            scopedTransactions: state.transactionsForDashboardScope(scope),
-            categoryOverrides: state.categoryOverrides,
-            categoryDisplayRenamesLower: state.categoryDisplayRenames,
+            accounts: accounts,
+            allTransactions: allTransactions,
+            scopedTransactions: scopedTransactions,
+            categoryOverrides: const {},
+            categoryDisplayRenamesLower: const {},
             scopedBalanceFromStatement: null,
           );
           expect(snap.uncategorizedCount, expected);

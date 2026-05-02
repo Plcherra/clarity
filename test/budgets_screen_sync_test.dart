@@ -63,7 +63,7 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(800, 3000));
 
       await tester.pumpWidget(
-        MaterialApp(home: BudgetsScreen(appState: state)),
+        MaterialApp(home: BudgetsScreen(controller: state.ui.budgets)),
       );
       await tester.pumpAndSettle();
 
@@ -98,7 +98,9 @@ void main() {
     };
     state.refreshAllState();
 
-    await tester.pumpWidget(MaterialApp(home: BudgetsScreen(appState: state)));
+    await tester.pumpWidget(
+      MaterialApp(home: BudgetsScreen(controller: state.ui.budgets)),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Spent \$30.00 · Left \$70.00'), findsOneWidget);
 

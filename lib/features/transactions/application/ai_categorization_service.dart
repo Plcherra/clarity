@@ -59,7 +59,7 @@ class AiCategorizationApplicationService {
     required List<String> allowedCategoryPickerLabels,
     required List<AiAppliedCategoryChange> Function(Map<String, String>)
     applyCategoriesWithMerchantLearning,
-    required VoidCallback notifyListeners,
+    required VoidCallback notifyStatusChanged,
   }) async {
     await Future<void>.delayed(Duration.zero);
     final id = accountId.trim();
@@ -82,7 +82,7 @@ class AiCategorizationApplicationService {
     unc = uncategorizedImportedRowsForAccount(id);
     if (unc.isEmpty) {
       importAiSnackMessage = 'Transactions categorized successfully';
-      notifyListeners();
+      notifyStatusChanged();
       return;
     }
 
@@ -93,7 +93,7 @@ class AiCategorizationApplicationService {
     importAiCategorizationRunning = true;
     importAiProgressCompleted = 0;
     importAiProgressTotal = unc.length;
-    notifyListeners();
+    notifyStatusChanged();
 
     final service = data_ai.AICategorizationService();
     try {
@@ -103,7 +103,7 @@ class AiCategorizationApplicationService {
         onBatchProgress: (completed, total) {
           importAiProgressCompleted = completed;
           importAiProgressTotal = total;
-          notifyListeners();
+          notifyStatusChanged();
         },
         onPartialBatch: (partial) async {
           final toApply = <String, String>{};
@@ -128,7 +128,7 @@ class AiCategorizationApplicationService {
     } finally {
       service.close();
       importAiCategorizationRunning = false;
-      notifyListeners();
+      notifyStatusChanged();
     }
   }
 

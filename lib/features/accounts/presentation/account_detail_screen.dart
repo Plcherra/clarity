@@ -3,20 +3,21 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/io/file_reader.dart';
 import '../../../core/models/models.dart';
+import '../../transactions/data/csv_import_service.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../dashboard/presentation/financial_dashboard_view.dart';
 
 class AccountDetailScreen extends StatelessWidget {
   const AccountDetailScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.accountId,
   });
 
-  final AppState appState;
+  final AccountUiController controller;
   final String accountId;
 
   String _batchLabel(CsvImportBatchSummary batch) {
@@ -32,7 +33,7 @@ class AccountDetailScreen extends StatelessWidget {
   }
 
   Future<void> _deleteCsvUploadBatch(BuildContext context) async {
-    final batches = appState.csvImportBatchesForAccount(accountId);
+    final batches = controller.csvImportBatchesForAccount(accountId);
     if (batches.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No CSV uploads found for this account.')),
@@ -83,9 +84,7 @@ class AccountDetailScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete upload'),
           ),
@@ -94,7 +93,7 @@ class AccountDetailScreen extends StatelessWidget {
     );
     if (confirm != true) return;
 
-    final deleted = await appState.deleteTransactionsForImportBatch(
+    final deleted = await controller.deleteTransactionsForImportBatch(
       accountId: accountId,
       importId: selected.importId,
     );
@@ -124,9 +123,7 @@ class AccountDetailScreen extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red.shade700,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Delete account'),
           ),
@@ -135,7 +132,7 @@ class AccountDetailScreen extends StatelessWidget {
     );
     if (confirm != true) return;
 
-    final ok = await appState.deleteAccount(accountId);
+    final ok = await controller.deleteAccount(accountId);
     if (!context.mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -144,9 +141,9 @@ class AccountDetailScreen extends StatelessWidget {
       return;
     }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$accountName deleted.')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$accountName deleted.')));
     Navigator.of(context).pop();
   }
 
@@ -163,10 +160,10 @@ class AccountDetailScreen extends StatelessWidget {
       final file = result.files.single;
       final text = await readPickedFileContents(file);
       if (!context.mounted) return;
-      appState.loadFromCsv(text, accountId: accountId);
+      controller.loadFromCsv(text, accountId: accountId);
       if (!context.mounted) return;
-      if (appState.needsImportAiAfterCsvUpload(accountId)) {
-        if (!appState.importAiEngineConfigured) {
+      if (controller.needsImportAiAfterCsvUpload(accountId)) {
+        if (!controller.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -176,18 +173,20 @@ class AccountDetailScreen extends StatelessWidget {
             ),
           );
         } else {
-          unawaited(appState.startBackgroundImportAiCategorization(accountId));
+          unawaited(
+            controller.startBackgroundImportAiCategorization(accountId),
+          );
         }
       }
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Imported statement.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Imported statement.')));
     } on FormatException catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
     } catch (_) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -196,38 +195,23 @@ class AccountDetailScreen extends StatelessWidget {
     }
   }
 
-  DashboardSnapshot _snapshotForAccount(AppState s) {
-    final txs = List<Transaction>.unmodifiable(
-      s.transactionsByAccount[accountId] ?? const [],
-    );
-    return buildDashboardSnapshot(
-      scope: AccountDashboardScope(accountId),
-      reference: s.spendReference,
-      accounts: s.accounts,
-      allTransactions: s.allTransactions,
-      scopedTransactions: txs,
-      categoryOverrides: s.categoryOverrides,
-      categoryDisplayRenamesLower: s.categoryDisplayRenames,
-      scopedBalanceFromStatement: null,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final account = appState.accounts
+        final account = controller.accounts
             .where((a) => a.id == accountId)
             .cast<Account?>()
             .firstWhere((a) => a != null, orElse: () => null);
         final title = account?.name ?? 'Account';
         return FinancialDashboardView(
-          appState: appState,
+          controller: controller.ui.dashboard,
           scope: AccountDashboardScope(accountId),
           showBackButton: true,
           title: title,
-          buildSnapshot: (s, _) => _snapshotForAccount(s),
+          buildSnapshot: (_, _) =>
+              controller.buildSnapshotForAccount(accountId),
           onUploadTransactions: () => _importCsvForThisAccount(context),
           onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
           onDeleteAccount: () => _deleteAccount(context, title),
@@ -236,4 +220,3 @@ class AccountDetailScreen extends StatelessWidget {
     );
   }
 }
-

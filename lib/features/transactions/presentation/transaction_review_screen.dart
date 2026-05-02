@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../domain/bank_statement_monthly.dart';
-import '../../dashboard/domain/dashboard_queries.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
-import '../widgets/transaction_category_dropdown.dart';
+import 'widgets/transaction_category_dropdown.dart';
 
 const double _kReviewHorizontalPadding = 24;
 const double _kReviewScrollTopPadding = 8;
@@ -20,11 +19,11 @@ const double _kReviewScrollBottomPadding = 32;
 class TransactionReviewScreen extends StatelessWidget {
   const TransactionReviewScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.scope,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final DashboardScope scope;
 
   @override
@@ -33,14 +32,9 @@ class TransactionReviewScreen extends StatelessWidget {
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final uncategorizedQueue = uncategorizedTransactionsForDashboardScope(
-          scope,
-          scopedTransactions: appState.transactionsForDashboardScope(scope),
-          categoryOverrides: appState.categoryOverrides,
-          categoryDisplayRenamesLower: appState.categoryDisplayRenames,
-        );
+        final uncategorizedQueue = controller.uncategorizedQueue(scope);
 
         return Scaffold(
           backgroundColor: const Color(0xFFF7F5F2),
@@ -77,7 +71,7 @@ class TransactionReviewScreen extends StatelessWidget {
             child: uncategorizedQueue.isEmpty
                 ? _ReviewDoneEmptyState(theme: theme, colorScheme: cs)
                 : _SingleUncategorizedReview(
-                    appState: appState,
+                    controller: controller,
                     theme: theme,
                     colorScheme: cs,
                     line: uncategorizedQueue.first,
@@ -140,13 +134,13 @@ class _ReviewDoneEmptyState extends StatelessWidget {
 /// One-at-a-time card for the first line in the uncategorized queue.
 class _SingleUncategorizedReview extends StatelessWidget {
   const _SingleUncategorizedReview({
-    required this.appState,
+    required this.controller,
     required this.theme,
     required this.colorScheme,
     required this.line,
   });
 
-  final AppState appState;
+  final TransactionUiController controller;
   final ThemeData theme;
   final ColorScheme colorScheme;
   final BankStatementLine line;
@@ -214,7 +208,7 @@ class _SingleUncategorizedReview extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 TransactionCategoryField(
-                  appState: appState,
+                  controller: controller,
                   transaction: tx,
                   displayCategory: line.suggestedCategory,
                 ),

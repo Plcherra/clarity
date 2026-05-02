@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../app/app_state.dart';
+import '../../../app/ui_dependencies.dart';
 import '../../../core/models/models.dart';
 import '../../shell/presentation/home_shell.dart';
 
@@ -11,11 +11,11 @@ import '../../shell/presentation/home_shell.dart';
 class AccountSelectionScreen extends StatelessWidget {
   const AccountSelectionScreen({
     super.key,
-    required this.appState,
+    required this.controller,
     required this.pendingCsvText,
   });
 
-  final AppState appState;
+  final AccountUiController controller;
   final String pendingCsvText;
 
   Future<void> _showAddAccountDialog(BuildContext context) async {
@@ -29,7 +29,7 @@ class AccountSelectionScreen extends StatelessWidget {
             type: type,
             currentBalance: balance,
           );
-          final ok = await appState.addAccount(account);
+          final ok = await controller.addAccount(account);
           if (!dialogContext.mounted) return;
           if (!ok) {
             ScaffoldMessenger.of(dialogContext).showSnackBar(
@@ -45,10 +45,10 @@ class AccountSelectionScreen extends StatelessWidget {
 
   Future<void> _importForAccount(BuildContext context, Account account) async {
     try {
-      appState.loadFromCsv(pendingCsvText, accountId: account.id);
+      controller.loadFromCsv(pendingCsvText, accountId: account.id);
       if (!context.mounted) return;
-      if (appState.needsImportAiAfterCsvUpload(account.id)) {
-        if (!appState.importAiEngineConfigured) {
+      if (controller.needsImportAiAfterCsvUpload(account.id)) {
+        if (!controller.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -58,13 +58,15 @@ class AccountSelectionScreen extends StatelessWidget {
             ),
           );
         } else {
-          unawaited(appState.startBackgroundImportAiCategorization(account.id));
+          unawaited(
+            controller.startBackgroundImportAiCategorization(account.id),
+          );
         }
       }
       if (!context.mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(
-          builder: (context) => HomeShell(appState: appState),
+          builder: (context) => HomeShell(ui: controller.ui),
         ),
       );
     } on FormatException catch (e) {
@@ -84,9 +86,9 @@ class AccountSelectionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ListenableBuilder(
-      listenable: appState,
+      listenable: controller,
       builder: (context, _) {
-        final accounts = appState.accounts;
+        final accounts = controller.accounts;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Choose account'),
@@ -159,8 +161,9 @@ class AccountSelectionScreen extends StatelessWidget {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                                 side: BorderSide(
-                                  color: theme.colorScheme.outline
-                                      .withValues(alpha: 0.1),
+                                  color: theme.colorScheme.outline.withValues(
+                                    alpha: 0.1,
+                                  ),
                                 ),
                               ),
                               child: ListTile(
@@ -170,7 +173,8 @@ class AccountSelectionScreen extends StatelessWidget {
                                 ),
                                 leading: CircleAvatar(
                                   radius: 22,
-                                  backgroundColor: theme.colorScheme
+                                  backgroundColor: theme
+                                      .colorScheme
                                       .surfaceContainerHighest
                                       .withValues(alpha: 0.65),
                                   child: Icon(
@@ -196,8 +200,9 @@ class AccountSelectionScreen extends StatelessWidget {
                                 subtitle: Text(a.type.displayLabel),
                                 trailing: Icon(
                                   Icons.chevron_right_rounded,
-                                  color: theme.colorScheme.onSurface
-                                      .withValues(alpha: 0.35),
+                                  color: theme.colorScheme.onSurface.withValues(
+                                    alpha: 0.35,
+                                  ),
                                 ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
@@ -305,13 +310,11 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
                 for (final t in AccountType.values)
                   ButtonSegment<AccountType>(
                     value: t,
-                    label: Text(
-                      switch (t) {
-                        AccountType.checking => 'Checking',
-                        AccountType.savings => 'Savings',
-                        AccountType.creditCard => 'Card',
-                      },
-                    ),
+                    label: Text(switch (t) {
+                      AccountType.checking => 'Checking',
+                      AccountType.savings => 'Savings',
+                      AccountType.creditCard => 'Card',
+                    }),
                   ),
               ],
               selected: {_type},
@@ -360,4 +363,3 @@ class _AddAccountDialogState extends State<_AddAccountDialog> {
     );
   }
 }
-

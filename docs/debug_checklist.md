@@ -25,10 +25,6 @@ Use after imports, refactors, or when “counts feel wrong.”
 
 - [ ] With **two accounts** and uncategorized only on the **non-active** account: Overview (global) should still show needs attention **> 0**; switching to **account-scoped** dashboard for empty account should show **0** for that account’s scope.
 
-## Rules
-
-- [ ] Open **Manage rules** — count matches persisted rules (e.g. after adding/removing one, count updates on return).
-
 ## Import + AI (optional)
 
 - [ ] Import CSV with key present — AI flow opens when wired; accepting suggestions updates categories visible on dashboard/review.
