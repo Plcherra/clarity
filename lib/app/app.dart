@@ -130,10 +130,8 @@ final class ClarityApp extends StatelessWidget {
     }
     if (!profileController.hasCompleteProfile) {
       return OnboardingScreen(
-        saveLocalProfile: (profile) {
-          return profileController.upsertCurrentProfile(
-            fullName: profile.displayName,
-          );
+        saveProfileName: (fullName) {
+          return profileController.upsertCurrentProfile(fullName: fullName);
         },
         ui: ui,
       );

@@ -1,4 +1,5 @@
-# Local secrets (OpenAI key, etc.)
+# Local environment config. Flutter .env may contain public Supabase config;
+# Supabase Edge Function .env may contain server-only secrets for local testing.
 .env
 
 # Miscellaneous

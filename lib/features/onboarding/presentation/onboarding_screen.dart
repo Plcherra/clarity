@@ -1,17 +1,15 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/ui_dependencies.dart';
-import '../../../core/storage/profile/profile_storage.dart';
-import '../../shell/presentation/home_shell.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({
     super.key,
-    required this.saveLocalProfile,
+    required this.saveProfileName,
     required this.ui,
   });
 
-  final Future<void> Function(LocalProfile profile) saveLocalProfile;
+  final Future<void> Function(String fullName) saveProfileName;
   final AppUiDependencies ui;
 
   @override
@@ -33,16 +31,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     if (name.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await widget.saveLocalProfile(
-        LocalProfile(
-          displayName: name,
-          createdAtUtcIso: DateTime.now().toUtc().toIso8601String(),
-        ),
-      );
-      if (!mounted) return;
-      await Navigator.of(context).pushReplacement<void, void>(
-        MaterialPageRoute<void>(builder: (context) => HomeShell(ui: widget.ui)),
-      );
+      await widget.saveProfileName(name);
     } finally {
       if (mounted) setState(() => _saving = false);
     }

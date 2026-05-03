@@ -87,6 +87,7 @@ final class AppComposition {
       );
 
   late final AppStartupService startupService = AppStartupService(
+    authService: authService,
     budgetService: budgetService,
     accountService: accountService,
     transactionService: transactionService,

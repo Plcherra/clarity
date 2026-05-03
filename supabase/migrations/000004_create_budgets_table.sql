@@ -3,7 +3,7 @@ create table if not exists public.budgets (
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   amount numeric(12,2) not null,
-  period text not null check (period in ('monthly', 'yearly')),
+  period text not null check (period in ('monthly', 'weekly', 'custom', 'yearly')),
   start_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -11,6 +11,8 @@ create table if not exists public.budgets (
 
 create index if not exists budgets_user_id_idx on public.budgets(user_id);
 create index if not exists budgets_user_id_period_idx on public.budgets(user_id, period);
+create index if not exists budgets_user_id_period_start_date_idx
+on public.budgets(user_id, period, start_date);
 
 drop trigger if exists budgets_set_updated_at on public.budgets;
 create trigger budgets_set_updated_at

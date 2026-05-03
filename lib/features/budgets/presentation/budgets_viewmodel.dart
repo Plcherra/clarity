@@ -535,7 +535,8 @@ class BudgetsViewModel {
   String _periodToDatabaseValue(BudgetPeriodType periodType) {
     return switch (periodType) {
       BudgetPeriodType.monthly => 'monthly',
-      BudgetPeriodType.weekly || BudgetPeriodType.custom => 'monthly',
+      BudgetPeriodType.weekly => 'weekly',
+      BudgetPeriodType.custom => 'custom',
     };
   }
 

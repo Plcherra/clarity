@@ -2,11 +2,13 @@ import 'dart:async';
 
 import '../core/supabase/supabase_exceptions.dart';
 import '../features/accounts/application/account_service.dart';
+import '../features/auth/application/auth_service.dart';
 import '../features/budgets/application/budget_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 
 class AppStartupService {
   AppStartupService({
+    required this.authService,
     required this.budgetService,
     required this.accountService,
     required this.transactionService,
@@ -15,6 +17,7 @@ class AppStartupService {
     required this.notifyTransactionDataChanged,
   });
 
+  final AuthService authService;
   final BudgetService budgetService;
   final AccountService accountService;
   final TransactionService transactionService;
@@ -23,8 +26,10 @@ class AppStartupService {
   final void Function() notifyTransactionDataChanged;
 
   final List<StreamSubscription<Object?>> _subscriptions = [];
+  StreamSubscription<dynamic>? _authSubscription;
 
   Future<void> hydrateForStartup() async {
+    _startAuthWatcher();
     await _fetchInitialSupabaseData();
     _startSupabaseWatchers();
   }
@@ -61,6 +66,21 @@ class AppStartupService {
     );
   }
 
+  void _startAuthWatcher() {
+    _authSubscription ??= authService.authStateChanges.listen((_) async {
+      if (authService.currentUser == null) {
+        _stopSupabaseWatchers();
+        notifyAccountsChanged();
+        notifyDashboardAndBudgetsChanged();
+        notifyTransactionDataChanged();
+        return;
+      }
+
+      await _fetchInitialSupabaseData();
+      _startSupabaseWatchers();
+    });
+  }
+
   Future<bool> _runIfAuthenticated(Future<Object?> Function() action) async {
     try {
       await action();
@@ -82,8 +102,14 @@ class AppStartupService {
   }
 
   void dispose() {
+    unawaited(_authSubscription?.cancel());
+    _authSubscription = null;
+    _stopSupabaseWatchers();
+  }
+
+  void _stopSupabaseWatchers() {
     for (final subscription in _subscriptions) {
-      subscription.cancel();
+      unawaited(subscription.cancel());
     }
     _subscriptions.clear();
   }

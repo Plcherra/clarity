@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import '../core/supabase/supabase_service.dart';
-import '../core/storage/migrations/rules_wipe_migration.dart';
 import 'app.dart';
 import 'app_composition.dart';
 
@@ -10,10 +9,10 @@ Future<void> bootstrap() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: '.env', isOptional: true);
   await SupabaseService.initializeFromEnv();
-  await runRulesWipeMigrationIfNeeded();
 
   final composition = AppComposition();
   await composition.startupService.hydrateForStartup();
+  await composition.profileController.hydrateProfileForCurrentUser();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
