@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/models/models.dart';
+import '../core/supabase/supabase_records.dart';
 import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
 import '../features/budgets/application/budget_service.dart';
@@ -20,6 +21,8 @@ import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_import_service.dart';
 import '../features/transactions/domain/bank_statement_monthly.dart';
 import '../features/transactions/domain/spend_categories.dart';
+import '../features/transactions/domain/transaction_resolution.dart'
+    as transaction_resolution;
 
 final class AppUiControllerBindings {
   const AppUiControllerBindings({
@@ -104,6 +107,43 @@ base class _UiController extends ChangeNotifier {
   final AppUiControllerBindings bindings;
 
   void notifyChanged() => notifyListeners();
+
+  Future<List<Account>> fetchAccounts() async {
+    final records = await bindings.accountService.fetchAccounts();
+    return records.map(_accountFromRecord).toList();
+  }
+
+  Stream<List<Account>> watchAccounts() {
+    return bindings.accountService.watchAccounts().map(
+      (records) => records.map(_accountFromRecord).toList(),
+    );
+  }
+
+  Future<List<Transaction>> fetchTransactions({String? accountId}) async {
+    final records = await bindings.transactionService.fetchTransactions(
+      accountId: accountId,
+    );
+    return records.map(_transactionFromRecord).toList();
+  }
+
+  Stream<List<Transaction>> watchTransactions({String? accountId}) {
+    return bindings.transactionService
+        .watchTransactions(accountId: accountId)
+        .map((records) => records.map(_transactionFromRecord).toList());
+  }
+
+  Future<Map<String, List<Transaction>>> fetchTransactionsByAccount() async {
+    final records = await bindings.transactionService.fetchTransactions();
+    final grouped = <String, List<Transaction>>{};
+    for (final record in records) {
+      grouped.putIfAbsent(record.accountId, () => <Transaction>[]);
+      grouped[record.accountId]!.add(_transactionFromRecord(record));
+    }
+    return {
+      for (final entry in grouped.entries)
+        entry.key: List<Transaction>.unmodifiable(entry.value),
+    };
+  }
 }
 
 final class DashboardUiController extends _UiController {
@@ -113,13 +153,15 @@ final class DashboardUiController extends _UiController {
 
   AppUiDependencies get ui => _ui;
 
-  DashboardSnapshot buildSnapshot(DashboardScope scope) {
-    final scopedTransactions = transactionsForDashboardScope(scope);
+  Future<DashboardSnapshot> buildSnapshot(DashboardScope scope) async {
+    final accounts = await fetchAccounts();
+    final allTransactions = await fetchTransactions();
+    final scopedTransactions = await transactionsForDashboardScope(scope);
     return buildDashboardSnapshot(
       scope: scope,
       reference: bindings.dashboardService.spendReference,
-      accounts: bindings.accountService.accounts,
-      allTransactions: bindings.transactionService.allTransactions,
+      accounts: accounts,
+      allTransactions: allTransactions,
       scopedTransactions: scopedTransactions,
       categoryOverrides: bindings.categoryService.categoryOverrides,
       categoryDisplayRenamesLower:
@@ -128,54 +170,58 @@ final class DashboardUiController extends _UiController {
     );
   }
 
-  BudgetPerformanceSnapshot budgetPerformanceForScope(DashboardScope scope) {
+  Future<BudgetPerformanceSnapshot> budgetPerformanceForScope(
+    DashboardScope scope,
+  ) {
     return _ui.budgets.budgetPerformanceForScope(scope);
   }
 
-  List<Transaction> transactionsForDashboardScope(DashboardScope scope) {
-    return bindings.dashboardService.transactionsForDashboardScope(
-      scope: scope,
-      allTransactions: bindings.transactionService.allTransactions,
-      transactionsByAccount: bindings.transactionService.transactionsByAccount,
-    );
+  Future<List<Transaction>> transactionsForDashboardScope(
+    DashboardScope scope,
+  ) async {
+    return switch (scope) {
+      GlobalDashboardScope() => fetchTransactions(),
+      AccountDashboardScope(:final accountId) => fetchTransactions(
+        accountId: accountId,
+      ),
+    };
   }
 
-  List<BankStatementLine> uncategorizedQueue(DashboardScope scope) {
+  Future<List<BankStatementLine>> uncategorizedQueue(
+    DashboardScope scope,
+  ) async {
     return uncategorizedTransactionsForDashboardScope(
       scope,
-      scopedTransactions: transactionsForDashboardScope(scope),
+      scopedTransactions: await transactionsForDashboardScope(scope),
       categoryOverrides: bindings.categoryService.categoryOverrides,
       categoryDisplayRenamesLower:
           bindings.categoryCatalogService.categoryDisplayRenames,
     );
   }
 
-  List<BankStatementLine> refreshedLinesForMonth(MonthlyBankGroup group) {
-    final scopedAccountIds = group.transactions
-        .map((e) => e.transaction.accountId)
-        .toSet();
-    final hasScopedStorageEntry = scopedAccountIds.any(
-      bindings.transactionService.transactionsByAccount.containsKey,
-    );
-    if (!hasScopedStorageEntry) return group.transactions;
-
+  Future<List<BankStatementLine>> refreshedLinesForMonth(
+    MonthlyBankGroup group,
+  ) async {
+    final allTransactions = await fetchTransactions();
+    final accounts = await fetchAccounts();
+    final accountsById = {for (final account in accounts) account.id: account};
     final byKey = <String, Transaction>{
-      for (final t in bindings.transactionService.allTransactions)
-        transactionCategoryKey(t): t,
+      for (final transaction in allTransactions)
+        transactionCategoryKey(transaction): transaction,
     };
+
     final lines = <BankStatementLine>[];
     for (final line in group.transactions) {
-      final key = transactionCategoryKey(line.transaction);
-      final current = byKey[key];
+      final current = byKey[transactionCategoryKey(line.transaction)];
       if (current == null) continue;
-      final resolved = bindings.transactionService.resolveTransaction(
-        current,
-        categoryService: bindings.categoryService,
-        categoryDisplayRenames:
+      final resolved = transaction_resolution.resolveTransaction(
+        t: current,
+        categoryOverrides: bindings.categoryService.categoryOverrides,
+        categoryDisplayRenamesLower:
             bindings.categoryCatalogService.categoryDisplayRenames,
         merchantCategoryMemory: bindings.merchantService.merchantCategoryMemory,
-        accounts: bindings.accountService.accounts,
-        allTransactionsContext: bindings.transactionService.allTransactions,
+        accountsById: accountsById,
+        allTransactions: allTransactions,
       );
       lines.add(
         BankStatementLine(
@@ -187,14 +233,31 @@ final class DashboardUiController extends _UiController {
     return lines;
   }
 
-  Future<int> clearTransactionsForAccount(String accountId) {
-    return bindings.transactionWorkflowService.clearTransactionsForAccount(
-      accountId,
+  Future<int> clearTransactionsForAccount(String accountId) async {
+    final records = await bindings.transactionService.fetchTransactions(
+      accountId: accountId,
     );
+    for (final record in records) {
+      await bindings.transactionService.deleteTransaction(record.id);
+    }
+    notifyChanged();
+    return records.length;
   }
 
-  Future<bool> deleteTransaction(Transaction transaction) {
-    return bindings.transactionWorkflowService.deleteTransaction(transaction);
+  Future<bool> deleteTransaction(Transaction transaction) async {
+    final records = await bindings.transactionService.fetchTransactions(
+      accountId: transaction.accountId,
+    );
+    final key = transactionCategoryKey(transaction);
+    for (final record in records) {
+      final current = _transactionFromRecord(record);
+      if (transactionCategoryKey(current) == key) {
+        await bindings.transactionService.deleteTransaction(record.id);
+        notifyChanged();
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -215,35 +278,27 @@ final class TransactionUiController extends _UiController {
   Set<String> get categoriesHiddenFromPicker =>
       bindings.categoryCatalogService.categoriesHiddenFromPicker;
 
-  Map<String, String> get transactionCategoryAssignments =>
-      bindings.transactionService.transactionCategoryAssignments;
+  Map<String, String> get transactionCategoryAssignments => const {};
 
-  Map<String, AiCategorySuggestion> get aiCategorySuggestions =>
-      bindings.transactionService.aiCategorySuggestions;
+  Map<String, AiCategorySuggestion> get aiCategorySuggestions => const {};
 
   Map<String, String> get merchantCategoryMemory =>
       bindings.merchantService.merchantCategoryMemory;
 
-  List<BankStatementLine> uncategorizedQueue(DashboardScope scope) {
+  Future<List<BankStatementLine>> uncategorizedQueue(DashboardScope scope) {
     return _ui.dashboard.uncategorizedQueue(scope);
   }
 
-  List<Transaction> uncategorizedImportedRowsGlobal() {
-    return bindings.transactionService.uncategorizedImportedRowsGlobal(
-      accounts: bindings.accountService.accounts,
-      categoryService: bindings.categoryService,
-      categoryDisplayRenames:
-          bindings.categoryCatalogService.categoryDisplayRenames,
-    );
+  Future<List<Transaction>> uncategorizedImportedRowsGlobal() async {
+    final transactions = await fetchTransactions();
+    return transactions.where(_isUncategorizedImportedTransaction).toList();
   }
 
-  List<Transaction> uncategorizedImportedRowsForAccount(String accountId) {
-    return bindings.transactionService.uncategorizedImportedRowsForAccount(
-      accountId,
-      categoryService: bindings.categoryService,
-      categoryDisplayRenames:
-          bindings.categoryCatalogService.categoryDisplayRenames,
-    );
+  Future<List<Transaction>> uncategorizedImportedRowsForAccount(
+    String accountId,
+  ) async {
+    final transactions = await fetchTransactions(accountId: accountId);
+    return transactions.where(_isUncategorizedImportedTransaction).toList();
   }
 
   List<AiAppliedCategoryChange> applyCategoriesWithMerchantLearning(
@@ -258,8 +313,8 @@ final class TransactionUiController extends _UiController {
     return bindings.categoryWorkflowService.undoCategoryApplyBatch(batch);
   }
 
-  Future<int> undoLastAiAutoApply() {
-    return bindings.transactionWorkflowService.undoLastAiAutoApply();
+  Future<int> undoLastAiAutoApply() async {
+    return 0;
   }
 
   void setCategoryOverride(Transaction transaction, String category) {
@@ -282,7 +337,7 @@ final class TransactionUiController extends _UiController {
   }
 
   Future<bool> deleteTransaction(Transaction transaction) {
-    return bindings.transactionWorkflowService.deleteTransaction(transaction);
+    return _ui.dashboard.deleteTransaction(transaction);
   }
 }
 
@@ -293,63 +348,51 @@ final class AccountUiController extends _UiController {
 
   AppUiDependencies get ui => _ui;
 
-  List<Account> get accounts => bindings.accountService.accounts;
+  Future<List<Account>> get accounts => fetchAccounts();
 
-  Future<bool> addAccount(Account account) =>
-      bindings.accountWorkflowService.addAccount(account);
+  Future<bool> addAccount(Account account) async {
+    await bindings.accountService.createAccount(
+      name: account.name,
+      type: _accountTypeToDatabaseValue(account.type),
+      balance: account.currentBalance ?? 0,
+    );
+    notifyChanged();
+    return true;
+  }
 
-  Future<bool> deleteAccount(String accountId) =>
-      bindings.accountWorkflowService.deleteAccount(accountId);
+  Future<bool> deleteAccount(String accountId) async {
+    await bindings.accountService.deleteAccount(accountId);
+    notifyChanged();
+    return true;
+  }
 
-  void loadFromCsv(String utf8Text, {required String accountId}) {
-    bindings.transactionWorkflowService.loadFromCsv(
-      utf8Text,
-      accountId: accountId,
+  Future<void> loadFromCsv(String utf8Text, {required String accountId}) async {
+    throw UnsupportedError(
+      'CSV import must be reconnected to Supabase transaction writes.',
     );
   }
 
   bool needsImportAiAfterCsvUpload(String accountId) {
-    return bindings.transactionWorkflowService.needsImportAiAfterCsvUpload(
-      accountId,
-    );
+    return false;
   }
 
   bool get importAiEngineConfigured => bindings.importAiEngineConfigured();
 
-  Future<void> startBackgroundImportAiCategorization(String accountId) {
-    return bindings.transactionWorkflowService
-        .startBackgroundImportAiCategorization(accountId);
-  }
+  Future<void> startBackgroundImportAiCategorization(String accountId) async {}
 
   List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
-    return bindings.transactionService.csvImportBatchesForAccount(accountId);
+    return const [];
   }
 
   Future<int> deleteTransactionsForImportBatch({
     required String accountId,
     required String importId,
-  }) {
-    return bindings.transactionWorkflowService.deleteTransactionsForImportBatch(
-      accountId: accountId,
-      importId: importId,
-    );
+  }) async {
+    return 0;
   }
 
-  DashboardSnapshot buildSnapshotForAccount(String accountId) {
-    final transactions = List<Transaction>.unmodifiable(
-      bindings.transactionService.transactionsByAccount[accountId] ?? const [],
-    );
-    return buildDashboardSnapshot(
-      scope: AccountDashboardScope(accountId),
-      reference: bindings.dashboardService.spendReference,
-      accounts: bindings.accountService.accounts,
-      allTransactions: bindings.transactionService.allTransactions,
-      scopedTransactions: transactions,
-      categoryOverrides: bindings.categoryService.categoryOverrides,
-      categoryDisplayRenamesLower:
-          bindings.categoryCatalogService.categoryDisplayRenames,
-      scopedBalanceFromStatement: null,
-    );
+  Future<DashboardSnapshot> buildSnapshotForAccount(String accountId) {
+    return _ui.dashboard.buildSnapshot(AccountDashboardScope(accountId));
   }
 }
 
@@ -370,67 +413,80 @@ final class BudgetUiController extends _UiController {
       bindings.categoryCatalogService.categoriesHiddenFromPicker;
 
   String budgetWeekStartKey(DateTime date) {
-    return bindings.budgetService.budgetWeekStartKey(date);
+    final monday = date.subtract(Duration(days: date.weekday - 1));
+    return _dateOnly(monday);
   }
 
   String ensureCustomBudgetPeriod(DateTime start, DateTime end) {
-    return bindings.budgetService.ensureCustomBudgetPeriod(start, end);
+    return '${_dateOnly(start)}_${_dateOnly(end)}';
   }
 
   void setActiveBudgetPeriod({
     required BudgetPeriodType type,
     required String key,
-  }) {
-    bindings.budgetWorkflowService.setActiveBudgetPeriod(type: type, key: key);
-  }
+  }) {}
 
   Future<bool> commitBudgetDraft(
     BudgetPeriodType periodType,
     String periodKey,
     Map<String, double?> draftByNormalizedDisplayKey,
-  ) {
-    return bindings.budgetWorkflowService.commitBudgetDraft(
-      periodType,
-      periodKey,
-      draftByNormalizedDisplayKey,
-    );
+  ) async {
+    return false;
   }
 
-  BudgetPerformanceSnapshot budgetPerformanceForScope(
+  Future<BudgetPerformanceSnapshot> budgetPerformanceForScope(
     DashboardScope scope, {
     BudgetPeriodType? periodType,
     String? periodKey,
-  }) {
-    return bindings.budgetService.budgetPerformanceForScope(
+  }) async {
+    final budgets = await bindings.budgetService.fetchBudgets();
+    final spentByCategory = await spentByDisplayCategoryForScopeInRange(
       scope,
-      customCategories: bindings.categoryCatalogService.customCategories,
-      categoriesHiddenFromPicker:
-          bindings.categoryCatalogService.categoriesHiddenFromPicker,
-      categoryDisplayRenames:
-          bindings.categoryCatalogService.categoryDisplayRenames,
-      spentByDisplayCategoryForScopeInRange:
-          spentByDisplayCategoryForScopeInRange,
-      periodType: periodType,
-      periodKey: periodKey,
+      start: _periodStartFor(periodType, periodKey),
+      end: _periodEndFor(periodType, periodKey),
+    );
+    final totalBudgeted = budgets.fold<double>(
+      0,
+      (sum, budget) => sum + budget.amount,
+    );
+    final totalSpent = spentByCategory.values.fold<double>(
+      0,
+      (sum, amount) => sum + amount,
+    );
+    return BudgetPerformanceSnapshot(
+      periodType: periodType ?? BudgetPeriodType.monthly,
+      periodKey: periodKey ?? _monthKey(spendReference),
+      periodLabel: periodKey ?? _monthKey(spendReference),
+      totalBudgeted: totalBudgeted,
+      totalSpent: totalSpent,
+      budgetedCategoryCount: budgets.length,
+      onTrackCategoryCount: 0,
+      totalOverspent: totalSpent > totalBudgeted
+          ? totalSpent - totalBudgeted
+          : 0,
+      topOverspendingCategories: const [],
     );
   }
 
-  Map<String, double> spentByDisplayCategoryForScopeInRange(
+  Future<Map<String, double>> spentByDisplayCategoryForScopeInRange(
     DashboardScope scope, {
     required DateTime start,
     required DateTime end,
-  }) {
+  }) async {
+    final allTransactions = await fetchTransactions();
+    final transactionsByAccount = await fetchTransactionsByAccount();
+    final accounts = await fetchAccounts();
     return bindings.dashboardService.spentByDisplayCategoryForScopeInRange(
       scope: scope,
       start: start,
       end: end,
-      allTransactions: bindings.transactionService.allTransactions,
-      transactionsByAccount: bindings.transactionService.transactionsByAccount,
+      allTransactions: allTransactions,
+      transactionsByAccount: transactionsByAccount,
       categoryOverrides: bindings.categoryService.categoryOverrides,
       categoryDisplayRenames:
           bindings.categoryCatalogService.categoryDisplayRenames,
       merchantCategoryMemory: bindings.merchantService.merchantCategoryMemory,
-      accounts: bindings.accountService.accounts,
+      accounts: accounts,
     );
   }
 }
@@ -450,4 +506,81 @@ final class ImportAiStatusController extends _UiController {
   String? consumeImportAiSnackMessage() {
     return bindings.aiCategorizationService.consumeImportAiSnackMessage();
   }
+}
+
+Account _accountFromRecord(AccountRecord record) {
+  return Account(
+    id: record.id,
+    name: record.name,
+    type: _accountTypeFromDatabaseValue(record.type),
+    currentBalance: record.balance,
+  );
+}
+
+AccountType _accountTypeFromDatabaseValue(String value) {
+  return switch (value.trim().toLowerCase()) {
+    'savings' => AccountType.savings,
+    'credit_card' || 'creditcard' || 'credit card' => AccountType.creditCard,
+    _ => AccountType.checking,
+  };
+}
+
+String _accountTypeToDatabaseValue(AccountType type) {
+  return switch (type) {
+    AccountType.checking => 'checking',
+    AccountType.savings => 'savings',
+    AccountType.creditCard => 'credit_card',
+  };
+}
+
+Transaction _transactionFromRecord(TransactionRecord record) {
+  final amount = switch (record.type.trim().toLowerCase()) {
+    'expense' => -record.amount.abs(),
+    'income' => record.amount.abs(),
+    _ => record.amount,
+  };
+  return Transaction(
+    date: record.date,
+    description: record.description ?? record.merchant ?? '',
+    amount: amount,
+    accountId: record.accountId,
+    categoryId: record.categoryId,
+    importId: record.importedFromCsv ? 'csv' : null,
+    fingerprint: record.id,
+    financialRole: record.type.trim().toLowerCase() == 'income'
+        ? FinancialRole.income
+        : FinancialRole.expense,
+  );
+}
+
+bool _isUncategorizedImportedTransaction(Transaction transaction) {
+  return transaction.importId != null &&
+      (transaction.categoryId == null ||
+          transaction.categoryId!.trim().isEmpty);
+}
+
+DateTime _periodStartFor(BudgetPeriodType? periodType, String? periodKey) {
+  final reference = DateTime.now();
+  return switch (periodType) {
+    BudgetPeriodType.weekly => reference.subtract(
+      Duration(days: reference.weekday - 1),
+    ),
+    _ => DateTime(reference.year, reference.month),
+  };
+}
+
+DateTime _periodEndFor(BudgetPeriodType? periodType, String? periodKey) {
+  final start = _periodStartFor(periodType, periodKey);
+  return switch (periodType) {
+    BudgetPeriodType.weekly => start.add(const Duration(days: 6)),
+    _ => DateTime(start.year, start.month + 1, 0),
+  };
+}
+
+String _monthKey(DateTime date) {
+  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}';
+}
+
+String _dateOnly(DateTime date) {
+  return date.toIso8601String().split('T').first;
 }

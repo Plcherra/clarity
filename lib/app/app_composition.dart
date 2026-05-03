@@ -1,4 +1,5 @@
 import '../core/models/models.dart';
+import '../core/supabase/supabase_repository.dart';
 import '../core/supabase/supabase_service.dart';
 import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
@@ -34,16 +35,19 @@ final class AppComposition {
   final SupabaseService supabaseService;
   final bool _initialAuthenticated;
 
-  final TransactionService transactionService = TransactionService();
+  late final SupabaseRepository supabaseRepository = SupabaseRepository(
+    supabaseService: supabaseService,
+  );
+
+  late final TransactionService transactionService =
+      supabaseRepository.transactions;
   final CategoryService categoryService = CategoryService();
   final CategoryCatalogService categoryCatalogService =
       CategoryCatalogService();
   final MerchantService merchantService = MerchantService();
-  late final ProfileService profileService = ProfileService(
-    supabaseService: supabaseService,
-  );
-  final BudgetService budgetService = BudgetService();
-  final AccountService accountService = AccountService();
+  late final ProfileService profileService = supabaseRepository.profiles;
+  late final BudgetService budgetService = supabaseRepository.budgets;
+  late final AccountService accountService = supabaseRepository.accounts;
   final DashboardService dashboardService = DashboardService();
   final app_ai.AiCategorizationApplicationService aiCategorizationService =
       app_ai.AiCategorizationApplicationService();
@@ -84,22 +88,12 @@ final class AppComposition {
 
   late final AppStartupService startupService = AppStartupService(
     budgetService: budgetService,
-    categoryCatalogService: categoryCatalogService,
     accountService: accountService,
     transactionService: transactionService,
-    merchantService: merchantService,
-    spendReference: () => dashboardService.spendReference,
-    syncDashboardAfterTransactionHydration:
-        _syncDashboardAfterTransactionWorkflow,
-    hydrateLocalProfile: profileController.hydrateLocalProfile,
-    userNamespaceForMerchantMemory:
-        profileController.userNamespaceForMerchantMemory,
     notifyDashboardAndBudgetsChanged: () =>
         notifications.dashboardAndBudgetsChanged(),
-    notifyCategoryCatalogChanged: () => notifications.categoryCatalogChanged(),
     notifyAccountsChanged: () => notifications.accountsChanged(),
     notifyTransactionDataChanged: () => notifications.transactionDataChanged(),
-    notifyTransactionsChanged: () => ui.notifyTransactions(),
   );
 
   late final DashboardRefreshCoordinator dashboardRefreshCoordinator =
@@ -123,7 +117,6 @@ final class AppComposition {
         accountService: accountService,
         profileService: profileService,
         refreshAllState: dashboardRefreshCoordinator.refreshAllState,
-        recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
         notifyTransactionDataChanged: () =>
             notifications.transactionDataChanged(),
       );
@@ -173,9 +166,13 @@ final class AppComposition {
 
   Future<void> _syncAfterProfileChanged() async {
     await merchantService.hydrateMerchantCategoryMemory(
-      profileService.userNamespaceForMerchantMemory(),
+      _userNamespaceForMerchantMemory(),
     );
     notifications.transactionDataChanged();
+  }
+
+  String _userNamespaceForMerchantMemory() {
+    return authController.currentUser?.id ?? 'signed-out';
   }
 
   void _syncDashboardAfterTransactionWorkflow({
@@ -193,6 +190,7 @@ final class AppComposition {
   }
 
   void dispose() {
+    startupService.dispose();
     ui.dispose();
     authController.dispose();
     profileController.dispose();

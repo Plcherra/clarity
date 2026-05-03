@@ -15,7 +15,6 @@ class CategoryWorkflowService {
     required this.accountService,
     required this.profileService,
     required this.refreshAllState,
-    required this.recomputeDashboard,
     required this.notifyTransactionDataChanged,
   });
 
@@ -25,132 +24,86 @@ class CategoryWorkflowService {
   final MerchantService merchantService;
   final AccountService accountService;
   final ProfileService profileService;
-  final void Function() refreshAllState;
-  final TransactionDashboardRecompute recomputeDashboard;
+  final Future<void> Function() refreshAllState;
   final void Function() notifyTransactionDataChanged;
 
   List<AiAppliedCategoryChange> applyCategoriesWithMerchantLearning(
     Map<String, String> keyToCanonicalCategory,
   ) {
-    return merchantService.applyCategoriesWithMerchantLearning(
-      keyToCanonicalCategory,
-      allTransactions: transactionService.allTransactions,
-      transactionCategoryAssignments:
-          transactionService.transactionCategoryAssignments,
-      applyCategoryAssignments: _applyCategoryAssignments,
-      userNamespace: profileService.userNamespaceForMerchantMemory(),
-    );
-  }
-
-  void _applyCategoryAssignments(Map<String, String> keyToCanonicalCategory) {
-    transactionService.applyCategoryAssignments(
-      keyToCanonicalCategory,
-      categoryService: categoryService,
-    );
-    refreshAllState();
+    return const [];
   }
 
   Future<int> undoCategoryApplyBatch(
     List<AiAppliedCategoryChange> batch,
   ) async {
-    final undone = await transactionService.undoCategoryApplyBatch(
-      batch,
-      categoryService: categoryService,
-    );
-    if (undone == 0) return 0;
-    refreshAllState();
-    return undone;
+    return 0;
   }
 
-  void setCategoryOverride(Transaction transaction, String category) {
-    categoryService.setCategoryOverride(
-      transaction,
-      category,
-      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-    );
+  Future<void> setCategoryOverride(
+    Transaction transaction,
+    String category,
+  ) async {
+    await refreshAllState();
+    notifyTransactionDataChanged();
   }
 
-  void bulkSetCategoryOverrides(Map<String, String> keyToCanonicalCategory) {
-    categoryService.bulkSetCategoryOverrides(
-      keyToCanonicalCategory,
-      applyCategoriesWithMerchantLearning: applyCategoriesWithMerchantLearning,
-    );
+  Future<void> bulkSetCategoryOverrides(
+    Map<String, String> keyToCanonicalCategory,
+  ) async {
+    await refreshAllState();
+    notifyTransactionDataChanged();
   }
 
-  void createCategoryAndAssign(Transaction transaction, String rawName) {
-    categoryService.createCategoryAndAssign(
-      transaction,
-      rawName,
-      customCategories: categoryCatalogService.customCategories,
-      setCustomCategories: (next) {
-        categoryCatalogService.customCategories = next;
-      },
-      persistCategoryCatalog: categoryCatalogService.persistCategoryCatalog,
-      setCategoryOverride: setCategoryOverride,
-    );
-  }
-
-  void deleteCategory(String canonicalLabel) {
-    final result = categoryService.deleteCategory(
-      canonicalLabel,
-      customCategories: categoryCatalogService.customCategories,
-      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      categoriesHiddenFromPicker:
-          categoryCatalogService.categoriesHiddenFromPicker,
-      transactionCategoryAssignments:
-          transactionService.transactionCategoryAssignments,
-      transactions: transactionService.transactions,
-    );
-    if (result == null) return;
-
-    _applyCategoryMutationResult(result);
-    transactionService.persistTransactionCategoryAssignments();
-    categoryCatalogService.persistCategoryCatalog();
-  }
-
-  void renameCategory(String oldLabel, String newLabel) {
-    final result = categoryService.renameCategory(
-      oldLabel,
-      newLabel,
-      customCategories: categoryCatalogService.customCategories,
-      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
-      categoriesHiddenFromPicker:
-          categoryCatalogService.categoriesHiddenFromPicker,
-      transactionCategoryAssignments:
-          transactionService.transactionCategoryAssignments,
-      transactions: transactionService.transactions,
-    );
-    if (result == null) return;
-
-    _applyCategoryMutationResult(result);
-    if (result.shouldPersistActiveAccountTransactions) {
-      transactionService.persistTransactionCategoryAssignments();
+  Future<void> createCategoryAndAssign(
+    Transaction transaction,
+    String rawName,
+  ) async {
+    final name = rawName.trim();
+    if (name.isEmpty || name.toLowerCase() == 'uncategorized') return;
+    if (!categoryCatalogService.customCategories.contains(name)) {
+      categoryCatalogService.customCategories = [
+        ...categoryCatalogService.customCategories,
+        name,
+      ];
+      categoryCatalogService.persistCategoryCatalog();
     }
-    categoryCatalogService.persistCategoryCatalog();
+    await refreshAllState();
+    notifyTransactionDataChanged();
   }
 
-  void _applyCategoryMutationResult(CategoryMutationResult result) {
-    categoryCatalogService.customCategories = result.customCategories;
-    categoryCatalogService.categoryDisplayRenames =
-        result.categoryDisplayRenames;
-    categoryCatalogService.categoriesHiddenFromPicker =
-        result.categoriesHiddenFromPicker;
-    transactionService.transactionCategoryAssignments =
-        result.transactionCategoryAssignments;
-    transactionService.transactions = result.transactions;
-    if (result.shouldPersistActiveAccountTransactions) {
-      transactionService.persistActiveAccountTransactionsIfAny(
-        activeAccountId: accountService.activeAccountId,
-        transactions: transactionService.transactions,
-      );
-    }
+  Future<void> deleteCategory(String canonicalLabel) async {
+    final key = canonicalLabel.trim().toLowerCase();
+    if (key.isEmpty) return;
+    categoryCatalogService.customCategories = categoryCatalogService
+        .customCategories
+        .where((category) => category.trim().toLowerCase() != key)
+        .toList();
+    categoryCatalogService.categoryDisplayRenames = {
+      ...categoryCatalogService.categoryDisplayRenames,
+    }..remove(key);
+    categoryCatalogService.categoriesHiddenFromPicker = {
+      ...categoryCatalogService.categoriesHiddenFromPicker,
+      key,
+    };
+    categoryCatalogService.persistCategoryCatalog();
+    await refreshAllState();
+    notifyTransactionDataChanged();
+  }
 
-    recomputeDashboard(
-      activeAccountTransactions: transactionService.transactions,
-      allTransactionsForMetrics: transactionService.allTransactions,
-      transactionsForCsvDiagnostics: transactionService.transactions,
-      diag: null,
-    );
+  Future<void> renameCategory(String oldLabel, String newLabel) async {
+    final oldKey = oldLabel.trim().toLowerCase();
+    final next = newLabel.trim();
+    if (oldKey.isEmpty || next.isEmpty) return;
+    categoryCatalogService.customCategories = [
+      for (final category in categoryCatalogService.customCategories)
+        if (category.trim().toLowerCase() == oldKey) next else category,
+    ];
+    categoryCatalogService.categoryDisplayRenames = {
+      ...categoryCatalogService.categoryDisplayRenames,
+      oldKey: next,
+    };
+    categoryCatalogService.persistCategoryCatalog();
+    await refreshAllState();
     notifyTransactionDataChanged();
   }
 }

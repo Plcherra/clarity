@@ -15,30 +15,32 @@ class AccountWorkflowService {
   final AccountService accountService;
   final TransactionService transactionService;
   final CategoryService categoryService;
-  final void Function() refreshAllState;
+  final Future<void> Function() refreshAllState;
   final void Function() notifyAccountsChanged;
 
   Future<bool> addAccount(Account account) async {
-    final ok = await accountService.addAccount(account);
-    if (ok) notifyAccountsChanged();
-    return ok;
+    await accountService.createAccount(
+      name: account.name,
+      type: _accountTypeToDatabaseValue(account.type),
+      balance: account.currentBalance ?? 0,
+    );
+    notifyAccountsChanged();
+    await refreshAllState();
+    return true;
   }
 
   Future<bool> deleteAccount(String accountId) async {
-    final applied = await accountService.deleteAccount(
-      accountId: accountId,
-      transactionsByAccount: transactionService.transactionsByAccount,
-    );
-    if (applied == null) return false;
-
-    transactionService.transactionsByAccount = applied.transactionsByAccount;
-    transactionService.removeTransactionMetadataForKeys(
-      applied.removedKeys,
-      categoryService: categoryService,
-    );
-    transactionService.persistTransactionCategoryAssignments();
-    transactionService.persistAiCategorySuggestions().catchError((_) {});
-    refreshAllState();
+    await accountService.deleteAccount(accountId);
+    notifyAccountsChanged();
+    await refreshAllState();
     return true;
   }
+}
+
+String _accountTypeToDatabaseValue(AccountType type) {
+  return switch (type) {
+    AccountType.checking => 'checking',
+    AccountType.savings => 'savings',
+    AccountType.creditCard => 'credit_card',
+  };
 }

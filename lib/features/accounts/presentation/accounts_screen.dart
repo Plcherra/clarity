@@ -42,7 +42,6 @@ class AccountsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final accounts = controller.accounts;
         return Scaffold(
           appBar: AppBar(
             title: const Text('Accounts'),
@@ -56,8 +55,27 @@ class AccountsScreen extends StatelessWidget {
               ),
             ],
           ),
-          body: accounts.isEmpty
-              ? Center(
+          body: FutureBuilder<List<Account>>(
+            future: controller.accounts,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Could not load accounts.',
+                      style: theme.textTheme.bodyMedium,
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                );
+              }
+              final accounts = snapshot.data;
+              if (accounts == null) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (accounts.isEmpty) {
+                return Center(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 28),
                     child: Column(
@@ -78,50 +96,58 @@ class AccountsScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                )
-              : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-                  itemCount: accounts.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, i) {
-                    final a = accounts[i];
-                    final inst = a.institution?.trim();
-                    final subtitle = [
-                      a.type.displayLabel,
-                      if (inst != null && inst.isNotEmpty) inst,
-                    ].join(' · ');
-                    return Material(
-                      color: cs.surface,
-                      borderRadius: BorderRadius.circular(18),
-                      child: ListTile(
-                        title: Text(a.name),
-                        subtitle: Text(subtitle),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        onTap: () {
-                          Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (context) => AccountDetailScreen(
-                                controller: controller,
-                                accountId: a.id,
-                              ),
-                            ),
-                          );
-                        },
+                );
+              }
+              return ListView.separated(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                itemCount: accounts.length,
+                separatorBuilder: (_, _) => const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final a = accounts[i];
+                  final inst = a.institution?.trim();
+                  final subtitle = [
+                    a.type.displayLabel,
+                    if (inst != null && inst.isNotEmpty) inst,
+                  ].join(' · ');
+                  return Material(
+                    color: cs.surface,
+                    borderRadius: BorderRadius.circular(18),
+                    child: ListTile(
+                      title: Text(a.name),
+                      subtitle: Text(subtitle),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
                       ),
-                    );
-                  },
-                ),
-          floatingActionButton: accounts.isEmpty
-              ? null
-              : FloatingActionButton(
-                  onPressed: () => _showAddAccountDialog(context),
-                  backgroundColor: cs.onSurface,
-                  foregroundColor: cs.surface,
-                  child: const Icon(Icons.add_rounded),
-                ),
+                      onTap: () {
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (context) => AccountDetailScreen(
+                              controller: controller,
+                              accountId: a.id,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          floatingActionButton: FutureBuilder<List<Account>>(
+            future: controller.accounts,
+            builder: (context, snapshot) {
+              final accounts = snapshot.data;
+              if (accounts == null || accounts.isEmpty) return const SizedBox();
+              return FloatingActionButton(
+                onPressed: () => _showAddAccountDialog(context),
+                backgroundColor: cs.onSurface,
+                foregroundColor: cs.surface,
+                child: const Icon(Icons.add_rounded),
+              );
+            },
+          ),
         );
       },
     );

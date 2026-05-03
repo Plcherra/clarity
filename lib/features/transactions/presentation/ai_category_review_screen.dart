@@ -54,7 +54,7 @@ class _AiCategorizationFlowScreenState
       _phase = _FlowPhase.loading;
       _error = null;
     });
-    final unc = widget.controller.uncategorizedImportedRowsForAccount(
+    final unc = await widget.controller.uncategorizedImportedRowsForAccount(
       widget.accountId,
     );
     if (unc.isEmpty) {

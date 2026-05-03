@@ -13,7 +13,7 @@ import 'month_detail_screen.dart';
 import '../../transactions/presentation/transaction_review_screen.dart';
 
 typedef SnapshotBuilder =
-    DashboardSnapshot Function(
+    Future<DashboardSnapshot> Function(
       DashboardUiController controller,
       DashboardScope scope,
     );
@@ -59,6 +59,20 @@ class FinancialDashboardView extends StatefulWidget {
 }
 
 class _FinancialDashboardViewState extends State<FinancialDashboardView> {
+  Future<_FinancialDashboardData> _loadDashboardData(
+    DashboardUiController controller,
+    DashboardScope scope,
+  ) async {
+    final snap = await widget.buildSnapshot(controller, scope);
+    final budgetPerformance = await controller.budgetPerformanceForScope(scope);
+    final uncategorizedQueue = await controller.uncategorizedQueue(scope);
+    return _FinancialDashboardData(
+      snapshot: snap,
+      budgetPerformance: budgetPerformance,
+      uncategorizedQueue: uncategorizedQueue,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -69,137 +83,6 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
       builder: (context, _) {
         final controller = widget.controller;
         final scope = widget.scope;
-        final snap = widget.buildSnapshot(controller, scope);
-        final budgetPerformance = controller.budgetPerformanceForScope(scope);
-        final uncategorizedQueue = controller.uncategorizedQueue(scope);
-        final attentionCount = uncategorizedQueue.length;
-        final scrollBody = DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [const Color(0xFFF3F1ED), cs.surface],
-            ),
-          ),
-          child: SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(),
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
-                  sliver: SliverList(
-                    delegate: SliverChildListDelegate([
-                      Text(
-                        widget.title,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          letterSpacing: 3.2,
-                          color: cs.onSurface.withValues(alpha: 0.38),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      if (kDebugMode) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          'debug: reviewQueue=$attentionCount · '
-                          'snapUncat=${snap.uncategorizedCount}',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontFamily: 'monospace',
-                            color: cs.onSurface.withValues(alpha: 0.42),
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      if (widget.onUploadTransactions != null) ...[
-                        _UploadTransactionsButton(
-                          onPressed: widget.onUploadTransactions!,
-                        ),
-                        const SizedBox(height: 20),
-                      ],
-                      FilledButton(
-                        onPressed: () {
-                          Navigator.of(context).push<void>(
-                            MaterialPageRoute<void>(
-                              builder: (context) => BudgetsScreen(
-                                controller: controller.ui.budgets,
-                              ),
-                            ),
-                          );
-                        },
-                        child: const Text('Set Budgets'),
-                      ),
-                      const SizedBox(height: 20),
-                      if (attentionCount > 0) ...[
-                        _UncategorizedAttentionCard(
-                          count: attentionCount,
-                          onTap: () {
-                            Navigator.of(context).push<void>(
-                              MaterialPageRoute<void>(
-                                builder: (context) => TransactionReviewScreen(
-                                  controller: controller.ui.transactions,
-                                  scope: scope,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(height: _sectionGap),
-                      ],
-                      _ResponsiveMetricCard(
-                        label: 'Available this month',
-                        value: formatMoney(snap.availableThisMonth),
-                        large: true,
-                        valueColor: _balanceColor(snap.availableThisMonth),
-                        footnote:
-                            'Income ${formatMoney(snap.incomeThisMonth)} · '
-                            'Spending ${formatMoney(snap.spentThisMonth)}',
-                      ),
-                      const SizedBox(height: _sectionGap),
-                      _ResponsiveMetricCard(
-                        label: 'Spent this month',
-                        value: formatMoney(snap.spentThisMonth),
-                        large: false,
-                        valueColor: const Color(0xFF9B2C2C),
-                      ),
-                      const SizedBox(height: _sectionGap),
-                      _SectionTitle(theme: theme, title: 'Budget performance'),
-                      const SizedBox(height: 16),
-                      _BudgetPerformanceCard(performance: budgetPerformance),
-                      const SizedBox(height: _sectionGap),
-                      _SectionTitle(
-                        theme: theme,
-                        title: 'Biggest leaks this month',
-                      ),
-                      const SizedBox(height: 16),
-                      _BiggestLeaksCard(leaks: snap.biggestLeaksThisMonth),
-                      const SizedBox(height: _sectionGap),
-                      _BurnRateCard(
-                        runwayDays: snap.burnRunwayDays,
-                        totalBalance: snap.totalBalance,
-                        spentThisMonth: snap.spentThisMonth,
-                      ),
-                      const SizedBox(height: _sectionGap),
-                      _SectionTitle(theme: theme, title: 'Statement by month'),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Tap a month for transactions',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          letterSpacing: 0.8,
-                          color: cs.onSurface.withValues(alpha: 0.4),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _MonthlyGroupsList(
-                        groups: snap.monthlyGroups,
-                        controller: controller,
-                      ),
-                    ]),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
 
         return Scaffold(
           extendBodyBehindAppBar: true,
@@ -233,14 +116,222 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
                 ),
             ],
           ),
-          body: widget.showBackButton
-              ? ImportAiStatusHost(
-                  controller: controller.ui.importAiStatus,
-                  child: scrollBody,
-                )
-              : scrollBody,
+          body: FutureBuilder<_FinancialDashboardData>(
+            future: _loadDashboardData(controller, scope),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return _DashboardLoadMessage(message: '${snapshot.error}');
+              }
+              final data = snapshot.data;
+              if (data == null) {
+                return const _DashboardLoadingBody();
+              }
+              final scrollBody = _DashboardScrollBody(
+                title: widget.title,
+                controller: controller,
+                scope: scope,
+                snapshot: data.snapshot,
+                budgetPerformance: data.budgetPerformance,
+                attentionCount: data.uncategorizedQueue.length,
+                onUploadTransactions: widget.onUploadTransactions,
+              );
+              return widget.showBackButton
+                  ? ImportAiStatusHost(
+                      controller: controller.ui.importAiStatus,
+                      child: scrollBody,
+                    )
+                  : scrollBody;
+            },
+          ),
         );
       },
+    );
+  }
+}
+
+class _FinancialDashboardData {
+  const _FinancialDashboardData({
+    required this.snapshot,
+    required this.budgetPerformance,
+    required this.uncategorizedQueue,
+  });
+
+  final DashboardSnapshot snapshot;
+  final BudgetPerformanceSnapshot budgetPerformance;
+  final List<BankStatementLine> uncategorizedQueue;
+}
+
+class _DashboardScrollBody extends StatelessWidget {
+  const _DashboardScrollBody({
+    required this.title,
+    required this.controller,
+    required this.scope,
+    required this.snapshot,
+    required this.budgetPerformance,
+    required this.attentionCount,
+    required this.onUploadTransactions,
+  });
+
+  final String title;
+  final DashboardUiController controller;
+  final DashboardScope scope;
+  final DashboardSnapshot snapshot;
+  final BudgetPerformanceSnapshot budgetPerformance;
+  final int attentionCount;
+  final Future<void> Function()? onUploadTransactions;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cs = theme.colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [const Color(0xFFF3F1ED), cs.surface],
+        ),
+      ),
+      child: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 40),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  Text(
+                    title,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      letterSpacing: 3.2,
+                      color: cs.onSurface.withValues(alpha: 0.38),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (kDebugMode) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'debug: reviewQueue=$attentionCount · '
+                      'snapUncat=${snapshot.uncategorizedCount}',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        fontFamily: 'monospace',
+                        color: cs.onSurface.withValues(alpha: 0.42),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  if (onUploadTransactions != null) ...[
+                    _UploadTransactionsButton(onPressed: onUploadTransactions!),
+                    const SizedBox(height: 20),
+                  ],
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          builder: (context) =>
+                              BudgetsScreen(controller: controller.ui.budgets),
+                        ),
+                      );
+                    },
+                    child: const Text('Set Budgets'),
+                  ),
+                  const SizedBox(height: 20),
+                  if (attentionCount > 0) ...[
+                    _UncategorizedAttentionCard(
+                      count: attentionCount,
+                      onTap: () {
+                        Navigator.of(context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (context) => TransactionReviewScreen(
+                              controller: controller.ui.transactions,
+                              scope: scope,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: _sectionGap),
+                  ],
+                  _ResponsiveMetricCard(
+                    label: 'Available this month',
+                    value: formatMoney(snapshot.availableThisMonth),
+                    large: true,
+                    valueColor: _balanceColor(snapshot.availableThisMonth),
+                    footnote:
+                        'Income ${formatMoney(snapshot.incomeThisMonth)} · '
+                        'Spending ${formatMoney(snapshot.spentThisMonth)}',
+                  ),
+                  const SizedBox(height: _sectionGap),
+                  _ResponsiveMetricCard(
+                    label: 'Spent this month',
+                    value: formatMoney(snapshot.spentThisMonth),
+                    large: false,
+                    valueColor: const Color(0xFF9B2C2C),
+                  ),
+                  const SizedBox(height: _sectionGap),
+                  _SectionTitle(theme: theme, title: 'Budget performance'),
+                  const SizedBox(height: 16),
+                  _BudgetPerformanceCard(performance: budgetPerformance),
+                  const SizedBox(height: _sectionGap),
+                  _SectionTitle(
+                    theme: theme,
+                    title: 'Biggest leaks this month',
+                  ),
+                  const SizedBox(height: 16),
+                  _BiggestLeaksCard(leaks: snapshot.biggestLeaksThisMonth),
+                  const SizedBox(height: _sectionGap),
+                  _BurnRateCard(
+                    runwayDays: snapshot.burnRunwayDays,
+                    totalBalance: snapshot.totalBalance,
+                    spentThisMonth: snapshot.spentThisMonth,
+                  ),
+                  const SizedBox(height: _sectionGap),
+                  _SectionTitle(theme: theme, title: 'Statement by month'),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap a month for transactions',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      letterSpacing: 0.8,
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _MonthlyGroupsList(
+                    groups: snapshot.monthlyGroups,
+                    controller: controller,
+                  ),
+                ]),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardLoadingBody extends StatelessWidget {
+  const _DashboardLoadingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+
+class _DashboardLoadMessage extends StatelessWidget {
+  const _DashboardLoadMessage({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text(message, textAlign: TextAlign.center),
+      ),
     );
   }
 }

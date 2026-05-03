@@ -1,435 +1,186 @@
-import '../../../core/models/models.dart';
-import '../../../core/storage/ai/ai_suggestion_storage.dart';
-import '../../../core/storage/transactions/transaction_category_storage.dart';
-import '../../../core/storage/transactions/transaction_storage.dart';
-import '../data/csv_parser.dart';
-import '../data/csv_import_service.dart';
-import '../data/transaction_repository.dart';
-import '../domain/spend_categories.dart';
-import '../domain/transaction_resolution.dart' as transaction_resolution;
-import 'ai_categorization_service.dart' as app_ai;
-import 'category_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-typedef TransactionDashboardRecompute =
-    void Function({
-      required List<Transaction> activeAccountTransactions,
-      required List<Transaction> allTransactionsForMetrics,
-      required List<Transaction> transactionsForCsvDiagnostics,
-      required CsvParseDiagnostics? diag,
-    });
+import '../../../core/supabase/supabase_exceptions.dart';
+import '../../../core/supabase/supabase_records.dart';
+import '../../../core/supabase/supabase_service.dart';
 
-class TransactionService {
-  final TransactionRepository transactionRepository = TransactionRepository();
-  final CsvImportService csvImportService = CsvImportService();
+final class TransactionService {
+  TransactionService({required SupabaseService supabaseService})
+    : _supabaseService = supabaseService;
 
-  /// Active account transactions shown by account-scoped views.
-  List<Transaction> transactions = const [];
+  final SupabaseService _supabaseService;
 
-  /// Persisted manual categories by [transactionCategoryKey]; survives restarts and re-import.
-  Map<String, String> transactionCategoryAssignments = const {};
-
-  Map<String, AiCategorySuggestion> aiCategorySuggestions = const {};
-
-  Map<String, List<Transaction>> get transactionsByAccount =>
-      transactionRepository.transactionsByAccount;
-  set transactionsByAccount(Map<String, List<Transaction>> value) {
-    transactionRepository.transactionsByAccount = value;
+  User get _currentUser {
+    final user = _supabaseService.auth.currentUser;
+    if (user == null) throw const SupabaseAuthRequiredException();
+    return user;
   }
 
-  /// Convenience: flattened across accounts, used for global dashboard metrics.
-  List<Transaction> get allTransactions =>
-      transactionRepository.allTransactions;
-
-  List<Transaction> activeTransactionsForAccount(String? activeAccountId) {
-    if (activeAccountId == null) return const <Transaction>[];
-    return List<Transaction>.unmodifiable(
-      transactionsByAccount[activeAccountId] ?? const <Transaction>[],
-    );
-  }
-
-  Future<TransactionHydrationResult> hydratePersistedTransactions({
-    required String? activeAccountId,
-  }) {
-    return transactionRepository.hydratePersistedTransactions(
-      activeAccountId: activeAccountId,
-    );
-  }
-
-  Future<TransactionDedupeResult> dedupePersistedTransactionsIfNeeded({
-    required String? activeAccountId,
-  }) {
-    return transactionRepository.dedupePersistedTransactionsIfNeeded(
-      activeAccountId: activeAccountId,
-    );
-  }
-
-  /// Loads persisted per-transaction category picks.
-  Future<void> hydrateTransactionCategoryAssignments() async {
-    try {
-      transactionCategoryAssignments =
-          await loadTransactionCategoryAssignments();
-    } on Object {
-      transactionCategoryAssignments = {};
-    }
-  }
-
-  Future<void> hydrateAiCategorySuggestions() async {
-    try {
-      aiCategorySuggestions = await loadAiCategorySuggestions();
-    } on Object {
-      aiCategorySuggestions = {};
-    }
-  }
-
-  void persistTransactionCategoryAssignments() {
-    saveTransactionCategoryAssignments(
-      transactionCategoryAssignments,
-    ).catchError((_) {});
-  }
-
-  Future<void> persistAiCategorySuggestions() async {
-    await saveAiCategorySuggestions(aiCategorySuggestions);
-  }
-
-  void persistTransactionsByAccount() {
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-  }
-
-  void removeTransactionMetadataForKeys(
-    Set<String> keys, {
-    required CategoryService categoryService,
-  }) {
-    if (keys.isEmpty) return;
-
-    final nextAssignments = Map<String, String>.from(
-      transactionCategoryAssignments,
-    )..removeWhere((k, _) => keys.contains(k));
-    final nextOverrides = Map<String, String>.from(
-      categoryService.categoryOverrides,
-    )..removeWhere((k, _) => keys.contains(k));
-    final nextAiSuggestions = Map<String, AiCategorySuggestion>.from(
-      aiCategorySuggestions,
-    )..removeWhere((k, _) => keys.contains(k));
-
-    transactionCategoryAssignments = nextAssignments;
-    categoryService.categoryOverrides = nextOverrides;
-    aiCategorySuggestions = nextAiSuggestions;
-  }
-
-  void applyCategoryAssignments(
-    Map<String, String> keyToCanonicalCategory, {
-    required CategoryService categoryService,
-  }) {
-    final normalized = <String, String>{};
-    for (final e in keyToCanonicalCategory.entries) {
-      final k = e.key.trim();
-      final v = e.value.trim();
-      if (k.isEmpty || v.isEmpty) continue;
-      normalized[k] = v;
-    }
-    if (normalized.isEmpty) return;
-
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryService.categoryOverrides);
-    for (final e in normalized.entries) {
-      nextAssign[e.key] = e.value;
-      nextOv[e.key] = e.value;
-    }
-    transactionCategoryAssignments = nextAssign;
-    categoryService.categoryOverrides = nextOv;
-
-    Transaction applyCategory(Transaction x) {
-      final k = transactionCategoryKey(x);
-      final cat = normalized[k];
-      if (cat == null) return x;
-      final c = cat.trim();
-      if (c.isEmpty) return x;
-      return Transaction(
-        date: x.date,
-        description: x.description,
-        amount: x.amount,
-        accountId: x.accountId,
-        category: x.category,
-        balanceAfter: x.balanceAfter,
-        categoryId: c,
-        importId: x.importId,
-        fingerprint: x.fingerprint,
-        financialRole: x.financialRole,
-      );
-    }
-
-    final nextByAccount = <String, List<Transaction>>{};
-    for (final e in transactionsByAccount.entries) {
-      nextByAccount[e.key] = List.unmodifiable(
-        e.value.map(applyCategory).toList(),
-      );
-    }
-    transactionsByAccount = nextByAccount;
-
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    persistTransactionCategoryAssignments();
-  }
-
-  Future<int> undoCategoryApplyBatch(
-    List<AiAppliedCategoryChange> batch, {
-    required CategoryService categoryService,
+  Future<List<TransactionRecord>> fetchTransactions({
+    String? accountId,
+    String? categoryId,
+    DateTime? startDate,
+    DateTime? endDate,
   }) async {
-    if (batch.isEmpty) return 0;
+    final user = _currentUser;
+    try {
+      dynamic query = _supabaseService.client
+          .from('transactions')
+          .select()
+          .eq('user_id', user.id);
 
-    final nextAssign = Map<String, String>.from(transactionCategoryAssignments);
-    final nextOv = Map<String, String>.from(categoryService.categoryOverrides);
-
-    var undone = 0;
-    for (final c in batch) {
-      final current = nextAssign[c.key]?.trim();
-      if (current == null || current.isEmpty) continue;
-      if (current != c.newCategoryId) continue;
-
-      if (c.previousCategoryId == null ||
-          c.previousCategoryId!.trim().isEmpty) {
-        nextAssign.remove(c.key);
-        nextOv.remove(c.key);
-      } else {
-        nextAssign[c.key] = c.previousCategoryId!.trim();
-        nextOv[c.key] = c.previousCategoryId!.trim();
+      if (accountId != null) {
+        query = query.eq('account_id', accountId);
       }
-      undone += 1;
+      if (categoryId != null) {
+        query = query.eq('category_id', categoryId);
+      }
+      if (startDate != null) {
+        query = query.gte('date', _dateOnly(startDate));
+      }
+      if (endDate != null) {
+        query = query.lte('date', _dateOnly(endDate));
+      }
+
+      final rows = await query.order('date', ascending: false);
+      return rows.map<TransactionRecord>(TransactionRecord.fromJson).toList();
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'fetchTransactions',
+        message: 'Could not fetch transactions.',
+        cause: e,
+      );
     }
+  }
 
-    transactionCategoryAssignments = nextAssign;
-    categoryService.categoryOverrides = nextOv;
+  Future<TransactionRecord> createTransaction({
+    required String accountId,
+    String? categoryId,
+    required double amount,
+    required String type,
+    String? description,
+    required DateTime date,
+    String? merchant,
+    bool importedFromCsv = false,
+  }) async {
+    final user = _currentUser;
+    try {
+      final row = await _supabaseService.client
+          .from('transactions')
+          .insert({
+            'user_id': user.id,
+            'account_id': accountId,
+            'category_id': categoryId,
+            'amount': amount,
+            'type': type,
+            'description': description,
+            'date': _dateOnly(date),
+            'merchant': merchant,
+            'imported_from_csv': importedFromCsv,
+          })
+          .select()
+          .single();
+      return TransactionRecord.fromJson(row);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'createTransaction',
+        message: 'Could not create transaction.',
+        cause: e,
+      );
+    }
+  }
 
-    Transaction applyCategory(Transaction x) {
-      final k = transactionCategoryKey(x);
-      final cat = nextAssign[k];
-      return Transaction(
-        date: x.date,
-        description: x.description,
-        amount: x.amount,
-        accountId: x.accountId,
-        category: x.category,
-        balanceAfter: x.balanceAfter,
-        categoryId: cat,
-        importId: x.importId,
-        fingerprint: x.fingerprint,
-        financialRole: x.financialRole,
+  Future<TransactionRecord> updateTransaction(
+    String id, {
+    String? accountId,
+    String? categoryId,
+    double? amount,
+    String? type,
+    String? description,
+    DateTime? date,
+    String? merchant,
+    bool? importedFromCsv,
+  }) async {
+    final user = _currentUser;
+    final payload = <String, dynamic>{};
+    if (accountId != null) payload['account_id'] = accountId;
+    if (categoryId != null) payload['category_id'] = categoryId;
+    if (amount != null) payload['amount'] = amount;
+    if (type != null) payload['type'] = type;
+    if (description != null) payload['description'] = description;
+    if (date != null) payload['date'] = _dateOnly(date);
+    if (merchant != null) payload['merchant'] = merchant;
+    if (importedFromCsv != null) {
+      payload['imported_from_csv'] = importedFromCsv;
+    }
+    if (payload.isEmpty) {
+      throw const SupabaseDataException(
+        table: 'transactions',
+        action: 'updateTransaction',
+        message: 'At least one transaction field is required.',
       );
     }
 
-    final nextByAccount = <String, List<Transaction>>{};
-    for (final e in transactionsByAccount.entries) {
-      nextByAccount[e.key] = List.unmodifiable(
-        e.value.map(applyCategory).toList(),
+    try {
+      final row = await _supabaseService.client
+          .from('transactions')
+          .update(payload)
+          .eq('user_id', user.id)
+          .eq('id', id)
+          .select()
+          .single();
+      return TransactionRecord.fromJson(row);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'updateTransaction',
+        message: 'Could not update transaction.',
+        cause: e,
       );
     }
-    transactionsByAccount = nextByAccount;
-
-    saveTransactionsByAccount(transactionsByAccount).catchError((_) {});
-    persistTransactionCategoryAssignments();
-    return undone;
   }
 
-  List<Transaction> applyAiAutoApplyUndoResult(
-    app_ai.AiAutoApplyUndoResult result, {
-    required CategoryService categoryService,
-  }) {
-    transactionCategoryAssignments = result.transactionCategoryAssignments;
-    categoryService.categoryOverrides = result.categoryOverrides;
-    transactionsByAccount = result.transactionsByAccount;
-    transactions = result.activeTransactions;
-    persistTransactionsByAccount();
-    persistTransactionCategoryAssignments();
-    return transactions;
+  Future<void> deleteTransaction(String id) async {
+    final user = _currentUser;
+    try {
+      await _supabaseService.client
+          .from('transactions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('id', id);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'deleteTransaction',
+        message: 'Could not delete transaction.',
+        cause: e,
+      );
+    }
   }
 
-  Future<TransactionMutationResult> deleteTransaction(
-    Transaction transaction, {
-    required CategoryService categoryService,
-  }) async {
-    final result = await transactionRepository.deleteTransaction(transaction);
-    if (!result.success) return result;
-
-    removeTransactionMetadataForKeys(
-      result.removedKeys,
-      categoryService: categoryService,
-    );
-    persistTransactionCategoryAssignments();
-    persistAiCategorySuggestions().catchError((_) {});
-    return result;
-  }
-
-  Future<TransactionMutationResult> clearTransactionsForAccount(
-    String accountId, {
-    required CategoryService categoryService,
-  }) async {
-    final result = await transactionRepository.clearTransactionsForAccount(
-      accountId,
-    );
-    if (!result.success) return result;
-
-    removeTransactionMetadataForKeys(
-      result.removedKeys,
-      categoryService: categoryService,
-    );
-    persistTransactionCategoryAssignments();
-    persistAiCategorySuggestions().catchError((_) {});
-    return result;
-  }
-
-  Future<TransactionMutationResult> deleteTransactionsForImportBatch({
-    required String accountId,
-    required String importId,
-    required CategoryService categoryService,
-  }) async {
-    final result = await transactionRepository.deleteTransactionsForImportBatch(
-      accountId: accountId,
-      importId: importId,
-    );
-    if (!result.success) return result;
-
-    removeTransactionMetadataForKeys(
-      result.removedKeys,
-      categoryService: categoryService,
-    );
-    persistTransactionCategoryAssignments();
-    persistAiCategorySuggestions().catchError((_) {});
-    return result;
-  }
-
-  List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
-    return csvImportService.csvImportBatchesForAccount(
-      accountId,
-      transactionsByAccount: transactionsByAccount,
-    );
-  }
-
-  List<Transaction> uncategorizedImportedRowsGlobal({
-    required List<Account> accounts,
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-  }) {
-    return csvImportService.uncategorizedImportedRowsGlobal(
-      accounts: accounts,
-      allTransactions: allTransactions,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-    );
-  }
-
-  List<Transaction> uncategorizedImportedRowsForAccount(
-    String accountId, {
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-  }) {
-    return csvImportService.uncategorizedImportedRowsForAccount(
-      accountId,
-      transactionsByAccount: transactionsByAccount,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenames: categoryDisplayRenames,
-    );
-  }
-
-  CsvImportResult loadFromCsv(
-    String utf8Text, {
-    required String accountId,
-    required DateTime? reference,
-    required List<Account> accounts,
-    required CategoryService categoryService,
-  }) {
-    final result = csvImportService.loadFromCsv(
-      utf8Text,
-      accountId: accountId,
-      reference: reference,
-      accounts: accounts,
-      transactionCategoryAssignments: transactionCategoryAssignments,
-      transactionRepository: transactionRepository,
-    );
-    categoryService.categoryOverrides = result.categoryOverrides;
-    transactions = result.transactions;
-    return result;
-  }
-
-  void persistActiveAccountTransactionsIfAny({
-    required String? activeAccountId,
-    required List<Transaction> transactions,
-  }) {
-    transactionRepository.persistActiveAccountTransactionsIfAny(
-      activeAccountId: activeAccountId,
-      transactions: transactions,
-    );
-  }
-
-  String effectiveSpendGroupLabel(
-    Transaction t, {
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-    required Map<String, String> merchantCategoryMemory,
-    required List<Account> accounts,
-    required List<Transaction> allTransactionsContext,
-  }) {
-    return resolveTransaction(
-      t,
-      categoryService: categoryService,
-      categoryDisplayRenames: categoryDisplayRenames,
-      merchantCategoryMemory: merchantCategoryMemory,
-      accounts: accounts,
-      allTransactionsContext: allTransactionsContext,
-    ).canonicalCategory;
-  }
-
-  String effectiveCategoryDisplayLabel(
-    Transaction t, {
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-    required Map<String, String> merchantCategoryMemory,
-    required List<Account> accounts,
-    required List<Transaction> allTransactionsContext,
-  }) {
-    return resolveTransaction(
-      t,
-      categoryService: categoryService,
-      categoryDisplayRenames: categoryDisplayRenames,
-      merchantCategoryMemory: merchantCategoryMemory,
-      accounts: accounts,
-      allTransactionsContext: allTransactionsContext,
-    ).displayCategory;
-  }
-
-  transaction_resolution.ResolvedTransaction resolveTransaction(
-    Transaction t, {
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-    required Map<String, String> merchantCategoryMemory,
-    required List<Account> accounts,
-    required List<Transaction> allTransactionsContext,
-  }) {
-    final accountsById = {for (final a in accounts) a.id: a};
-    return transaction_resolution.resolveTransaction(
-      t: t,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
-      merchantCategoryMemory: merchantCategoryMemory,
-      accountsById: accountsById,
-      allTransactions: allTransactionsContext,
-    );
-  }
-
-  List<transaction_resolution.ResolvedTransaction> resolveTransactions(
-    List<Transaction> txs, {
-    required CategoryService categoryService,
-    required Map<String, String> categoryDisplayRenames,
-    required Map<String, String> merchantCategoryMemory,
-    required List<Account> accounts,
-    required List<Transaction> allTransactionsContext,
-  }) {
-    final accountsById = {for (final a in accounts) a.id: a};
-    return transaction_resolution.resolveTransactions(
-      txs,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
-      merchantCategoryMemory: merchantCategoryMemory,
-      accountsById: accountsById,
-      allTransactions: allTransactionsContext,
-    );
+  Stream<List<TransactionRecord>> watchTransactions({String? accountId}) {
+    final user = _currentUser;
+    return _supabaseService.client
+        .from('transactions')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', user.id)
+        .map((rows) {
+          final filtered = accountId == null
+              ? rows
+              : rows.where((row) => row['account_id'] == accountId);
+          return filtered.map(TransactionRecord.fromJson).toList();
+        });
   }
 }
+
+String _dateOnly(DateTime date) => date.toIso8601String().split('T').first;

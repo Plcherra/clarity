@@ -26,179 +26,219 @@ class MonthDetailScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final lines = controller.refreshedLinesForMonth(group);
-
-        final monthTotal = lines.fold<double>(
-          0,
-          (sum, e) => sum + e.transaction.amount,
-        );
-        final accountIds = lines.map((e) => e.transaction.accountId).toSet();
-        final clearAccountId = accountIds.length == 1 ? accountIds.first : null;
         final title = formatYearMonthLabel(group.yearMonth);
-        final totalColor = monthTotal < 0
-            ? const Color(0xFFC41E3A)
-            : monthTotal > 0
-            ? const Color(0xFF1B7A4C)
-            : cs.onSurface;
 
-        return Scaffold(
-          backgroundColor: const Color(0xFFF7F5F2),
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            title: Text(title),
-            leading: IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: cs.onSurface.withValues(alpha: 0.55),
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: [
-              if (clearAccountId != null && lines.isNotEmpty)
-                IconButton(
-                  tooltip: 'Clear all transactions',
-                  icon: const Icon(Icons.delete_forever_rounded),
-                  color: Colors.red.shade700,
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Clear all transactions?'),
-                        content: const Text(
-                          'This will permanently delete every transaction for this account. This action cannot be undone.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(false),
-                            child: const Text('Cancel'),
-                          ),
-                          FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Colors.red.shade700,
+        return FutureBuilder<List<BankStatementLine>>(
+          future: controller.refreshedLinesForMonth(group),
+          builder: (context, snapshot) {
+            final lines = snapshot.data;
+            final accountIds =
+                lines?.map((e) => e.transaction.accountId).toSet() ??
+                const <String>{};
+            final clearAccountId = accountIds.length == 1
+                ? accountIds.first
+                : null;
+            return Scaffold(
+              backgroundColor: const Color(0xFFF7F5F2),
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                title: Text(title),
+                leading: IconButton(
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                actions: [
+                  if (clearAccountId != null &&
+                      lines != null &&
+                      lines.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Clear all transactions',
+                      icon: const Icon(Icons.delete_forever_rounded),
+                      color: Colors.red.shade700,
+                      onPressed: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: const Text('Clear all transactions?'),
+                            content: const Text(
+                              'This will permanently delete every transaction for this account. This action cannot be undone.',
                             ),
-                            onPressed: () => Navigator.of(ctx).pop(true),
-                            child: const Text('Delete all'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm != true) return;
-                    final deleted = await controller
-                        .clearTransactionsForAccount(clearAccountId);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          deleted > 0
-                              ? 'Deleted $deleted transaction${deleted == 1 ? '' : 's'}.'
-                              : 'No transactions were deleted.',
-                        ),
-                      ),
-                    );
-                  },
-                ),
-            ],
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-            children: [
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 22,
-                ),
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFE0DCD4)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'NET THIS MONTH',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        letterSpacing: 2,
-                        fontWeight: FontWeight.w600,
-                        color: cs.onSurface.withValues(alpha: 0.38),
-                        fontSize: 10,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      formatMoney(monthTotal),
-                      style: theme.textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: -0.5,
-                        color: totalColor,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${lines.length} transactions',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Transactions',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: -0.2,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                decoration: BoxDecoration(
-                  color: cs.surface,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: const Color(0xFFE4E0D8)),
-                ),
-                child: lines.isEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 26,
-                        ),
-                        child: Text(
-                          'No transactions left for this month.',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.5),
-                          ),
-                        ),
-                      )
-                    : Column(
-                        children: [
-                          for (var i = 0; i < lines.length; i++) ...[
-                            if (i > 0)
-                              Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: cs.outlineVariant.withValues(
-                                  alpha: 0.35,
-                                ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(ctx).pop(false),
+                                child: const Text('Cancel'),
                               ),
-                            _LineTile(
-                              line: lines[i],
-                              transactionController: controller.ui.transactions,
-                              onDeleteTransaction: controller.deleteTransaction,
+                              FilledButton(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.red.shade700,
+                                ),
+                                onPressed: () => Navigator.of(ctx).pop(true),
+                                child: const Text('Delete all'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirm != true) return;
+                        final deleted = await controller
+                            .clearTransactionsForAccount(clearAccountId);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              deleted > 0
+                                  ? 'Deleted $deleted transaction${deleted == 1 ? '' : 's'}.'
+                                  : 'No transactions were deleted.',
                             ),
-                          ],
-                        ],
-                      ),
+                          ),
+                        );
+                      },
+                    ),
+                ],
               ),
-            ],
-          ),
+              body: switch (snapshot.connectionState) {
+                ConnectionState.waiting => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                _ when snapshot.hasError => const Center(
+                  child: Text('Could not load transactions.'),
+                ),
+                _ => _MonthDetailBody(
+                  lines: lines ?? const [],
+                  controller: controller,
+                  theme: theme,
+                  colorScheme: cs,
+                ),
+              },
+            );
+          },
         );
       },
+    );
+  }
+}
+
+class _MonthDetailBody extends StatelessWidget {
+  const _MonthDetailBody({
+    required this.lines,
+    required this.controller,
+    required this.theme,
+    required this.colorScheme,
+  });
+
+  final List<BankStatementLine> lines;
+  final DashboardUiController controller;
+  final ThemeData theme;
+  final ColorScheme colorScheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final monthTotal = lines.fold<double>(
+      0,
+      (sum, e) => sum + e.transaction.amount,
+    );
+    final totalColor = monthTotal < 0
+        ? const Color(0xFFC41E3A)
+        : monthTotal > 0
+        ? const Color(0xFF1B7A4C)
+        : colorScheme.onSurface;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 22),
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE0DCD4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'NET THIS MONTH',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  letterSpacing: 2,
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface.withValues(alpha: 0.38),
+                  fontSize: 10,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                formatMoney(monthTotal),
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.5,
+                  color: totalColor,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${lines.length} transactions',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurface.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          'Transactions',
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.2,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: const Color(0xFFE4E0D8)),
+          ),
+          child: lines.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 26,
+                  ),
+                  child: Text(
+                    'No transactions left for this month.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurface.withValues(alpha: 0.5),
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (var i = 0; i < lines.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: colorScheme.outlineVariant.withValues(
+                            alpha: 0.35,
+                          ),
+                        ),
+                      _LineTile(
+                        line: lines[i],
+                        transactionController: controller.ui.transactions,
+                        onDeleteTransaction: controller.deleteTransaction,
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+      ],
     );
   }
 }

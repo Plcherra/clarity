@@ -160,7 +160,7 @@ class AccountDetailScreen extends StatelessWidget {
       final file = result.files.single;
       final text = await readPickedFileContents(file);
       if (!context.mounted) return;
-      controller.loadFromCsv(text, accountId: accountId);
+      await controller.loadFromCsv(text, accountId: accountId);
       if (!context.mounted) return;
       if (controller.needsImportAiAfterCsvUpload(accountId)) {
         if (!controller.importAiEngineConfigured) {
@@ -200,21 +200,37 @@ class AccountDetailScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final account = controller.accounts
-            .where((a) => a.id == accountId)
-            .cast<Account?>()
-            .firstWhere((a) => a != null, orElse: () => null);
-        final title = account?.name ?? 'Account';
-        return FinancialDashboardView(
-          controller: controller.ui.dashboard,
-          scope: AccountDashboardScope(accountId),
-          showBackButton: true,
-          title: title,
-          buildSnapshot: (_, _) =>
-              controller.buildSnapshotForAccount(accountId),
-          onUploadTransactions: () => _importCsvForThisAccount(context),
-          onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
-          onDeleteAccount: () => _deleteAccount(context, title),
+        return FutureBuilder<List<Account>>(
+          future: controller.accounts,
+          builder: (context, snapshot) {
+            if (snapshot.hasError) {
+              return const Scaffold(
+                body: Center(child: Text('Could not load account.')),
+              );
+            }
+            final accounts = snapshot.data;
+            if (accounts == null) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            final account = accounts
+                .where((a) => a.id == accountId)
+                .cast<Account?>()
+                .firstWhere((a) => a != null, orElse: () => null);
+            final title = account?.name ?? 'Account';
+            return FinancialDashboardView(
+              controller: controller.ui.dashboard,
+              scope: AccountDashboardScope(accountId),
+              showBackButton: true,
+              title: title,
+              buildSnapshot: (_, _) =>
+                  controller.buildSnapshotForAccount(accountId),
+              onUploadTransactions: () => _importCsvForThisAccount(context),
+              onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
+              onDeleteAccount: () => _deleteAccount(context, title),
+            );
+          },
         );
       },
     );

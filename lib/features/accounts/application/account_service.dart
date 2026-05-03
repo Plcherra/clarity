@@ -1,78 +1,146 @@
-import '../../../core/models/models.dart';
-import '../../../core/storage/accounts/account_storage.dart';
-import '../../../core/storage/transactions/transaction_storage.dart';
-import '../../transactions/domain/spend_categories.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Non-null when an account row was deleted and storage was updated successfully.
-class DeletedAccountPersistResult {
-  const DeletedAccountPersistResult({
-    required this.removedKeys,
-    required this.transactionsByAccount,
-  });
+import '../../../core/supabase/supabase_exceptions.dart';
+import '../../../core/supabase/supabase_records.dart';
+import '../../../core/supabase/supabase_service.dart';
 
-  final Set<String> removedKeys;
-  final Map<String, List<Transaction>> transactionsByAccount;
-}
+final class AccountService {
+  AccountService({required SupabaseService supabaseService})
+    : _supabaseService = supabaseService;
 
-/// Persisted account list and UI “current account” pointer.
-class AccountService {
-  String? activeAccountId;
+  final SupabaseService _supabaseService;
 
-  List<Account> accounts = const [];
+  User get _currentUser {
+    final user = _supabaseService.auth.currentUser;
+    if (user == null) throw const SupabaseAuthRequiredException();
+    return user;
+  }
 
-  Future<void> hydratePersistedAccounts() async {
+  Future<List<AccountRecord>> fetchAccounts() async {
+    final user = _currentUser;
     try {
-      accounts = await loadAccounts();
-    } on Object {
-      accounts = const [];
+      final rows = await _supabaseService.client
+          .from('accounts')
+          .select()
+          .eq('user_id', user.id)
+          .order('created_at');
+      return rows.map(AccountRecord.fromJson).toList();
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'accounts',
+        action: 'fetchAccounts',
+        message: 'Could not fetch accounts.',
+        cause: e,
+      );
     }
   }
 
-  Future<bool> addAccount(Account account) async {
-    final next = [...accounts, account];
-    try {
-      await saveAccounts(next);
-    } on Object {
-      return false;
-    }
-    accounts = next;
-    return true;
-  }
-
-  /// Removes the account row, persists accounts + txn map slice, clears [activeAccountId] when it matches.
-  Future<DeletedAccountPersistResult?> deleteAccount({
-    required String accountId,
-    required Map<String, List<Transaction>> transactionsByAccount,
+  Future<AccountRecord> createAccount({
+    required String name,
+    required String type,
+    double balance = 0,
+    String currency = 'USD',
+    bool isActive = true,
   }) async {
-    final id = accountId.trim();
-    if (id.isEmpty) return null;
-    if (!accounts.any((a) => a.id == id)) return null;
+    final user = _currentUser;
+    try {
+      final row = await _supabaseService.client
+          .from('accounts')
+          .insert({
+            'user_id': user.id,
+            'name': name,
+            'type': type,
+            'balance': balance,
+            'currency': currency,
+            'is_active': isActive,
+          })
+          .select()
+          .single();
+      return AccountRecord.fromJson(row);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'accounts',
+        action: 'createAccount',
+        message: 'Could not create account.',
+        cause: e,
+      );
+    }
+  }
 
-    final removedTransactions =
-        transactionsByAccount[id] ?? const <Transaction>[];
-    final removedKeys = removedTransactions.map(transactionCategoryKey).toSet();
-
-    final nextAccounts = accounts.where((a) => a.id != id).toList();
-    final nextByAccount = <String, List<Transaction>>{
-      for (final e in transactionsByAccount.entries)
-        if (e.key != id) e.key: List.unmodifiable(e.value),
-    };
+  Future<AccountRecord> updateAccount(
+    String id, {
+    String? name,
+    String? type,
+    double? balance,
+    String? currency,
+    bool? isActive,
+  }) async {
+    final user = _currentUser;
+    final payload = <String, dynamic>{};
+    if (name != null) payload['name'] = name;
+    if (type != null) payload['type'] = type;
+    if (balance != null) payload['balance'] = balance;
+    if (currency != null) payload['currency'] = currency;
+    if (isActive != null) payload['is_active'] = isActive;
+    if (payload.isEmpty) {
+      throw const SupabaseDataException(
+        table: 'accounts',
+        action: 'updateAccount',
+        message: 'At least one account field is required.',
+      );
+    }
 
     try {
-      await saveAccounts(nextAccounts);
-      await saveTransactionsByAccount(nextByAccount);
-    } on Object {
-      return null;
+      final row = await _supabaseService.client
+          .from('accounts')
+          .update(payload)
+          .eq('user_id', user.id)
+          .eq('id', id)
+          .select()
+          .single();
+      return AccountRecord.fromJson(row);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'accounts',
+        action: 'updateAccount',
+        message: 'Could not update account.',
+        cause: e,
+      );
     }
+  }
 
-    accounts = nextAccounts;
-    if (activeAccountId == id) {
-      activeAccountId = null;
+  Future<void> deleteAccount(String id) async {
+    final user = _currentUser;
+    try {
+      await _supabaseService.client
+          .from('accounts')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('id', id);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'accounts',
+        action: 'deleteAccount',
+        message: 'Could not delete account.',
+        cause: e,
+      );
     }
+  }
 
-    return DeletedAccountPersistResult(
-      removedKeys: removedKeys,
-      transactionsByAccount: nextByAccount,
-    );
+  Stream<List<AccountRecord>> watchAccounts() {
+    final user = _currentUser;
+    return _supabaseService.client
+        .from('accounts')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', user.id)
+        .map((rows) => rows.map(AccountRecord.fromJson).toList());
   }
 }

@@ -33,49 +33,69 @@ class TransactionReviewScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final uncategorizedQueue = controller.uncategorizedQueue(scope);
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFF7F5F2),
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            title: Text(
-              uncategorizedQueue.isEmpty
-                  ? 'Review'
-                  : '${uncategorizedQueue.length} left',
-            ),
-            leading: IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: cs.onSurface.withValues(alpha: 0.55),
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text(
-                  'Done',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: cs.primary,
-                  ),
+        return FutureBuilder<List<BankStatementLine>>(
+          future: controller.uncategorizedQueue(scope),
+          builder: (context, snapshot) {
+            final uncategorizedQueue = snapshot.data;
+            return Scaffold(
+              backgroundColor: const Color(0xFFF7F5F2),
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                title: Text(
+                  uncategorizedQueue == null || uncategorizedQueue.isEmpty
+                      ? 'Review'
+                      : '${uncategorizedQueue.length} left',
                 ),
-              ),
-            ],
-          ),
-          body: SafeArea(
-            child: uncategorizedQueue.isEmpty
-                ? _ReviewDoneEmptyState(theme: theme, colorScheme: cs)
-                : _SingleUncategorizedReview(
-                    controller: controller,
-                    theme: theme,
-                    colorScheme: cs,
-                    line: uncategorizedQueue.first,
+                leading: IconButton(
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: cs.onSurface.withValues(alpha: 0.55),
                   ),
-          ),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: Text(
+                      'Done',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: cs.primary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              body: SafeArea(
+                child: switch (snapshot.connectionState) {
+                  ConnectionState.waiting => const Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                  _ when snapshot.hasError => Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(_kReviewHorizontalPadding),
+                      child: Text(
+                        'Could not load transactions.',
+                        textAlign: TextAlign.center,
+                        style: theme.textTheme.bodyLarge,
+                      ),
+                    ),
+                  ),
+                  _ =>
+                    (uncategorizedQueue == null || uncategorizedQueue.isEmpty)
+                        ? _ReviewDoneEmptyState(theme: theme, colorScheme: cs)
+                        : _SingleUncategorizedReview(
+                            controller: controller,
+                            theme: theme,
+                            colorScheme: cs,
+                            line: uncategorizedQueue.first,
+                          ),
+                },
+              ),
+            );
+          },
         );
       },
     );

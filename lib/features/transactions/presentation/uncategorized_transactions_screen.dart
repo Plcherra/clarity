@@ -13,7 +13,7 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
   final TransactionUiController controller;
 
   /// Uncategorized rows for global Overview (all accounts), newest first.
-  static List<BankStatementLine> uncategorizedLines(
+  static Future<List<BankStatementLine>> uncategorizedLines(
     TransactionUiController controller,
   ) {
     const scope = GlobalDashboardScope();
@@ -28,72 +28,90 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
-        final lines = uncategorizedLines(controller);
-
-        return Scaffold(
-          backgroundColor: const Color(0xFFF7F5F2),
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            title: const Text('Uncategorized'),
-            leading: IconButton(
-              icon: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: cs.onSurface.withValues(alpha: 0.55),
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-          ),
-          body: lines.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      'Nothing left to categorize.',
-                      textAlign: TextAlign.center,
-                      style: theme.textTheme.bodyLarge?.copyWith(
-                        color: cs.onSurface.withValues(alpha: 0.45),
-                      ),
-                    ),
+        return FutureBuilder<List<BankStatementLine>>(
+          future: uncategorizedLines(controller),
+          builder: (context, snapshot) {
+            final lines = snapshot.data;
+            return Scaffold(
+              backgroundColor: const Color(0xFFF7F5F2),
+              appBar: AppBar(
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                scrolledUnderElevation: 0,
+                title: const Text('Uncategorized'),
+                leading: IconButton(
+                  icon: Icon(
+                    Icons.arrow_back_ios_new_rounded,
+                    color: cs.onSurface.withValues(alpha: 0.55),
                   ),
-                )
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                  children: [
-                    Text(
-                      '${lines.length} transaction${lines.length == 1 ? '' : 's'}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        letterSpacing: 0.8,
-                        color: cs.onSurface.withValues(alpha: 0.45),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: cs.surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: const Color(0xFFE4E0D8)),
-                      ),
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < lines.length; i++) ...[
-                            if (i > 0)
-                              Divider(
-                                height: 1,
-                                thickness: 1,
-                                color: cs.outlineVariant.withValues(
-                                  alpha: 0.35,
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+              body: switch (snapshot.connectionState) {
+                ConnectionState.waiting => const Center(
+                  child: CircularProgressIndicator(),
+                ),
+                _ when snapshot.hasError => const Center(
+                  child: Text('Could not load transactions.'),
+                ),
+                _ =>
+                  (lines == null || lines.isEmpty)
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              'Nothing left to categorize.',
+                              textAlign: TextAlign.center,
+                              style: theme.textTheme.bodyLarge?.copyWith(
+                                color: cs.onSurface.withValues(alpha: 0.45),
+                              ),
+                            ),
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+                          children: [
+                            Text(
+                              '${lines.length} transaction${lines.length == 1 ? '' : 's'}',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                letterSpacing: 0.8,
+                                color: cs.onSurface.withValues(alpha: 0.45),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: cs.surface,
+                                borderRadius: BorderRadius.circular(22),
+                                border: Border.all(
+                                  color: const Color(0xFFE4E0D8),
                                 ),
                               ),
-                            _LineTile(line: lines[i], controller: controller),
+                              child: Column(
+                                children: [
+                                  for (var i = 0; i < lines.length; i++) ...[
+                                    if (i > 0)
+                                      Divider(
+                                        height: 1,
+                                        thickness: 1,
+                                        color: cs.outlineVariant.withValues(
+                                          alpha: 0.35,
+                                        ),
+                                      ),
+                                    _LineTile(
+                                      line: lines[i],
+                                      controller: controller,
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                        ),
+              },
+            );
+          },
         );
       },
     );

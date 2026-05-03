@@ -78,6 +78,40 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     );
   }
 
+  Future<_BudgetScreenData> _loadScreenData({
+    required List<BudgetCategoryRow> rows,
+    required bool hasSelectedPeriod,
+    required BudgetPeriodType periodType,
+    required String periodKey,
+    required ColorScheme colorScheme,
+  }) async {
+    if (hasSelectedPeriod) {
+      await _viewModel.syncControllersFromState(
+        rows: rows,
+        periodType: periodType,
+        periodKey: periodKey,
+        controllers: _controllers,
+        focusNodes: _focusNodes,
+      );
+    }
+
+    final metrics = await _viewModel.buildPresentationMetrics(
+      hasSelectedPeriod: hasSelectedPeriod,
+      periodType: periodType,
+      periodKey: periodKey,
+    );
+    final categoryItems = await _viewModel.buildCategoryListItems(
+      rows: rows,
+      hasSelectedPeriod: hasSelectedPeriod,
+      periodType: periodType,
+      periodKey: periodKey,
+      spentByDisplay: metrics.spentByDisplay,
+      colorScheme: colorScheme,
+    );
+
+    return _BudgetScreenData(metrics: metrics, categoryItems: categoryItems);
+  }
+
   void _activatePeriod(BudgetPeriodType type, String key) {
     if (key.trim().isEmpty) return;
     widget.controller.setActiveBudgetPeriod(type: type, key: key);
@@ -263,29 +297,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           focusNodes: _focusNodes,
         );
         _schedulePruneOrphans(keep);
-        if (hasSelectedPeriod) {
-          _viewModel.syncControllersFromState(
-            rows: rows,
-            periodType: _selectedType,
-            periodKey: _selectedPeriodKey,
-            controllers: _controllers,
-            focusNodes: _focusNodes,
-          );
-        }
         final weeklyDate = _viewModel.parseDateKey(_selectedPeriodKey);
-        final metrics = _viewModel.buildPresentationMetrics(
-          hasSelectedPeriod: hasSelectedPeriod,
-          periodType: _selectedType,
-          periodKey: _selectedPeriodKey,
-        );
-        final categoryItems = _viewModel.buildCategoryListItems(
-          rows: rows,
-          hasSelectedPeriod: hasSelectedPeriod,
-          periodType: _selectedType,
-          periodKey: _selectedPeriodKey,
-          spentByDisplay: metrics.spentByDisplay,
-          colorScheme: cs,
-        );
         final canAttemptSave = rows.isNotEmpty && hasSelectedPeriod;
 
         return Scaffold(
@@ -322,107 +334,132 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  BudgetsHeader(
-                    selectedType: _selectedType,
-                    selectedPeriodKey: _selectedPeriodKey,
-                    keys: keys,
-                    monthlyLabel: _selectedPeriodKey.trim().isEmpty
-                        ? 'Select month'
-                        : formatYearMonthLabel(_selectedPeriodKey),
-                    weeklyLabel: weeklyDate == null
-                        ? 'Pick week start'
-                        : _viewModel.formatLongDate(weeklyDate),
-                    weeklyRangeLabel: _viewModel.weeklyRangeLabel(
-                      _selectedPeriodKey,
-                    ),
-                    customStartLabel: _customStart == null
-                        ? 'Start'
-                        : formatShortDate(_customStart!),
-                    customEndLabel: _customEnd == null
-                        ? 'End'
-                        : formatShortDate(_customEnd!),
-                    onPeriodTypeChanged: _onPeriodTypeChanged,
-                    onPickMonthly: () => _pickMonthly(),
-                    onPickWeekly: () => _pickWeeklyStartDate(),
-                    onPickCustomStart: () => _pickCustomDate(start: true),
-                    onPickCustomEnd: () => _pickCustomDate(start: false),
-                    compactButtonStyle: compactButtonStyle,
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 7,
-                    ),
-                    decoration: BoxDecoration(
-                      color: cs.surfaceContainerHighest.withValues(alpha: 0.24),
-                      borderRadius: BorderRadius.circular(11),
-                      border: Border.all(
-                        color: cs.outline.withValues(alpha: 0.08),
+              child: FutureBuilder<_BudgetScreenData>(
+                future: _loadScreenData(
+                  rows: rows,
+                  hasSelectedPeriod: hasSelectedPeriod,
+                  periodType: _selectedType,
+                  periodKey: _selectedPeriodKey,
+                  colorScheme: cs,
+                ),
+                builder: (context, snapshot) {
+                  if (snapshot.hasError) {
+                    return const Center(child: Text('Could not load budgets.'));
+                  }
+                  final data = snapshot.data;
+                  if (data == null) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  final metrics = data.metrics;
+                  final categoryItems = data.categoryItems;
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      BudgetsHeader(
+                        selectedType: _selectedType,
+                        selectedPeriodKey: _selectedPeriodKey,
+                        keys: keys,
+                        monthlyLabel: _selectedPeriodKey.trim().isEmpty
+                            ? 'Select month'
+                            : formatYearMonthLabel(_selectedPeriodKey),
+                        weeklyLabel: weeklyDate == null
+                            ? 'Pick week start'
+                            : _viewModel.formatLongDate(weeklyDate),
+                        weeklyRangeLabel: _viewModel.weeklyRangeLabel(
+                          _selectedPeriodKey,
+                        ),
+                        customStartLabel: _customStart == null
+                            ? 'Start'
+                            : formatShortDate(_customStart!),
+                        customEndLabel: _customEnd == null
+                            ? 'End'
+                            : formatShortDate(_customEnd!),
+                        onPeriodTypeChanged: _onPeriodTypeChanged,
+                        onPickMonthly: () => _pickMonthly(),
+                        onPickWeekly: () => _pickWeeklyStartDate(),
+                        onPickCustomStart: () => _pickCustomDate(start: true),
+                        onPickCustomEnd: () => _pickCustomDate(start: false),
+                        compactButtonStyle: compactButtonStyle,
                       ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _SummaryMetric(
-                            label: 'Budgeted',
-                            value: formatMoney(
-                              metrics.performance.totalBudgeted,
+                      const SizedBox(height: 14),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 7,
+                        ),
+                        decoration: BoxDecoration(
+                          color: cs.surfaceContainerHighest.withValues(
+                            alpha: 0.24,
+                          ),
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                            color: cs.outline.withValues(alpha: 0.08),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: _SummaryMetric(
+                                label: 'Budgeted',
+                                value: formatMoney(
+                                  metrics.performance.totalBudgeted,
+                                ),
+                                valueColor: cs.onSurface,
+                                alignment: CrossAxisAlignment.start,
+                              ),
                             ),
-                            valueColor: cs.onSurface,
-                            alignment: CrossAxisAlignment.start,
-                          ),
+                            Container(
+                              width: 1,
+                              height: 28,
+                              color: cs.outline.withValues(alpha: 0.10),
+                            ),
+                            Expanded(
+                              child: _SummaryMetric(
+                                label: 'Spent',
+                                value: formatMoney(
+                                  metrics.performance.totalSpent,
+                                ),
+                                valueColor: cs.onSurface,
+                                alignment: CrossAxisAlignment.center,
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 28,
+                              color: cs.outline.withValues(alpha: 0.10),
+                            ),
+                            Expanded(
+                              child: _SummaryMetric(
+                                label: metrics.totalOver > 0 ? 'Over' : 'Left',
+                                value: metrics.totalOver > 0
+                                    ? formatMoney(metrics.totalOver)
+                                    : formatMoney(metrics.totalRemaining),
+                                valueColor: metrics.totalOver > 0
+                                    ? const Color(0xFFC41E3A)
+                                    : const Color(0xFF1B7A4C),
+                                alignment: CrossAxisAlignment.end,
+                              ),
+                            ),
+                          ],
                         ),
-                        Container(
-                          width: 1,
-                          height: 28,
-                          color: cs.outline.withValues(alpha: 0.10),
+                      ),
+                      const SizedBox(height: 14),
+                      Expanded(
+                        child: BudgetCategoryList(
+                          items: categoryItems,
+                          controllers: _controllers,
+                          focusNodes: _focusNodes,
+                          onCategoryValueChanged: _onDraftEdited,
+                          onTrackCategoryCount:
+                              metrics.performance.onTrackCategoryCount,
+                          budgetedCategoryCount:
+                              metrics.performance.budgetedCategoryCount,
                         ),
-                        Expanded(
-                          child: _SummaryMetric(
-                            label: 'Spent',
-                            value: formatMoney(metrics.performance.totalSpent),
-                            valueColor: cs.onSurface,
-                            alignment: CrossAxisAlignment.center,
-                          ),
-                        ),
-                        Container(
-                          width: 1,
-                          height: 28,
-                          color: cs.outline.withValues(alpha: 0.10),
-                        ),
-                        Expanded(
-                          child: _SummaryMetric(
-                            label: metrics.totalOver > 0 ? 'Over' : 'Left',
-                            value: metrics.totalOver > 0
-                                ? formatMoney(metrics.totalOver)
-                                : formatMoney(metrics.totalRemaining),
-                            valueColor: metrics.totalOver > 0
-                                ? const Color(0xFFC41E3A)
-                                : const Color(0xFF1B7A4C),
-                            alignment: CrossAxisAlignment.end,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: BudgetCategoryList(
-                      items: categoryItems,
-                      controllers: _controllers,
-                      focusNodes: _focusNodes,
-                      onCategoryValueChanged: _onDraftEdited,
-                      onTrackCategoryCount:
-                          metrics.performance.onTrackCategoryCount,
-                      budgetedCategoryCount:
-                          metrics.performance.budgetedCategoryCount,
-                    ),
-                  ),
-                ],
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),
@@ -430,6 +467,13 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       },
     );
   }
+}
+
+class _BudgetScreenData {
+  const _BudgetScreenData({required this.metrics, required this.categoryItems});
+
+  final BudgetsPresentationMetrics metrics;
+  final List<BudgetCategoryListItemData> categoryItems;
 }
 
 class _SummaryMetric extends StatelessWidget {

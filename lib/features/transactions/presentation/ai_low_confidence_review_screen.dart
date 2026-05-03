@@ -32,8 +32,8 @@ class _AiLowConfidenceReviewScreenState
 
   List<String> get _allowed => widget.controller.allowedCategoryPickerLabels;
 
-  List<Transaction> get _items {
-    final unc = widget.controller.uncategorizedImportedRowsGlobal();
+  Future<List<Transaction>> _loadItems() async {
+    final unc = await widget.controller.uncategorizedImportedRowsGlobal();
     final out = <Transaction>[];
     for (final t in unc) {
       final k = transactionCategoryKey(t);
@@ -91,7 +91,6 @@ class _AiLowConfidenceReviewScreenState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
-    final items = _items;
     return Scaffold(
       appBar: AppBar(
         title: const Text('AI review'),
@@ -119,8 +118,18 @@ class _AiLowConfidenceReviewScreenState
           ),
         ],
       ),
-      body: items.isEmpty
-          ? Center(
+      body: FutureBuilder<List<Transaction>>(
+        future: _loadItems(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text('Could not load suggestions.'));
+          }
+          final items = snapshot.data;
+          if (items == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (items.isEmpty) {
+            return Center(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 28),
                 child: Text(
@@ -131,73 +140,81 @@ class _AiLowConfidenceReviewScreenState
                   ),
                 ),
               ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, i) {
-                final t = items[i];
-                final k = transactionCategoryKey(t);
-                final s = widget.controller.aiCategorySuggestions[k]!;
-                final confPct = (s.confidence * 100).round();
-                final selected = _choice[k];
-                return Material(
-                  color: cs.surfaceContainerLowest,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    side: BorderSide(color: cs.outline.withValues(alpha: 0.12)),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          t.description,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+            );
+          }
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+            itemCount: items.length,
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
+            itemBuilder: (context, i) {
+              final t = items[i];
+              final k = transactionCategoryKey(t);
+              final s = widget.controller.aiCategorySuggestions[k]!;
+              final confPct = (s.confidence * 100).round();
+              final selected = _choice[k];
+              return Material(
+                color: cs.surfaceContainerLowest,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(color: cs.outline.withValues(alpha: 0.12)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        t.description,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${formatShortDate(t.date)} · ${formatMoney(t.amount)} · $confPct% confident',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: cs.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButton<String?>(
+                        isExpanded: true,
+                        borderRadius: BorderRadius.circular(12),
+                        value: _validDropdownValue(selected),
+                        items: [
+                          const DropdownMenuItem<String?>(
+                            value: null,
+                            child: Text('— Leave uncategorized —'),
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${formatShortDate(t.date)} · ${formatMoney(t.amount)} · $confPct% confident',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: cs.onSurface.withValues(alpha: 0.55),
+                          ..._allowed.map(
+                            (c) => DropdownMenuItem<String?>(
+                              value: c,
+                              child: Text(c),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 10),
-                        DropdownButton<String?>(
-                          isExpanded: true,
-                          borderRadius: BorderRadius.circular(12),
-                          value: _validDropdownValue(selected),
-                          items: [
-                            const DropdownMenuItem<String?>(
-                              value: null,
-                              child: Text('— Leave uncategorized —'),
-                            ),
-                            ..._allowed.map(
-                              (c) => DropdownMenuItem<String?>(
-                                value: c,
-                                child: Text(c),
-                              ),
-                            ),
-                          ],
-                          onChanged: (v) => setState(() => _choice[k] = v),
-                        ),
-                      ],
-                    ),
+                        ],
+                        onChanged: (v) => setState(() => _choice[k] = v),
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
-      floatingActionButton: items.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _save,
-              icon: const Icon(Icons.check_rounded),
-              label: const Text('Save'),
-            ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FutureBuilder<List<Transaction>>(
+        future: _loadItems(),
+        builder: (context, snapshot) {
+          final items = snapshot.data;
+          if (items == null || items.isEmpty) return const SizedBox();
+          return FloatingActionButton.extended(
+            onPressed: _save,
+            icon: const Icon(Icons.check_rounded),
+            label: const Text('Save'),
+          );
+        },
+      ),
     );
   }
 

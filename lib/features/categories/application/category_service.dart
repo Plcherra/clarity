@@ -4,8 +4,8 @@ import '../../../core/supabase/supabase_exceptions.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../../core/supabase/supabase_service.dart';
 
-final class BudgetService {
-  BudgetService({required SupabaseService supabaseService})
+final class CategoryService {
+  CategoryService({required SupabaseService supabaseService})
     : _supabaseService = supabaseService;
 
   final SupabaseService _supabaseService;
@@ -16,108 +16,106 @@ final class BudgetService {
     return user;
   }
 
-  Future<List<BudgetRecord>> fetchBudgets() async {
+  Future<List<CategoryRecord>> fetchCategories() async {
     final user = _currentUser;
     try {
       final rows = await _supabaseService.client
-          .from('budgets')
+          .from('categories')
           .select()
           .eq('user_id', user.id)
-          .order('created_at');
-      return rows.map(BudgetRecord.fromJson).toList();
+          .order('name');
+      return rows.map(CategoryRecord.fromJson).toList();
     } on SupabaseDataException {
       rethrow;
     } on Object catch (e) {
       throw SupabaseDataException(
-        table: 'budgets',
-        action: 'fetchBudgets',
-        message: 'Could not fetch budgets.',
+        table: 'categories',
+        action: 'fetchCategories',
+        message: 'Could not fetch categories.',
         cause: e,
       );
     }
   }
 
-  Future<BudgetRecord> createBudget({
+  Future<CategoryRecord> createCategory({
     required String name,
-    required double amount,
-    required String period,
-    DateTime? startDate,
+    required String type,
+    String? color,
+    String? icon,
   }) async {
     final user = _currentUser;
     try {
       final row = await _supabaseService.client
-          .from('budgets')
+          .from('categories')
           .insert({
             'user_id': user.id,
             'name': name,
-            'amount': amount,
-            'period': period,
-            'start_date': startDate?.toIso8601String().split('T').first,
+            'type': type,
+            'color': color,
+            'icon': icon,
           })
           .select()
           .single();
-      return BudgetRecord.fromJson(row);
+      return CategoryRecord.fromJson(row);
     } on SupabaseDataException {
       rethrow;
     } on Object catch (e) {
       throw SupabaseDataException(
-        table: 'budgets',
-        action: 'createBudget',
-        message: 'Could not create budget.',
+        table: 'categories',
+        action: 'createCategory',
+        message: 'Could not create category.',
         cause: e,
       );
     }
   }
 
-  Future<BudgetRecord> updateBudget(
+  Future<CategoryRecord> updateCategory(
     String id, {
     String? name,
-    double? amount,
-    String? period,
-    DateTime? startDate,
+    String? type,
+    String? color,
+    String? icon,
   }) async {
     final user = _currentUser;
     final payload = <String, dynamic>{};
     if (name != null) payload['name'] = name;
-    if (amount != null) payload['amount'] = amount;
-    if (period != null) payload['period'] = period;
-    if (startDate != null) {
-      payload['start_date'] = startDate.toIso8601String().split('T').first;
-    }
+    if (type != null) payload['type'] = type;
+    if (color != null) payload['color'] = color;
+    if (icon != null) payload['icon'] = icon;
     if (payload.isEmpty) {
       throw const SupabaseDataException(
-        table: 'budgets',
-        action: 'updateBudget',
-        message: 'At least one budget field is required.',
+        table: 'categories',
+        action: 'updateCategory',
+        message: 'At least one category field is required.',
       );
     }
 
     try {
       final row = await _supabaseService.client
-          .from('budgets')
+          .from('categories')
           .update(payload)
           .eq('user_id', user.id)
           .eq('id', id)
           .select()
           .single();
-      return BudgetRecord.fromJson(row);
+      return CategoryRecord.fromJson(row);
     } on SupabaseDataException {
       rethrow;
     } on Object catch (e) {
       throw SupabaseDataException(
-        table: 'budgets',
-        action: 'updateBudget',
-        message: 'Could not update budget.',
+        table: 'categories',
+        action: 'updateCategory',
+        message: 'Could not update category.',
         cause: e,
       );
     }
   }
 
-  Future<void> deleteBudget(String id) async {
+  Future<void> deleteCategory(String id) async {
     final user = _currentUser;
     try {
       await _supabaseService.client
-          .from('budgets')
+          .from('categories')
           .delete()
           .eq('user_id', user.id)
           .eq('id', id);
@@ -125,20 +123,20 @@ final class BudgetService {
       rethrow;
     } on Object catch (e) {
       throw SupabaseDataException(
-        table: 'budgets',
-        action: 'deleteBudget',
-        message: 'Could not delete budget.',
+        table: 'categories',
+        action: 'deleteCategory',
+        message: 'Could not delete category.',
         cause: e,
       );
     }
   }
 
-  Stream<List<BudgetRecord>> watchBudgets() {
+  Stream<List<CategoryRecord>> watchCategories() {
     final user = _currentUser;
     return _supabaseService.client
-        .from('budgets')
+        .from('categories')
         .stream(primaryKey: ['id'])
         .eq('user_id', user.id)
-        .map((rows) => rows.map(BudgetRecord.fromJson).toList());
+        .map((rows) => rows.map(CategoryRecord.fromJson).toList());
   }
 }

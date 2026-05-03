@@ -2,10 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../app/ui_dependencies.dart';
 import '../../../core/formatting/formatting.dart';
-import '../../../core/storage/budgets/budget_keys.dart';
+import '../../../core/supabase/supabase_records.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../transactions/domain/spend_categories.dart';
-import '../application/budget_service.dart';
 import '../domain/budget_models.dart';
 
 class BudgetCategoryRow {
@@ -66,8 +65,6 @@ class BudgetsViewModel {
   final BudgetUiController controller;
   final ValueNotifier<bool> hasUnsavedChanges = ValueNotifier<bool>(false);
 
-  BudgetService get _budgets => controller.budgetService;
-
   static const List<String> _months = [
     'January',
     'February',
@@ -83,10 +80,9 @@ class BudgetsViewModel {
     'December',
   ];
 
-  BudgetPeriodType initialPeriodType() =>
-      _budgets.resolvedActiveBudgetPeriodType;
+  BudgetPeriodType initialPeriodType() => BudgetPeriodType.monthly;
 
-  String initialPeriodKey() => _budgets.resolvedActiveBudgetPeriodKey;
+  String initialPeriodKey() => yearMonthKey(controller.spendReference);
 
   ({DateTime? start, DateTime? end}) initialCustomRange({
     required BudgetPeriodType periodType,
@@ -95,7 +91,7 @@ class BudgetsViewModel {
     if (periodType != BudgetPeriodType.custom || periodKey.trim().isEmpty) {
       return (start: null, end: null);
     }
-    final range = _budgets.budgetPeriodRangeFor(
+    final range = _budgetPeriodRangeFor(
       periodType: BudgetPeriodType.custom,
       periodKey: periodKey,
     );
@@ -127,9 +123,9 @@ class BudgetsViewModel {
 
   List<String> periodKeys(BudgetPeriodType type) {
     return switch (type) {
-      BudgetPeriodType.monthly => _budgets.budgetMonthsForPicker(),
-      BudgetPeriodType.weekly => _budgets.budgetWeeksForPicker(),
-      BudgetPeriodType.custom => _budgets.customBudgetKeysForPicker(),
+      BudgetPeriodType.monthly => _monthlyKeysForPicker(),
+      BudgetPeriodType.weekly => _weeklyKeysForPicker(),
+      BudgetPeriodType.custom => const <String>[],
     };
   }
 
@@ -140,13 +136,13 @@ class BudgetsViewModel {
   }) {
     if (periodType == BudgetPeriodType.weekly) {
       if (selectedPeriodKey.trim().isNotEmpty) return selectedPeriodKey;
-      return _budgets.budgetWeekStartKey(DateTime.now());
+      return controller.budgetWeekStartKey(DateTime.now());
     }
     if (periodType == BudgetPeriodType.monthly) {
       if (selectedPeriodKey.trim().isNotEmpty) return selectedPeriodKey;
       return availableKeys.isNotEmpty
           ? availableKeys.first
-          : _budgets.activeBudgetYearMonth(controller.spendReference);
+          : yearMonthKey(controller.spendReference);
     }
     if (selectedPeriodKey.trim().isEmpty && availableKeys.isNotEmpty) {
       return availableKeys.first;
@@ -165,10 +161,7 @@ class BudgetsViewModel {
     if (periodType == BudgetPeriodType.monthly) {
       return formatYearMonthLabel(periodKey);
     }
-    return _budgets.budgetPeriodLabel(
-      periodType: periodType,
-      periodKey: periodKey,
-    );
+    return _budgetPeriodLabel(periodType: periodType, periodKey: periodKey);
   }
 
   String monthName(int month) {
@@ -203,7 +196,7 @@ class BudgetsViewModel {
   }
 
   String weeklyRangeLabel(String key) {
-    final range = _budgets.budgetPeriodRangeFor(
+    final range = _budgetPeriodRangeFor(
       periodType: BudgetPeriodType.weekly,
       periodKey: key,
     );
@@ -227,12 +220,12 @@ class BudgetsViewModel {
 
     if (nextType == BudgetPeriodType.custom) {
       if (customStart != null && customEnd != null) {
-        nextKey = _budgets.ensureCustomBudgetPeriod(customStart, customEnd);
+        nextKey = controller.ensureCustomBudgetPeriod(customStart, customEnd);
       } else {
         final customKeys = periodKeys(BudgetPeriodType.custom);
         if (customKeys.isNotEmpty) {
           nextKey = customKeys.first;
-          final range = _budgets.budgetPeriodRangeFor(
+          final range = _budgetPeriodRangeFor(
             periodType: BudgetPeriodType.custom,
             periodKey: nextKey,
           );
@@ -244,7 +237,7 @@ class BudgetsViewModel {
       }
     } else if (nextType == BudgetPeriodType.weekly) {
       final parsedCurrent = parseDateKey(currentPeriodKey);
-      nextKey = _budgets.budgetWeekStartKey(parsedCurrent ?? DateTime.now());
+      nextKey = controller.budgetWeekStartKey(parsedCurrent ?? DateTime.now());
     } else {
       final keys = periodKeys(nextType);
       nextKey = keys.isNotEmpty ? keys.first : '';
@@ -257,27 +250,24 @@ class BudgetsViewModel {
     );
   }
 
-  BudgetsPresentationMetrics buildPresentationMetrics({
+  Future<BudgetsPresentationMetrics> buildPresentationMetrics({
     required bool hasSelectedPeriod,
     required BudgetPeriodType periodType,
     required String periodKey,
-  }) {
+  }) async {
     final selectedRange = hasSelectedPeriod
-        ? _budgets.budgetPeriodRangeFor(
-            periodType: periodType,
-            periodKey: periodKey,
-          )
+        ? _budgetPeriodRangeFor(periodType: periodType, periodKey: periodKey)
         : null;
     final spentByDisplay = selectedRange == null
         ? const <String, double>{}
-        : controller.spentByDisplayCategoryForScopeInRange(
+        : await controller.spentByDisplayCategoryForScopeInRange(
             const GlobalDashboardScope(),
             start: selectedRange.start,
             end: selectedRange.end,
           );
 
     final performance = hasSelectedPeriod
-        ? controller.budgetPerformanceForScope(
+        ? await controller.budgetPerformanceForScope(
             const GlobalDashboardScope(),
             periodType: periodType,
             periodKey: periodKey,
@@ -304,23 +294,20 @@ class BudgetsViewModel {
     );
   }
 
-  List<BudgetCategoryListItemData> buildCategoryListItems({
+  Future<List<BudgetCategoryListItemData>> buildCategoryListItems({
     required List<BudgetCategoryRow> rows,
     required bool hasSelectedPeriod,
     required BudgetPeriodType periodType,
     required String periodKey,
     required Map<String, double> spentByDisplay,
     required ColorScheme colorScheme,
-  }) {
+  }) async {
+    final budgets = await _fetchBudgetsForPeriod(periodType, periodKey);
     final items = <BudgetCategoryListItemData>[];
     for (final row in rows) {
       final spent = spentByDisplay[row.displayLabel] ?? 0.0;
       final budget = hasSelectedPeriod
-          ? _budgets.budgetForDisplayLabel(
-              displayLabel: row.displayLabel,
-              periodType: periodType,
-              periodKey: periodKey,
-            )
+          ? _budgetForDisplayLabel(row.displayLabel, budgets)
           : null;
       final overspent = budget != null && spent > budget;
       final remaining = budget == null ? null : budget - spent;
@@ -350,13 +337,13 @@ class BudgetsViewModel {
     return items;
   }
 
-  void updateUnsavedChanges({
+  Future<void> updateUnsavedChanges({
     required List<BudgetCategoryRow> rows,
     required Map<String, TextEditingController> controllers,
     required BudgetPeriodType periodType,
     required String periodKey,
-  }) {
-    hasUnsavedChanges.value = _computeUnsavedChanges(
+  }) async {
+    hasUnsavedChanges.value = await _computeUnsavedChanges(
       rows: rows,
       controllers: controllers,
       periodType: periodType,
@@ -364,21 +351,18 @@ class BudgetsViewModel {
     );
   }
 
-  bool _computeUnsavedChanges({
+  Future<bool> _computeUnsavedChanges({
     required List<BudgetCategoryRow> rows,
     required Map<String, TextEditingController> controllers,
     required BudgetPeriodType periodType,
     required String periodKey,
-  }) {
+  }) async {
     if (periodKey.trim().isEmpty) return false;
+    final budgets = await _fetchBudgetsForPeriod(periodType, periodKey);
     for (final row in rows) {
       final raw = controllers[row.canonical]?.text.trim() ?? '';
       final draftValue = _parseBudgetRaw(raw);
-      final currentValue = _budgets.budgetForDisplayLabel(
-        displayLabel: row.displayLabel,
-        periodType: periodType,
-        periodKey: periodKey,
-      );
+      final currentValue = _budgetForDisplayLabel(row.displayLabel, budgets);
       if (!_sameNullableDouble(draftValue, currentValue)) {
         return true;
       }
@@ -390,22 +374,19 @@ class BudgetsViewModel {
     hasUnsavedChanges.value = false;
   }
 
-  void syncControllersFromState({
+  Future<void> syncControllersFromState({
     required List<BudgetCategoryRow> rows,
     required BudgetPeriodType periodType,
     required String periodKey,
     required Map<String, TextEditingController> controllers,
     required Map<String, FocusNode> focusNodes,
-  }) {
+  }) async {
+    final budgets = await _fetchBudgetsForPeriod(periodType, periodKey);
     for (final row in rows) {
       final focus = focusNodes[row.canonical];
       final controller = controllers[row.canonical];
       if (focus == null || controller == null || focus.hasFocus) continue;
-      final budget = _budgets.budgetForDisplayLabel(
-        displayLabel: row.displayLabel,
-        periodType: periodType,
-        periodKey: periodKey,
-      );
+      final budget = _budgetForDisplayLabel(row.displayLabel, budgets);
       final nextText = budget == null ? '' : formatBudgetSeed(budget);
       if (controller.text != nextText) {
         controller.text = nextText;
@@ -431,7 +412,7 @@ class BudgetsViewModel {
   }) {
     final draft = <String, double?>{};
     for (final row in rows) {
-      final key = budgetDisplayKey(row.displayLabel);
+      final key = row.displayLabel.trim().toLowerCase();
       final raw = controllers[row.canonical]?.text.trim() ?? '';
       draft[key] = _parseBudgetRaw(raw);
     }
@@ -449,6 +430,125 @@ class BudgetsViewModel {
     if (a == null && b == null) return true;
     if (a == null || b == null) return false;
     return (a - b).abs() < 1e-9;
+  }
+
+  Future<List<BudgetRecord>> _fetchBudgetsForPeriod(
+    BudgetPeriodType periodType,
+    String periodKey,
+  ) async {
+    final budgets = await controller.budgetService.fetchBudgets();
+    final period = _periodToDatabaseValue(periodType);
+    final start = _periodStartDate(periodType, periodKey);
+    return budgets.where((budget) {
+      if (budget.period != period) return false;
+      if (start == null) return true;
+      return _sameDay(budget.startDate, start);
+    }).toList();
+  }
+
+  double? _budgetForDisplayLabel(
+    String displayLabel,
+    List<BudgetRecord> budgets,
+  ) {
+    final key = displayLabel.trim().toLowerCase();
+    for (final budget in budgets) {
+      if (budget.name.trim().toLowerCase() == key) return budget.amount;
+    }
+    return null;
+  }
+
+  BudgetPeriodRange? _budgetPeriodRangeFor({
+    required BudgetPeriodType periodType,
+    required String periodKey,
+  }) {
+    return switch (periodType) {
+      BudgetPeriodType.monthly => _monthlyRange(periodKey),
+      BudgetPeriodType.weekly => _weeklyRange(periodKey),
+      BudgetPeriodType.custom => _customRange(periodKey),
+    };
+  }
+
+  BudgetPeriodRange? _monthlyRange(String key) {
+    final start = parseYearMonthKey(key);
+    if (start == null) return null;
+    return BudgetPeriodRange(
+      start: start,
+      end: DateTime(start.year, start.month + 1, 0),
+    );
+  }
+
+  BudgetPeriodRange? _weeklyRange(String key) {
+    final start = parseDateKey(key);
+    if (start == null) return null;
+    return BudgetPeriodRange(
+      start: start,
+      end: start.add(const Duration(days: 6)),
+    );
+  }
+
+  BudgetPeriodRange? _customRange(String key) {
+    final parts = key.split('_');
+    if (parts.length != 2) return null;
+    final start = parseDateKey(parts[0]);
+    final end = parseDateKey(parts[1]);
+    if (start == null || end == null) return null;
+    return BudgetPeriodRange(start: start, end: end);
+  }
+
+  String _budgetPeriodLabel({
+    required BudgetPeriodType periodType,
+    required String periodKey,
+  }) {
+    final range = _budgetPeriodRangeFor(
+      periodType: periodType,
+      periodKey: periodKey,
+    );
+    if (range == null) return periodKey;
+    return '${formatShortDate(range.start)} – ${formatShortDate(range.end)}';
+  }
+
+  List<String> _monthlyKeysForPicker() {
+    final now = controller.spendReference;
+    return List<String>.generate(18, (index) {
+      final date = DateTime(now.year, now.month - index);
+      return yearMonthKey(date);
+    });
+  }
+
+  List<String> _weeklyKeysForPicker() {
+    final now = DateTime.now();
+    final monday = now.subtract(Duration(days: now.weekday - 1));
+    return List<String>.generate(12, (index) {
+      final date = monday.subtract(Duration(days: index * 7));
+      return _dateKey(date);
+    });
+  }
+
+  DateTime? _periodStartDate(BudgetPeriodType periodType, String periodKey) {
+    return switch (periodType) {
+      BudgetPeriodType.monthly => parseYearMonthKey(periodKey),
+      BudgetPeriodType.weekly => parseDateKey(periodKey),
+      BudgetPeriodType.custom => _customRange(periodKey)?.start,
+    };
+  }
+
+  String _periodToDatabaseValue(BudgetPeriodType periodType) {
+    return switch (periodType) {
+      BudgetPeriodType.monthly => 'monthly',
+      BudgetPeriodType.weekly || BudgetPeriodType.custom => 'monthly',
+    };
+  }
+
+  bool _sameDay(DateTime? a, DateTime b) {
+    if (a == null) return false;
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  String _dateKey(DateTime date) {
+    final y = date.year.toString().padLeft(4, '0');
+    final m = date.month.toString().padLeft(2, '0');
+    final d = date.day.toString().padLeft(2, '0');
+    return '$y-$m-$d';
   }
 
   void dispose() {
