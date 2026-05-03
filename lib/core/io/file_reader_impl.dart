@@ -10,4 +10,3 @@ Future<String> readPickedFileContents(PlatformFile file) async {
   }
   return utf8.decode(b, allowMalformed: true);
 }
-

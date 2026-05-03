@@ -70,6 +70,7 @@ class TransactionWorkflowService {
     }
 
     final parsed = parseBankCsv(utf8Text);
+    final importId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
     final existing = await _fetchTransactions(accountId: id);
     final existingFingerprints = existing.map(transactionFingerprint).toSet();
     final created = <Transaction>[];
@@ -97,6 +98,7 @@ class TransactionWorkflowService {
           fingerprint: fingerprint,
         ),
         importedFromCsv: true,
+        importId: importId,
       );
       created.add(_transactionFromRecord(record));
     }
@@ -111,7 +113,7 @@ class TransactionWorkflowService {
     );
     notifyTransactionDataChanged();
 
-    if (created.isNotEmpty && needsImportAiAfterCsvUpload(id)) {
+    if (created.isNotEmpty && await needsImportAiAfterCsvUpload(id)) {
       unawaited(startBackgroundImportAiCategorization(id));
     }
   }
@@ -143,14 +145,30 @@ class TransactionWorkflowService {
     required String accountId,
     required String importId,
   }) async {
-    return 0;
+    final id = accountId.trim();
+    final batchId = importId.trim();
+    if (id.isEmpty || batchId.isEmpty) return 0;
+    final records = await transactionService.fetchTransactions(
+      accountId: id,
+      importId: batchId,
+    );
+    for (final record in records) {
+      await transactionService.deleteTransaction(record.id);
+    }
+    if (records.isNotEmpty) {
+      await refreshAllState();
+    }
+    return records.length;
   }
 
-  bool needsImportAiAfterCsvUpload(String accountId) {
-    return false;
+  Future<bool> needsImportAiAfterCsvUpload(String accountId) async {
+    final transactions = await _fetchTransactions(accountId: accountId.trim());
+    return transactions.any(_isUncategorizedImportedTransaction);
   }
 
   Future<void> startBackgroundImportAiCategorization(String accountId) async {
+    aiCategorizationService.importAiSnackMessage =
+        'AI categorization after import is temporarily disabled until category assignments are moved to Supabase.';
     notifyImportAiStatusChanged();
   }
 
@@ -169,6 +187,7 @@ class TransactionWorkflowService {
   Future<TransactionRecord> _createTransactionFromModel(
     Transaction transaction, {
     bool importedFromCsv = false,
+    String? importId,
   }) {
     return transactionService.createTransaction(
       accountId: transaction.accountId,
@@ -179,6 +198,7 @@ class TransactionWorkflowService {
       date: transaction.date,
       merchant: transaction.description,
       importedFromCsv: importedFromCsv,
+      importId: importId,
     );
   }
 
@@ -221,10 +241,16 @@ Transaction _transactionFromRecord(TransactionRecord record) {
     amount: amount,
     accountId: record.accountId,
     categoryId: record.categoryId,
-    importId: record.importedFromCsv ? 'csv' : null,
+    importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
     fingerprint: record.id,
     financialRole: record.type.trim().toLowerCase() == 'income'
         ? FinancialRole.income
         : FinancialRole.expense,
   );
+}
+
+bool _isUncategorizedImportedTransaction(Transaction transaction) {
+  return transaction.importId != null &&
+      (transaction.categoryId == null ||
+          transaction.categoryId!.trim().isEmpty);
 }

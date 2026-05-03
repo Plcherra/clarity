@@ -47,7 +47,8 @@ class AccountSelectionScreen extends StatelessWidget {
     try {
       await controller.loadFromCsv(pendingCsvText, accountId: account.id);
       if (!context.mounted) return;
-      if (controller.needsImportAiAfterCsvUpload(account.id)) {
+      if (await controller.needsImportAiAfterCsvUpload(account.id)) {
+        if (!context.mounted) return;
         if (!controller.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

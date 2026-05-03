@@ -33,7 +33,8 @@ class AccountDetailScreen extends StatelessWidget {
   }
 
   Future<void> _deleteCsvUploadBatch(BuildContext context) async {
-    final batches = controller.csvImportBatchesForAccount(accountId);
+    final batches = await controller.csvImportBatchesForAccount(accountId);
+    if (!context.mounted) return;
     if (batches.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No CSV uploads found for this account.')),
@@ -162,7 +163,8 @@ class AccountDetailScreen extends StatelessWidget {
       if (!context.mounted) return;
       await controller.loadFromCsv(text, accountId: accountId);
       if (!context.mounted) return;
-      if (controller.needsImportAiAfterCsvUpload(accountId)) {
+      if (await controller.needsImportAiAfterCsvUpload(accountId)) {
+        if (!context.mounted) return;
         if (!controller.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(

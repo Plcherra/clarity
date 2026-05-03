@@ -207,6 +207,7 @@ final class TransactionRecord {
     required this.date,
     this.merchant,
     required this.importedFromCsv,
+    this.importId,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -221,6 +222,7 @@ final class TransactionRecord {
   final DateTime date;
   final String? merchant;
   final bool importedFromCsv;
+  final String? importId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -236,6 +238,7 @@ final class TransactionRecord {
       date: _date(json, 'date'),
       merchant: _nullableString(json, 'merchant'),
       importedFromCsv: _bool(json, 'imported_from_csv'),
+      importId: _nullableString(json, 'import_id'),
       createdAt: _dateTime(json, 'created_at'),
       updatedAt: _dateTime(json, 'updated_at'),
     );
@@ -251,6 +254,7 @@ final class TransactionRecord {
     'date': date.toIso8601String().split('T').first,
     'merchant': merchant,
     'imported_from_csv': importedFromCsv,
+    'import_id': importId,
   };
 
   Map<String, dynamic> toUpdateJson() => {
@@ -262,6 +266,7 @@ final class TransactionRecord {
     'date': date.toIso8601String().split('T').first,
     'merchant': merchant,
     'imported_from_csv': importedFromCsv,
+    'import_id': importId,
   };
 }
 

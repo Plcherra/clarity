@@ -6,6 +6,7 @@ Use after imports, refactors, or when “counts feel wrong.”
 
 - [ ] `.env` contains `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 - [ ] Supabase has the `call-openai` Edge Function deployed and the server-side `OPENAI_API_KEY` secret set if testing AI categorization.
+- [ ] Supabase migrations have been applied with `supabase db push`.
 
 ## Debug build (inline line)
 
@@ -28,13 +29,20 @@ Use after imports, refactors, or when “counts feel wrong.”
 
 ## Import + AI (optional)
 
-- [ ] Import CSV while signed in with the Edge Function configured — AI flow opens when wired; accepting suggestions updates categories visible on dashboard/review.
+- [ ] Import CSV while signed in — rows appear for the selected account and
+      dashboard totals refresh.
+- [ ] Delete a CSV upload from account detail — only rows with that upload's
+      `import_id` are deleted.
+- [ ] AI after import currently shows a temporary disabled message until
+      category assignments are fully Supabase-backed.
 
 ## Code-level quick grep (developers)
 
 If debugging drift:
 
-- Confirm no new call sites use **`appState.monthlyGroups`** for **Overview** month cards or review (use snapshot / `transactionsForDashboardScope` instead).
+- Confirm no new call sites use global mutable state month groups for
+  **Overview** month cards or review. Use snapshot /
+  `transactionsForDashboardScope` instead.
 - Confirm **`TransactionReviewScreen`** receives the same **`scope`** as the parent **`FinancialDashboardView`**.
 
 ## Automated tests
@@ -42,7 +50,5 @@ If debugging drift:
 Run:
 
 ```bash
-flutter test test/dashboard_scope_test.dart
+flutter test
 ```
-
-Full suite: `flutter test`.

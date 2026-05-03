@@ -2,115 +2,66 @@
 
 ## Flutter Config
 
-`pubspec.yaml` includes:
+Flutter uses `flutter_dotenv` and `supabase_flutter`.
 
-```yaml
-dependencies:
-  supabase_flutter: ^2.12.4
-```
-
-Flutter `.env` must contain only public Supabase client config:
+Local `.env` must contain only public Supabase client config:
 
 ```dotenv
 SUPABASE_URL=https://your-project-ref.supabase.co
 SUPABASE_ANON_KEY=your-public-anon-key
 ```
 
-Never put the OpenAI secret in Flutter `.env`, committed files, or client assets.
+Never put the OpenAI secret in Flutter `.env`, committed files, assets, or
+client-side code.
 
-## SQL Schema And RLS
+## Database Schema
 
-Run this in the Supabase SQL editor:
+Schema lives in Supabase CLI migrations:
 
-```sql
-create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
-  email text,
-  full_name text not null default '',
-  avatar_url text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-alter table public.profiles enable row level security;
-
-drop policy if exists "Users can read their own profile" on public.profiles;
-create policy "Users can read their own profile"
-on public.profiles
-for select
-to authenticated
-using ((select auth.uid()) = id);
-
-drop policy if exists "Users can insert their own profile" on public.profiles;
-create policy "Users can insert their own profile"
-on public.profiles
-for insert
-to authenticated
-with check ((select auth.uid()) = id);
-
-drop policy if exists "Users can update their own profile" on public.profiles;
-create policy "Users can update their own profile"
-on public.profiles
-for update
-to authenticated
-using ((select auth.uid()) = id)
-with check ((select auth.uid()) = id);
-
-create or replace function public.set_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
-drop trigger if exists profiles_set_updated_at on public.profiles;
-create trigger profiles_set_updated_at
-before update on public.profiles
-for each row
-execute function public.set_updated_at();
-
-create or replace function public.handle_new_user_profile()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.profiles (id, email, full_name)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data ->> 'full_name', '')
-  )
-  on conflict (id) do update
-  set
-    email = excluded.email,
-    full_name = coalesce(nullif(excluded.full_name, ''), public.profiles.full_name),
-    updated_at = now();
-
-  return new;
-end;
-$$;
-
-drop trigger if exists on_auth_user_created_profile on auth.users;
-create trigger on_auth_user_created_profile
-after insert on auth.users
-for each row
-execute function public.handle_new_user_profile();
+```text
+supabase/migrations/000001_create_profiles_table.sql
+supabase/migrations/000002_create_accounts_table.sql
+supabase/migrations/000003_create_categories_table.sql
+supabase/migrations/000004_create_budgets_table.sql
+supabase/migrations/000005_create_transactions_table.sql
+supabase/migrations/000006_add_transaction_import_id.sql
 ```
+
+Apply migrations:
+
+```sh
+supabase db push
+```
+
+Verify migration status:
+
+```sh
+supabase migration list
+```
+
+All app tables use RLS. Profiles are keyed by `auth.users(id)`. Accounts,
+categories, budgets, and transactions are scoped by `user_id`. Transactions
+also include `import_id` for CSV upload history and batch deletion.
 
 ## Edge Function
 
 The function lives at `supabase/functions/call-openai/index.ts`.
+
+`supabase/config.toml` explicitly keeps JWT verification enabled:
+
+```toml
+[functions.call-openai]
+verify_jwt = true
+```
 
 Deploy it:
 
 ```sh
 supabase functions deploy call-openai
 ```
+
+Do not deploy this function with `--no-verify-jwt`; the Flutter app must call it
+with the signed-in user's Supabase session.
 
 Set the server-side OpenAI secret:
 
@@ -131,3 +82,18 @@ OPENAI_API_KEY=your-real-openai-key
 ```
 
 Do not commit that file.
+
+Type-check the Edge Function after installing Deno:
+
+```sh
+deno check supabase/functions/call-openai/index.ts
+```
+
+## Flutter AI Boundary
+
+Flutter calls the Edge Function through
+`Supabase.functions.invoke('call-openai')` in
+`lib/features/transactions/data/openai_proxy_client.dart`.
+
+The only direct `https://api.openai.com` call should be inside
+`supabase/functions/call-openai/index.ts`.

@@ -19,23 +19,23 @@ Future<void> setTransactionsDedupeMigrationDone() async {
 }
 
 String _roleToWire(FinancialRole r) => switch (r) {
-      FinancialRole.expense => 'expense',
-      FinancialRole.income => 'income',
-      FinancialRole.transfer => 'transfer',
-      FinancialRole.creditCardPayment => 'creditCardPayment',
-      FinancialRole.refund => 'refund',
-      FinancialRole.adjustment => 'adjustment',
-    };
+  FinancialRole.expense => 'expense',
+  FinancialRole.income => 'income',
+  FinancialRole.transfer => 'transfer',
+  FinancialRole.creditCardPayment => 'creditCardPayment',
+  FinancialRole.refund => 'refund',
+  FinancialRole.adjustment => 'adjustment',
+};
 
 FinancialRole? _roleFromWire(Object? raw) => switch (raw) {
-      'expense' => FinancialRole.expense,
-      'income' => FinancialRole.income,
-      'transfer' => FinancialRole.transfer,
-      'creditCardPayment' => FinancialRole.creditCardPayment,
-      'refund' => FinancialRole.refund,
-      'adjustment' => FinancialRole.adjustment,
-      _ => null,
-    };
+  'expense' => FinancialRole.expense,
+  'income' => FinancialRole.income,
+  'transfer' => FinancialRole.transfer,
+  'creditCardPayment' => FinancialRole.creditCardPayment,
+  'refund' => FinancialRole.refund,
+  'adjustment' => FinancialRole.adjustment,
+  _ => null,
+};
 
 Map<String, dynamic> _txToJson(Transaction t) => {
   'date': t.date.toIso8601String(),
@@ -131,4 +131,3 @@ Future<void> saveTransactionsByAccount(
     jsonEncode(serializable),
   );
 }
-

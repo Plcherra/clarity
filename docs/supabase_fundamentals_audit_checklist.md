@@ -218,33 +218,68 @@ Done notes:
 
 ## Phase 6 - App-Level Controllers And Notifications
 
-- [ ] Check `lib/app/ui_dependencies.dart`
-- [ ] Check `lib/app/app_notifications.dart`
-- [ ] Check `lib/app/dashboard_refresh_coordinator.dart`
-- [ ] Check account workflow service
-- [ ] Check budget workflow service
-- [ ] Check transaction workflow service
-- [ ] Check category workflow service
+- [x] Check `lib/app/ui_dependencies.dart`
+- [x] Check `lib/app/app_notifications.dart`
+- [x] Check `lib/app/dashboard_refresh_coordinator.dart`
+- [x] Check account workflow service
+- [x] Check budget workflow service
+- [x] Check transaction workflow service
+- [x] Check category workflow service
 - [ ] Confirm controllers do not depend on deleted in-memory service state
-- [ ] Confirm async data reads are surfaced as `Future` or streams intentionally
-- [ ] Confirm broad notifications are temporary and documented
-- [ ] Identify where repeated `FutureBuilder` fetches should become streams/controllers later
-- [ ] Identify which no-op compatibility methods still need real Supabase implementations
+- [x] Confirm async data reads are surfaced as `Future` or streams intentionally
+- [x] Confirm broad notifications are temporary and documented
+- [x] Identify where repeated `FutureBuilder` fetches should become streams/controllers later
+- [x] Identify which no-op compatibility methods still need real Supabase implementations
 
 Done notes:
 
+- `AppNotifications` is intentionally broad for now. It routes account,
+  transaction, dashboard, budget, category, and import-AI refreshes through the
+  scoped UI controllers.
+- `DashboardRefreshCoordinator` no longer reads deleted local state. It fetches
+  accounts and transactions through the Supabase services before recomputing
+  dashboard derived state.
+- Reconnected obvious UI controller delegates:
+  `AccountUiController.addAccount/deleteAccount` now go through
+  `AccountWorkflowService`; account CSV import/delete/AI entrypoints now route
+  through `TransactionWorkflowService`; budget period/draft actions now route
+  through `BudgetWorkflowService`.
+- Fixed `BudgetUiController.budgetPerformanceForScope` so it filters Supabase
+  budget rows by selected `monthly`/`weekly`/`custom` period and start date
+  instead of summing every budget row.
+- Focused analyzer passed for the app-level controller/notification/coordinator
+  files and the account, budget, transaction, and category workflow services.
+- Keep the in-memory dependency checkbox open. The app controller layer still
+  uses old local-first helpers: `CategoryCatalogService`, the old
+  transaction/category override service, `MerchantService`, and AI suggestion
+  storage.
+- `AppComposition` still wires the old transaction category service instead of
+  the Supabase `features/categories/application/CategoryService`. That is the
+  largest remaining mismatch in this layer.
+- Remaining placeholder methods that need real Supabase redesign:
+  `TransactionWorkflowService.deleteTransactionsForImportBatch`,
+  `needsImportAiAfterCsvUpload`, `startBackgroundImportAiCategorization`,
+  `autoCategorizeGlobalUncategorized`, `undoLastAiAutoApply`,
+  `CategoryWorkflowService.applyCategoriesWithMerchantLearning`,
+  `undoCategoryApplyBatch`, and
+  `AccountUiController.csvImportBatchesForAccount`.
+- Import batch support cannot be fully restored with the current transactions
+  schema because transactions only store `imported_from_csv`, not an import
+  batch id. Add an import batch model/table or `import_id` column before
+  rebuilding batch delete/history.
+
 ## Phase 7 - UI Async Data Flow
 
-- [ ] Check dashboard screens
-- [ ] Check account screens
-- [ ] Check transaction review screens
-- [ ] Check budget screens
-- [ ] Check onboarding/auth screens
-- [ ] Confirm screens do not treat `Future<List<T>>` as `List<T>`
-- [ ] Confirm loading states are acceptable
-- [ ] Confirm error states are user-safe
+- [x] Check dashboard screens
+- [x] Check account screens
+- [x] Check transaction review screens
+- [x] Check budget screens
+- [x] Check onboarding/auth screens
+- [x] Confirm screens do not treat `Future<List<T>>` as `List<T>`
+- [x] Confirm loading states are acceptable
+- [x] Confirm error states are user-safe
 - [ ] Confirm no important database fetch runs in tight rebuild loops without a plan
-- [ ] List screens that should move from `FutureBuilder` to stream/viewmodel state
+- [x] List screens that should move from `FutureBuilder` to stream/viewmodel state
 
 Commands:
 
@@ -254,28 +289,80 @@ flutter analyze
 
 Done notes:
 
+- Focused analyzer passed for dashboard, account, transaction, budget, auth,
+  onboarding, and `ClarityApp` presentation/routing files.
+- Screens no longer treat Supabase `Future<List<T>>` values as synchronous
+  lists. Dashboard, account, transaction review, uncategorized, AI review, and
+  budget screens use `FutureBuilder` or explicit `async` handlers.
+- Added async error handling for category mutations in
+  `TransactionCategoryField`. Category rename/select/create/delete now runs
+  through an observed future and shows a snackbar if the mutation fails.
+- Current loading states are basic but acceptable for this migration: centered
+  progress indicators or empty/loading bodies.
+- Error states are present in the main `FutureBuilder` screens, but they mostly
+  show raw error text. Later UI polish should map Supabase/auth/data errors to
+  user-safe copy.
+- Keep the tight-rebuild checkbox open. Several screens create fresh futures in
+  `build` or inside `ListenableBuilder`, which can refetch more often than
+  needed:
+  `FinancialDashboardView`, `AccountsScreen`, `AccountDetailScreen`,
+  `AccountSelectionScreen`, `MonthDetailScreen`,
+  `TransactionReviewScreen`, `UncategorizedTransactionsScreen`,
+  `AiLowConfidenceReviewScreen`, and `BudgetsScreen`.
+- Permanent direction: move account lists, transaction queues, dashboard
+  snapshot data, and budget screen data into scoped stream/viewmodel state
+  instead of rebuilding fresh futures from the widget tree.
+
 ## Phase 8 - CSV Import And Transaction Workflows
 
-- [ ] Check CSV parsing remains pure and local-file only
-- [ ] Check CSV import writes new rows through Supabase transactions service
-- [ ] Confirm imported transactions start from zero for a fresh user
-- [ ] Confirm duplicate detection still works or document that it needs redesign
-- [ ] Confirm import batch delete is either removed or redesigned for Supabase
-- [ ] Confirm AI-after-import flow is either functional or clearly disabled
-- [ ] Decide whether `transactions.imported_from_csv` is enough or if `import_batches` table is needed
+- [x] Check CSV parsing remains pure and local-file only
+- [x] Check CSV import writes new rows through Supabase transactions service
+- [x] Confirm imported transactions start from zero for a fresh user
+- [x] Confirm duplicate detection still works or document that it needs redesign
+- [x] Confirm import batch delete is either removed or redesigned for Supabase
+- [x] Confirm AI-after-import flow is either functional or clearly disabled
+- [x] Decide whether `transactions.imported_from_csv` is enough or if `import_batches` table is needed
 
 Done notes:
 
+- `parseBankCsv` remains a pure parser. It does not touch Supabase, local
+  storage, UI state, or files after the caller has read the CSV text.
+- `TransactionWorkflowService.loadFromCsv` validates the selected Supabase
+  account, parses the CSV, dedupes against existing Supabase transactions for
+  that account, and writes new rows through `TransactionService.createTransaction`.
+- Fresh users/accounts start from zero because import dedupe only fetches rows
+  from the authenticated user's selected account.
+- Duplicate detection still uses the stable transaction fingerprint:
+  account id, date, amount, and normalized description.
+- `imported_from_csv` alone was not enough for upload history or batch delete.
+  Added migration `000006_add_transaction_import_id.sql`, which adds nullable
+  `transactions.import_id` plus `(user_id, import_id)` index.
+- New CSV imports now generate one `import_id` per upload and store it on each
+  imported transaction.
+- `AccountUiController.csvImportBatchesForAccount` now builds batch summaries
+  from Supabase transactions, and
+  `TransactionWorkflowService.deleteTransactionsForImportBatch` deletes rows
+  scoped by account id and import id.
+- Old imported rows without `import_id` fall back to the display-level `csv`
+  marker, but they cannot be grouped into real upload batches. This is
+  acceptable because the current goal is a fresh Supabase start.
+- AI-after-import is explicitly disabled for now. If triggered, the app shows a
+  status message explaining that AI categorization after import is waiting on
+  Supabase-backed category assignments.
+- Apply the new schema change with `supabase db push` before testing CSV upload
+  against a remote Supabase project.
+- Focused analyzer and full `flutter analyze` passed.
+
 ## Phase 9 - OpenAI Edge Function Path
 
-- [ ] Check `supabase/functions/call-openai/index.ts`
-- [ ] Check `lib/features/transactions/data/openai_proxy_client.dart`
-- [ ] Check AI categorization data service
-- [ ] Confirm Flutter calls Supabase Edge Function, not OpenAI directly
-- [ ] Confirm function requires authenticated user by default
-- [ ] Confirm OpenAI secret is read only with `Deno.env.get('OPENAI_API_KEY')`
-- [ ] Confirm error messages do not leak secrets
-- [ ] Confirm response parsing still matches app expectations
+- [x] Check `supabase/functions/call-openai/index.ts`
+- [x] Check `lib/features/transactions/data/openai_proxy_client.dart`
+- [x] Check AI categorization data service
+- [x] Confirm Flutter calls Supabase Edge Function, not OpenAI directly
+- [x] Confirm function requires authenticated user by default
+- [x] Confirm OpenAI secret is read only with `Deno.env.get('OPENAI_API_KEY')`
+- [x] Confirm error messages do not leak secrets
+- [x] Confirm response parsing still matches app expectations
 
 Commands:
 
@@ -285,47 +372,110 @@ rg -n "api\.openai\.com|OPENAI_API_KEY|functions\.invoke" lib supabase
 
 Done notes:
 
+- Flutter does not call `https://api.openai.com` directly. The only client call
+  is `Supabase.functions.invoke('call-openai')` through
+  `SupabaseOpenAiProxyClient`.
+- The only direct OpenAI API call is inside
+  `supabase/functions/call-openai/index.ts`.
+- The Edge Function reads the OpenAI key only with
+  `Deno.env.get('OPENAI_API_KEY')`; the Flutter app still only needs public
+  Supabase config.
+- Added `supabase/config.toml` with `[functions.call-openai] verify_jwt = true`
+  so JWT verification is explicit instead of relying on deploy defaults.
+- Updated `docs/supabase_auth_openai_setup.md` to warn against deploying
+  `call-openai` with `--no-verify-jwt`.
+- The function still checks for an `Authorization: Bearer ...` header and the
+  Supabase function gateway should verify the JWT before the function runs.
+- Error messages identify missing auth, invalid body, missing server secret, or
+  upstream failure, but do not expose secret values.
+- `AICategorizationService` sends chat-completions-compatible payloads with
+  `messages`, `model`, and `response_format`, and still parses the returned
+  `choices[0].message.content` envelope expected by current app code.
+- Focused analyzer passed for the Dart OpenAI proxy and AI categorization path.
+- `deno` is not installed in this workspace, so TypeScript checking for the Edge
+  Function was not run locally.
+
 ## Phase 10 - Tests Strategy
 
-- [ ] List every failing analyzer error in `test/`
-- [ ] Delete or rewrite tests that only verified old local storage behavior
-- [ ] Keep pure domain tests for CSV parsing, transaction resolution, and dashboard math
+- [x] List every failing analyzer error in `test/`
+- [x] Delete or rewrite tests that only verified old local storage behavior
+- [x] Keep pure domain tests for CSV parsing, transaction resolution, and dashboard math
 - [ ] Add Supabase service tests with a fake boundary where practical
-- [ ] Add widget tests for auth routing:
+- [x] Add widget tests for auth routing:
   - signed out -> auth screen
   - signed in without profile -> onboarding
   - signed in with profile -> home shell
-- [ ] Add tests for OpenAI proxy client payload and error mapping
-- [ ] Decide whether integration tests need a local Supabase instance
-- [ ] Make `flutter analyze` pass
-- [ ] Make focused tests pass
-- [ ] Make full `flutter test` pass
+- [x] Add tests for OpenAI proxy client payload and error mapping
+- [x] Decide whether integration tests need a local Supabase instance
+- [x] Make `flutter analyze` pass
+- [x] Make focused tests pass
+- [x] Make full `flutter test` pass
 
 Done notes:
+
+- There was no `test/` or `integration_test/` directory left in the repo, so
+  there were no legacy local-storage test analyzer errors to list or rewrite.
+- Added a new baseline `test/` suite:
+  `csv_parser_test.dart`, `ai_categorization_service_test.dart`, and
+  `app_routing_test.dart`.
+- CSV parser tests cover signed amount parsing and empty-file rejection.
+- AI categorization tests use a fake `OpenAiProxyClient` to verify the app sends
+  a chat-completions payload through the proxy and throws
+  `OpenAiProxyUnavailableException` when the proxy is not configured.
+- App routing widget tests cover signed-out auth screen, signed-in incomplete
+  profile onboarding, and signed-in complete profile home shell.
+- Supabase table service tests should be integration tests against a local
+  Supabase instance, not fake fluent-client unit tests. The current
+  `supabase_flutter` client shape makes useful fake-boundary tests awkward
+  without introducing a repository/interface seam.
+- `flutter analyze` passed.
+- Focused new tests passed.
+- Full `flutter test` passed.
 
 ## Phase 11 - Documentation Cleanup
 
-- [ ] Update `README.md`
-- [ ] Update `docs/supabase_auth_openai_setup.md`
-- [ ] Update old fundamentals checklist notes that mention `AppState`
-- [ ] Remove stale local-storage setup instructions
-- [ ] Document current local development setup
-- [ ] Document Supabase migration commands
-- [ ] Document Edge Function deploy and secret commands
-- [ ] Document known temporary gaps after the migration
+- [x] Update `README.md`
+- [x] Update `docs/supabase_auth_openai_setup.md`
+- [x] Update old fundamentals checklist notes that mention `AppState`
+- [x] Remove stale local-storage setup instructions
+- [x] Document current local development setup
+- [x] Document Supabase migration commands
+- [x] Document Edge Function deploy and secret commands
+- [x] Document known temporary gaps after the migration
 
 Done notes:
 
+- Replaced the default Flutter README with project-specific setup,
+  architecture, Supabase, verification, Deno check, and known-gap sections.
+- Rewrote `docs/supabase_auth_openai_setup.md` around current Supabase CLI
+  migrations instead of a stale one-off SQL editor profile script.
+- Updated `docs/migration_decisions.md`, `docs/debug_checklist.md`,
+  `docs/app_logic_contract.md`, `docs/screen_data_map.md`, and
+  `docs/fundamentals_checkup_checklist.md` so active docs describe
+  `AppComposition`, Supabase services, `import_id`, and the current AI gap.
+- Marked older AppState cleanup plan docs as historical so they are not read as
+  current architecture guidance.
+- Documentation now states Flutter `.env` should contain only
+  `SUPABASE_URL`/`SUPABASE_ANON_KEY`, and OpenAI secrets belong only in
+  Supabase Edge Function secrets.
+- Documentation now includes `supabase db push`, `supabase functions deploy
+  call-openai`, `supabase secrets set OPENAI_API_KEY=...`, and
+  `deno check supabase/functions/call-openai/index.ts`.
+- Known temporary gaps are documented: local compatibility helpers remain for
+  category catalog/merchant memory/AI suggestions, AI after import is disabled
+  until Supabase-backed category assignments are complete, and repeated
+  `FutureBuilder` fetches should later move to scoped stream/viewmodel state.
+
 ## Phase 12 - Final Verification
 
-- [ ] `dart format .`
-- [ ] `flutter analyze`
-- [ ] `flutter test`
-- [ ] `git diff --check`
-- [ ] Search for deleted local auth/profile APIs
-- [ ] Search for deleted local app data APIs
-- [ ] Search for direct OpenAI client usage
-- [ ] Search for direct Supabase singleton usage outside `SupabaseService`
+- [x] `dart format .`
+- [x] `flutter analyze`
+- [x] `flutter test`
+- [x] `git diff --check`
+- [x] Search for deleted local auth/profile APIs
+- [x] Search for deleted local app data APIs
+- [x] Search for direct OpenAI client usage
+- [x] Search for direct Supabase singleton usage outside `SupabaseService`
 
 Commands:
 
@@ -340,3 +490,24 @@ rg -n "api\.openai\.com|OPENAI_API_KEY|Supabase\.instance\.client" lib test
 ```
 
 Done notes:
+
+- `dart format .` completed. It also normalized formatting in older legacy
+  storage/domain files that were already present in the repo.
+- Fixed one analyzer lint in `DashboardSnapshot` by adding braces to a
+  multi-line `if` statement.
+- Deleted the dead local profile storage file
+  `lib/core/storage/profile/profile_storage.dart`. It was the last production
+  `LocalProfile` storage path.
+- `flutter analyze` passed with no issues.
+- `flutter test` passed with all current tests.
+- `git diff --check` passed.
+- `rg -n "AppState|app_state|LocalProfile|setLocalProfile|localProfile" lib test`
+  now returns no matches.
+- `rg -n "api\.openai\.com|OPENAI_API_KEY|Supabase\.instance\.client" lib test`
+  shows only `Supabase.instance.client` inside
+  `lib/core/supabase/supabase_service.dart`, which is the intended boundary.
+- The local app data search still finds known legacy compatibility code outside
+  the strict Supabase table-service layer: old storage helpers, transaction
+  repository helpers, category catalog storage, merchant memory, and AI
+  suggestion storage. This matches the open Phase 5/6 cleanup notes and should
+  be handled in the next dedicated local-data removal pass.

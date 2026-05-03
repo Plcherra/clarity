@@ -8,15 +8,16 @@ When we finish a step, mark it with `[x]` and add a short note if useful.
 - [x] Check `lib/main.dart`
 - [x] Check `lib/app/bootstrap.dart`
 - [x] Check `lib/app/app.dart`
-- [x] Check `lib/app/app_state.dart`
+- [x] Check `lib/app/app_composition.dart`
 - [x] Check `lib/app/ui_dependencies.dart`
 
 Goal: understand how the app starts, what services are created, and how state
 is passed into the UI.
 
-Completed: app startup flows from `main()` to `bootstrap()`, then creates and
-hydrates `AppState`, and finally renders `ClarityApp`. Feature UI receives
-scoped controllers from `AppUiDependencies`.
+Completed: app startup flows from `main()` to `bootstrap()`, loads `.env`,
+initializes Supabase, creates `AppComposition`, hydrates startup/profile state,
+and finally renders `ClarityApp`. Feature UI receives scoped controllers from
+`AppUiDependencies`.
 
 ## Phase 2 - Core Building Blocks
 
@@ -29,8 +30,10 @@ scoped controllers from `AppUiDependencies`.
 Goal: understand the shared models, storage helpers, formatting helpers, and
 global constants.
 
-Completed: `core/` contains shared models, storage adapters, formatting helpers,
-IO helpers, and constants. It does not import feature UI or presentation code.
+Completed: `core/` contains shared models, Supabase boundaries, formatting
+helpers, IO helpers, and some legacy storage adapters. It does not import
+feature UI or presentation code. Legacy storage adapters are temporary cleanup
+candidates, not the authoritative data path for Supabase tables.
 
 ## Phase 3 - Feature Folder Structure
 
@@ -56,21 +59,21 @@ budget_performance.dart` may belong in `domain/` later.
 
 ## Phase 4 - State Management
 
-- [x] Identify what `AppState` still owns
+- [x] Identify what `AppComposition` owns
 - [x] Identify what each UI controller owns
 - [x] Check how dashboard screens listen for changes
 - [x] Check how transaction screens listen for changes
 - [x] Check how account screens listen for changes
 - [x] Check how budget screens listen for changes
-- [x] Confirm screens are not receiving full `AppState` unnecessarily
+- [x] Confirm screens are not receiving broad app composition objects unnecessarily
 
 Goal: understand what causes the UI to rebuild and whether state is scoped to
 the right feature.
 
-Completed: `AppState` is still the composition root and compatibility facade,
-but dashboard, transactions, accounts, budgets, and import AI status now rebuild
-through scoped controllers in `AppUiDependencies`. `ClarityApp` still listens to
-`AppState` for profile/onboarding routing, which is acceptable for now.
+Completed: `AppComposition` is the composition root. Dashboard, transactions,
+accounts, budgets, and import AI status rebuild through scoped controllers in
+`AppUiDependencies`. `ClarityApp` listens to `AuthController` and
+`ProfileController` for auth/profile routing.
 
 ## Phase 5 - Data Flow Walkthroughs
 
@@ -86,17 +89,17 @@ For each flow, trace:
 ```text
 UI action
 -> controller/view model
--> service
--> repository/storage
--> state update
+-> workflow/service
+-> Supabase table service or pure domain helper
+-> scoped notification/listenable
 -> UI refresh
 ```
 
-Completed: feature screens call scoped controllers, controllers delegate through
-`AppState`, services/repositories mutate data, then `AppState` refreshes scoped
-UI controllers. The broadest remaining flow is CSV import because it still
-coordinates accounts, transactions, dashboard aggregates, category catalog
-persistence, and optional AI categorization follow-up.
+Completed: feature screens call scoped controllers, controllers delegate to
+workflow/table services, Supabase services mutate remote data, then app-level
+notifications refresh scoped UI controllers. The broadest remaining flow is CSV
+import because it coordinates accounts, transactions, dashboard aggregates,
+category catalog compatibility state, and optional AI categorization follow-up.
 
 ## Phase 6 - Tests And Confidence
 
@@ -111,12 +114,10 @@ persistence, and optional AI categorization follow-up.
 
 Goal: learn what behavior is already protected and where test coverage is thin.
 
-Completed: `dart analyze`, focused account/budget/dashboard/CSV/transaction
-tests, and the full `flutter test` suite all pass. Coverage is strongest around
-CSV parsing, dashboard scoping, budget refresh, transaction resolution, import
-dedupe, and account upload UI. Cleanup note: debug CSV tests currently run as
-normal tests, including one that depends on a local Downloads statement file on
-this machine.
+Completed: `flutter analyze` and full `flutter test` pass. Current baseline
+coverage includes CSV parsing, OpenAI proxy payload behavior, and auth/profile
+routing. Supabase table-service behavior still needs local-Supabase integration
+tests.
 
 ## Phase 7 - Notes And Cleanup Candidates
 
@@ -135,14 +136,14 @@ Completed: main cleanup candidates were:
 - Stale docs referenced deleted `lib/screens/` paths and removed rules UI.
 - Debug CSV tests ran in the normal test suite, including one that depended on a
   local Downloads statement file.
-- `AppState` remains a compatibility facade behind scoped UI controllers.
+- `AppState` has been deleted; `AppComposition` is now the composition root.
 - Several service callback names still said `notifyListeners`, even when the
   callback now triggers scoped controller refreshes.
-- Budget repository comments described old `AppState` ownership.
+- Budget repository comments described old ownership.
 - `OPENAI_API_KEY` now belongs behind the Supabase Edge Function; Flutter `.env`
   should only contain public Supabase client config.
 
 Follow-up cleanup resolved the stale docs, guarded debug CSV tests, updated the
 budget repository comment, and renamed obvious local refresh callbacks. Next:
-make a small AppState cleanup plan, then clean CSV/import workflow, then verify
-auth + Supabase + secure AI proxy behavior.
+continue replacing local compatibility helpers, then verify auth + Supabase +
+secure AI proxy behavior.

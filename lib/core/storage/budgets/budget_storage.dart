@@ -8,14 +8,12 @@ import 'budget_keys.dart';
 const String kCategoryMonthlyBudgetsPrefsKey = 'category_monthly_budgets_v1';
 
 /// SharedPreferences key for the month-aware budget map (year-month -> category->amount).
-const String kCategoryMonthlyBudgetsByMonthPrefsKey = 'category_monthly_budgets_v2';
+const String kCategoryMonthlyBudgetsByMonthPrefsKey =
+    'category_monthly_budgets_v2';
 const String kCategoryBudgetsStorePrefsKey = 'category_budgets_store_v3';
 
 class BudgetStorageRange {
-  const BudgetStorageRange({
-    required this.start,
-    required this.end,
-  });
+  const BudgetStorageRange({required this.start, required this.end});
 
   final DateTime start;
   final DateTime end;
@@ -149,9 +147,7 @@ Map<String, Map<String, double>> _parseBudgetMapSection(dynamic decoded) {
 ///
 /// Keys are `YYYY-MM` strings and category maps keyed by [budgetDisplayKey].
 /// If only the legacy flat map exists, it is loaded into the current month.
-Future<BudgetStorageSnapshot> loadBudgetSnapshot({
-  DateTime? reference,
-}) async {
+Future<BudgetStorageSnapshot> loadBudgetSnapshot({DateTime? reference}) async {
   final prefs = await SharedPreferences.getInstance();
   final rawV3 = prefs.getString(kCategoryBudgetsStorePrefsKey);
   if (rawV3 != null && rawV3.isNotEmpty) {
@@ -275,17 +271,10 @@ Future<void> saveBudgetSnapshot(BudgetStorageSnapshot snapshot) async {
       e.value.start.month,
       e.value.start.day,
     );
-    final end = DateTime(
-      e.value.end.year,
-      e.value.end.month,
-      e.value.end.day,
-    );
+    final end = DateTime(e.value.end.year, e.value.end.month, e.value.end.day);
     final lo = start.isBefore(end) ? start : end;
     final hi = start.isBefore(end) ? end : start;
-    customRanges[key] = {
-      'start': _dateKey(lo),
-      'end': _dateKey(hi),
-    };
+    customRanges[key] = {'start': _dateKey(lo), 'end': _dateKey(hi)};
   }
 
   final json = jsonEncode({
@@ -296,4 +285,3 @@ Future<void> saveBudgetSnapshot(BudgetStorageSnapshot snapshot) async {
   });
   await prefs.setString(kCategoryBudgetsStorePrefsKey, json);
 }
-

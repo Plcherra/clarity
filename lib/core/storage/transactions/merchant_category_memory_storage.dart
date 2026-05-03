@@ -11,9 +11,13 @@ String merchantCategoryMemoryPrefsKeyForUserNamespace(String userNamespace) {
   return '$_kMerchantCategoryMemoryPrefsKeyPrefix$ns';
 }
 
-Future<Map<String, String>> loadMerchantCategoryMemory(String userNamespace) async {
+Future<Map<String, String>> loadMerchantCategoryMemory(
+  String userNamespace,
+) async {
   final prefs = await SharedPreferences.getInstance();
-  final raw = prefs.getString(merchantCategoryMemoryPrefsKeyForUserNamespace(userNamespace));
+  final raw = prefs.getString(
+    merchantCategoryMemoryPrefsKeyForUserNamespace(userNamespace),
+  );
   if (raw == null || raw.isEmpty) return {};
 
   dynamic decoded;
@@ -54,4 +58,3 @@ Future<void> saveMerchantCategoryMemory(
     jsonEncode(serializable),
   );
 }
-

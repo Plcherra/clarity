@@ -19,6 +19,7 @@ final class TransactionService {
   Future<List<TransactionRecord>> fetchTransactions({
     String? accountId,
     String? categoryId,
+    String? importId,
     DateTime? startDate,
     DateTime? endDate,
   }) async {
@@ -34,6 +35,9 @@ final class TransactionService {
       }
       if (categoryId != null) {
         query = query.eq('category_id', categoryId);
+      }
+      if (importId != null) {
+        query = query.eq('import_id', importId);
       }
       if (startDate != null) {
         query = query.gte('date', _dateOnly(startDate));
@@ -65,6 +69,7 @@ final class TransactionService {
     required DateTime date,
     String? merchant,
     bool importedFromCsv = false,
+    String? importId,
   }) async {
     final user = _currentUser;
     try {
@@ -80,6 +85,7 @@ final class TransactionService {
             'date': _dateOnly(date),
             'merchant': merchant,
             'imported_from_csv': importedFromCsv,
+            'import_id': importId,
           })
           .select()
           .single();
@@ -106,6 +112,7 @@ final class TransactionService {
     DateTime? date,
     String? merchant,
     bool? importedFromCsv,
+    String? importId,
   }) async {
     final user = _currentUser;
     final payload = <String, dynamic>{};
@@ -119,6 +126,7 @@ final class TransactionService {
     if (importedFromCsv != null) {
       payload['imported_from_csv'] = importedFromCsv;
     }
+    if (importId != null) payload['import_id'] = importId;
     if (payload.isEmpty) {
       throw const SupabaseDataException(
         table: 'transactions',

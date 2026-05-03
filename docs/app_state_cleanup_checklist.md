@@ -1,7 +1,10 @@
 # AppState Cleanup Checklist
 
-Use this as the working tracker for shrinking `lib/app/app_state.dart`.
-When a step is completed, mark it with `[x]` and add a short note if needed.
+Historical tracker for the completed `AppState` removal work. `lib/app/app_state.dart`
+has been deleted; current composition lives in `lib/app/app_composition.dart`.
+Keep this file as history, not as current architecture guidance.
+
+Original completed tracker for shrinking `lib/app/app_state.dart`.
 
 ## Phase 1 - Quick Wins
 
@@ -72,9 +75,8 @@ instead of taking `AppState` directly; controllers temporarily delegate to
 - [x] Keep `AppState` only as a thin composition root
 - [x] Remove direct feature logic from `AppState`
 - [x] Replace broad `notifyListeners()` with scoped listenables/controllers
-- [ ] Delete `AppState` if it becomes unnecessary
+- [x] Delete `AppState` if it becomes unnecessary
 
 Completed: feature UI now listens to scoped controllers, AppState no longer
-broadcasts every feature data mutation through `notifyListeners()`, and account
-delete coordination moved behind `AccountService`. AppState remains as the
-bootstrap/test compatibility facade, so deletion is intentionally deferred.
+broadcasts every feature data mutation through `notifyListeners()`, account
+delete coordination moved behind workflow/services, and `AppState` was deleted.

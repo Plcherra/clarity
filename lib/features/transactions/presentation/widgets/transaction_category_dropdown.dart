@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../app/ui_dependencies.dart';
@@ -208,7 +210,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
     if (prev == null || c == null) return;
     final t = c.text.trim();
     if (t.isNotEmpty) {
-      widget.controller.renameCategory(prev, t);
+      _runCategoryMutation(widget.controller.renameCategory(prev, t));
     }
     c.dispose();
     _renameController = null;
@@ -227,7 +229,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
         if (ctrl != null) {
           final t = ctrl.text.trim();
           if (t.isNotEmpty) {
-            widget.controller.renameCategory(prev, t);
+            _runCategoryMutation(widget.controller.renameCategory(prev, t));
           }
           ctrl.dispose();
           _renameController = null;
@@ -246,7 +248,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
     if (_editingCanonical != canonical || _renameController == null) return;
     final t = _renameController!.text.trim();
     if (t.isNotEmpty) {
-      widget.controller.renameCategory(canonical, t);
+      _runCategoryMutation(widget.controller.renameCategory(canonical, t));
     }
     setState(() {
       _renameController?.dispose();
@@ -257,14 +259,18 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
 
   void _selectCategoryAndClose(String canonical) {
     _commitPendingEditIfAny();
-    widget.controller.setCategoryOverride(widget.transaction, canonical);
+    _runCategoryMutation(
+      widget.controller.setCategoryOverride(widget.transaction, canonical),
+    );
     widget.onClose();
   }
 
   void _submitNew() {
     final raw = _newController.text;
     if (raw.trim().isEmpty) return;
-    widget.controller.createCategoryAndAssign(widget.transaction, raw);
+    _runCategoryMutation(
+      widget.controller.createCategoryAndAssign(widget.transaction, raw),
+    );
     _newController.clear();
     widget.onClose();
   }
@@ -290,7 +296,7 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
                 _renameController = null;
                 _editingCanonical = null;
               }
-              widget.controller.deleteCategory(canonical);
+              _runCategoryMutation(widget.controller.deleteCategory(canonical));
               widget.onClose();
             },
             child: const Text('Delete'),
@@ -491,5 +497,21 @@ class _CategoryMenuOverlayState extends State<_CategoryMenuOverlay> {
         ),
       ],
     );
+  }
+
+  void _runCategoryMutation(Future<void> mutation) {
+    unawaited(_handleCategoryMutation(mutation));
+  }
+
+  Future<void> _handleCategoryMutation(Future<void> mutation) async {
+    final messenger = ScaffoldMessenger.maybeOf(widget.dialogContext);
+    try {
+      await mutation;
+    } catch (error) {
+      if (!mounted) return;
+      messenger?.showSnackBar(
+        SnackBar(content: Text('Could not update category: $error')),
+      );
+    }
   }
 }

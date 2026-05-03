@@ -101,7 +101,9 @@ DashboardSnapshot buildDashboardSnapshot({
     if (!r.countsAsSpend) continue;
     if (t.date.year != y || t.date.month != m) continue;
     final display = r.displayCategory;
-    if (isIgnoredCategoryLabel(display) || isIncomeCategoryLabel(display)) continue;
+    if (isIgnoredCategoryLabel(display) || isIncomeCategoryLabel(display)) {
+      continue;
+    }
     topMap[display] = (topMap[display] ?? 0) + (-t.amount);
   }
   final top =
@@ -135,7 +137,7 @@ DashboardSnapshot buildDashboardSnapshot({
       resolveTotalBalance(scopedTransactions, scopedBalanceFromStatement),
     AccountDashboardScope(:final accountId) =>
       accountsById[accountId]?.currentBalance ??
-      resolveTotalBalance(scopedTransactions, scopedBalanceFromStatement),
+          resolveTotalBalance(scopedTransactions, scopedBalanceFromStatement),
   };
 
   final runway = runwayDaysFromBurnRate(
@@ -156,4 +158,3 @@ DashboardSnapshot buildDashboardSnapshot({
     monthlyGroups: monthsNewestFirst,
   );
 }
-

@@ -15,10 +15,9 @@ for the same scope.
 | [`TransactionReviewScreen`](../lib/features/transactions/presentation/transaction_review_screen.dart) | Must equal parent dashboard scope | `TransactionUiController.uncategorizedQueue(scope)` | `uncategorizedBankStatementLines(...)` | Uses category/display maps exposed by `TransactionUiController` |
 | [`MonthDetailScreen`](../lib/features/dashboard/presentation/month_detail_screen.dart) | Same as dashboard that pushed it | Uses the passed `MonthlyBankGroup group`; does not reload by month key from state | Rows = `group.transactions`, refreshed through `DashboardUiController.refreshedLinesForMonth` | Category picker uses `TransactionUiController` |
 | [`UncategorizedTransactionsScreen`](../lib/features/transactions/presentation/uncategorized_transactions_screen.dart) | Caller-provided transaction controller/scope | Controller uncategorized helpers | Full uncategorized list for the selected scope | Category picker uses `TransactionUiController` |
-| [`AiCategorizationFlowScreen`](../lib/features/transactions/presentation/ai_category_review_screen.dart) | Account/import flow | Import uncategorized helpers for that account | AI suggestions are pending until saved | Accepted suggestions persist as category assignments |
+| [`AiCategorizationFlowScreen`](../lib/features/transactions/presentation/ai_category_review_screen.dart) | Account/import flow | Import uncategorized helpers for that account | AI suggestions are pending until saved | Temporarily limited until category assignments are fully Supabase-backed |
 | [`HomeShell`](../lib/features/shell/presentation/home_shell.dart) tabs | N/A | Receives `AppUiDependencies` and passes scoped controllers to child features | Dashboard / Accounts / Budgets each own child UI | Import AI banner listens to `ImportAiStatusController` |
 
-Residual gotcha: `AppState.monthlyGroups` is active-account statement groups
-only. It is not the list behind global Overview month cards. Use
-`DashboardSnapshot.monthlyGroups` for UI tied to `FinancialDashboardView` /
-`buildDashboardSnapshot`.
+Residual gotcha: month rows shown in dashboard UI should come from
+`DashboardSnapshot.monthlyGroups` for the current `DashboardScope`, not from a
+separate global mutable state field.

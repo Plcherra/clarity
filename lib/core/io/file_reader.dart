@@ -6,4 +6,3 @@ import 'file_reader_impl.dart'
 
 Future<String> readPickedFileContents(PlatformFile file) =>
     impl.readPickedFileContents(file);
-

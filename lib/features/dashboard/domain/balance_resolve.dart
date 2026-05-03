@@ -11,4 +11,3 @@ double resolveTotalBalance(List<Transaction> txs, double? balanceFromColumn) {
   }
   return sum;
 }
-

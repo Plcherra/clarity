@@ -140,7 +140,7 @@ Transaction _transactionFromRecord(TransactionRecord record) {
     amount: amount,
     accountId: record.accountId,
     categoryId: record.categoryId,
-    importId: record.importedFromCsv ? 'csv' : null,
+    importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
     fingerprint: record.id,
     financialRole: record.type.trim().toLowerCase() == 'income'
         ? FinancialRole.income

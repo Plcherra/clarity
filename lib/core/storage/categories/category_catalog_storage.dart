@@ -5,11 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String kCategoryCatalogPrefsKey = 'category_catalog_v1';
 
 /// User-defined category names, display renames, and picker-hidden built-ins.
-Future<({
-  List<String> customCategories,
-  Map<String, String> categoryDisplayRenames,
-  Set<String> categoriesHiddenFromPicker,
-})> loadCategoryCatalog() async {
+Future<
+  ({
+    List<String> customCategories,
+    Map<String, String> categoryDisplayRenames,
+    Set<String> categoriesHiddenFromPicker,
+  })
+>
+loadCategoryCatalog() async {
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getString(kCategoryCatalogPrefsKey);
   if (raw == null || raw.isEmpty) {
@@ -89,4 +92,3 @@ Future<void> saveCategoryCatalog({
   };
   await prefs.setString(kCategoryCatalogPrefsKey, jsonEncode(map));
 }
-

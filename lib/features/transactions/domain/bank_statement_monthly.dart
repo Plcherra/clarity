@@ -117,7 +117,10 @@ List<BankStatementLine> uncategorizedBankStatementLines(
   for (final r in resolved) {
     if (!r.needsCategorization) continue;
     out.add(
-      BankStatementLine(transaction: r.transaction, suggestedCategory: r.displayCategory),
+      BankStatementLine(
+        transaction: r.transaction,
+        suggestedCategory: r.displayCategory,
+      ),
     );
   }
   out.sort((a, b) => b.transaction.date.compareTo(a.transaction.date));
@@ -132,4 +135,3 @@ List<MonthlyBankGroup> parseBankStatementGroupedByMonth(String csvText) {
   final result = parseBankCsv(csvText);
   return monthlyGroupsFromTransactions(result.transactions);
 }
-

@@ -5,17 +5,15 @@ from this file, fix the code or update this doc in the same change.
 
 ## 1. Where Transactions Live
 
-- Authoritative store: `TransactionService.transactionsByAccount`, still
-  available through `AppState.transactionsByAccount` in integration flows.
-- Active account slice: `TransactionService.transactions`, exposed through
-  `AppState.transactions`, is the current account list used by account-scoped
-  flows.
-- All rows: `TransactionService.allTransactions` flattens every account's list for global
-  metrics and internal payment matching.
+- Authoritative store: Supabase `public.transactions`, accessed through
+  [`TransactionService`](../lib/features/transactions/application/transaction_service.dart).
+- Account-scoped rows: `TransactionService.fetchTransactions(accountId: id)`.
+- Global rows: `TransactionService.fetchTransactions()` for the authenticated
+  user.
 
 Imports append into the relevant account with dedupe semantics from
-[`CsvImportService`](../lib/features/transactions/data/csv_import_service.dart)
-and [`TransactionRepository`](../lib/features/transactions/data/transaction_repository.dart).
+[`TransactionWorkflowService`](../lib/features/transactions/application/transaction_workflow_service.dart).
+CSV upload history and batch deletion use `transactions.import_id`.
 
 ## 2. Dashboard Scope
 
@@ -24,8 +22,8 @@ Scope is explicit via
 
 | Scope | Transaction list |
 |-------|------------------|
-| `GlobalDashboardScope` | All imported rows: `allTransactions` |
-| `AccountDashboardScope(accountId)` | `transactionsByAccount[accountId] ?? []` |
+| `GlobalDashboardScope` | All authenticated user's transaction rows |
+| `AccountDashboardScope(accountId)` | Rows filtered by `account_id` |
 
 Single helper:
 [`DashboardService.transactionsForDashboardScope`](../lib/features/dashboard/application/dashboard_service.dart).
@@ -52,16 +50,16 @@ when you need counts or month groups without building a full snapshot:
 The shared grouping primitive lives in
 [`bank_statement_monthly.dart`](../lib/features/transactions/domain/bank_statement_monthly.dart).
 
-## 4. Snapshot Vs AppState Fields
+## 4. Snapshot Vs Controller Data
 
 - Cards, banner counts, statement-by-month rows, and dashboard review entry:
   use `buildDashboardSnapshot(...)` with `scopedTransactions` from
   `transactionsForDashboardScope(scope)`.
-- Compatibility dashboard fields on `AppState`, such as `uncategorizedCount`,
-  spend/income/leaks/top categories, are derived values managed by
-  [`DashboardService`](../lib/features/dashboard/application/dashboard_service.dart).
-- `AppState.monthlyGroups` remains an active-account convenience field. Do not
-  use it for global Overview month cards; use `DashboardSnapshot.monthlyGroups`.
+- Derived dashboard values are managed by
+  [`DashboardService`](../lib/features/dashboard/application/dashboard_service.dart)
+  and snapshot helpers.
+- Use `DashboardSnapshot.monthlyGroups` for dashboard month cards and month
+  detail navigation.
 
 ## 5. Effective Category
 
@@ -82,8 +80,8 @@ a row is Uncategorized for UI/review counts should use the display label unless
 pre-rename logic is intentional.
 
 Application services and UI controllers should call
-`TransactionService.effectiveCategoryDisplayLabel` / transaction resolution
-helpers directly instead of adding `AppState` query wrappers.
+transaction resolution helpers directly instead of adding app-level query
+wrappers.
 
 ## 6. Central Transaction Resolution
 
@@ -122,7 +120,7 @@ rows not already covered by merchant memory.
 - Dashboard month rows come from `DashboardSnapshot.monthlyGroups`.
 - [`MonthDetailScreen`](../lib/features/dashboard/presentation/month_detail_screen.dart)
   receives the tapped `MonthlyBankGroup`; it must not re-lookup by month key in
-  `AppState.monthlyGroups` for Overview.
+  separate global state for Overview.
 
 ## 9. Money Metrics
 
@@ -139,10 +137,11 @@ and income metrics where implemented in
 
 [`BudgetsScreen`](../lib/features/budgets/presentation/budgets_screen.dart)
 uses [`BudgetUiController`](../lib/app/ui_dependencies.dart), which delegates to
-`BudgetService` and `BudgetRepository`.
+Supabase-backed `BudgetService` and `BudgetWorkflowService`.
 
 Budget amounts are keyed by normalized display label for monthly, weekly, and
-custom periods. This is global user intent, not per-account.
+custom periods. The current database stores one row per user/category display
+label, period, and period start date.
 
 If you add spent-vs-budget indicators, align spend with the same dashboard scope
 shown beside it, usually global Overview for category totals.

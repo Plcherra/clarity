@@ -113,24 +113,21 @@ List<CategoryLeakStat> biggestCategoryLeaks(
     categoryDisplayRenamesLower,
   );
 
-  final sorted =
-      thisMonth.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
+  final sorted = thisMonth.entries.toList()
+    ..sort((a, b) => b.value.compareTo(a.value));
   final top = sorted.take(limit).toList();
 
-  return top
-      .map((e) {
-        final name = e.key;
-        final cur = e.value;
-        final prev = lastMonth[name] ?? 0.0;
-        return CategoryLeakStat(
-          name: name,
-          amountThisMonth: cur,
-          amountLastMonth: prev,
-          percentChangeFromLastMonth: _percentChange(prev, cur),
-        );
-      })
-      .toList();
+  return top.map((e) {
+    final name = e.key;
+    final cur = e.value;
+    final prev = lastMonth[name] ?? 0.0;
+    return CategoryLeakStat(
+      name: name,
+      amountThisMonth: cur,
+      amountLastMonth: prev,
+      percentChangeFromLastMonth: _percentChange(prev, cur),
+    );
+  }).toList();
 }
 
 /// Days of runway if [spentThisMonth] continues at per-day pace for elapsed days in month.
@@ -147,4 +144,3 @@ int? runwayDaysFromBurnRate({
   if (days < 0) return null;
   return days;
 }
-

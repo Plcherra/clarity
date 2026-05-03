@@ -41,10 +41,7 @@ class BudgetPerformanceSnapshot {
 enum BudgetPeriodType { monthly, weekly, custom }
 
 class BudgetPeriodRange {
-  const BudgetPeriodRange({
-    required this.start,
-    required this.end,
-  });
+  const BudgetPeriodRange({required this.start, required this.end});
 
   final DateTime start;
   final DateTime end;

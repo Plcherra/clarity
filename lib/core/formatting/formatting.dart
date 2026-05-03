@@ -54,4 +54,3 @@ String formatShortDate(DateTime d) {
   ];
   return '${months[d.month - 1]} ${d.day}';
 }
-

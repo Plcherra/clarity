@@ -1,11 +1,15 @@
 # AppState Dedicated Cleanup Plan
 
-Use this plan to shrink `lib/app/app_state.dart` after the fundamentals cleanup.
-The goal is not to delete `AppState` immediately. The goal is to make it a thin
-composition root while preserving the current public API until tests and UI no
-longer need it.
+Historical plan. `lib/app/app_state.dart` has since been deleted and replaced
+by `lib/app/app_composition.dart`, `AuthController`, `ProfileController`, and
+scoped UI controllers. Keep this file as cleanup history, not current
+architecture guidance.
 
-Current audit:
+Original plan goal: shrink `lib/app/app_state.dart` into a thin composition
+root while preserving the current public API until tests and UI no longer
+needed it.
+
+Audit at the time:
 
 - `AppState` is 427 lines.
 - It creates and wires feature services.
@@ -16,7 +20,7 @@ Current audit:
 - `ClarityApp` still listens to `AppState` for profile/onboarding routing.
 - `bootstrap()` still calls individual hydration methods on `AppState`.
 
-## Current AppState Responsibilities
+## AppState Responsibilities At The Time
 
 ### Service Composition
 

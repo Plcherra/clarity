@@ -221,14 +221,17 @@ ParseResult parseBankCsv(String input) {
     layoutInferred: layout.layoutInferred,
     headerRowIndex: headerRowIndex,
     dateColumnIndex: dateIdx,
-    dateColumnHeader:
-        dateIdx != null && dateIdx < headers.length ? headers[dateIdx] : null,
+    dateColumnHeader: dateIdx != null && dateIdx < headers.length
+        ? headers[dateIdx]
+        : null,
     amountColumnIndex: amtIdx,
-    amountColumnHeader:
-        amtIdx != null && amtIdx < headers.length ? headers[amtIdx] : null,
+    amountColumnHeader: amtIdx != null && amtIdx < headers.length
+        ? headers[amtIdx]
+        : null,
     balanceColumnIndex: balIdx,
-    balanceColumnHeader:
-        balIdx != null && balIdx < headers.length ? headers[balIdx] : null,
+    balanceColumnHeader: balIdx != null && balIdx < headers.length
+        ? headers[balIdx]
+        : null,
     ambiguousSlashPolicy:
         'US-style dates: when month and day are ambiguous (both ≤12), '
         '_parseDate uses MM/DD/YYYY (month first). If first part >12 it is '
@@ -661,9 +664,9 @@ class _ColumnMap {
     // the file also contains `Transaction Amount` (avoids confusing with category/type).
     transactionTypeIdx ??=
         (amountIdx != null &&
-                _foldHeader(headers[amountIdx]).contains('transaction amount'))
-            ? _findExactHeaderIndex(headers, {'type'})
-            : null;
+            _foldHeader(headers[amountIdx]).contains('transaction amount'))
+        ? _findExactHeaderIndex(headers, {'type'})
+        : null;
 
     int? catIdx = find(
       ['category', 'type', 'classification'],

@@ -313,27 +313,33 @@ final class TransactionUiController extends _UiController {
     return bindings.categoryWorkflowService.undoCategoryApplyBatch(batch);
   }
 
-  Future<int> undoLastAiAutoApply() async {
-    return 0;
+  Future<int> undoLastAiAutoApply() {
+    return bindings.transactionWorkflowService.undoLastAiAutoApply();
   }
 
-  void setCategoryOverride(Transaction transaction, String category) {
-    bindings.categoryWorkflowService.setCategoryOverride(transaction, category);
+  Future<void> setCategoryOverride(Transaction transaction, String category) {
+    return bindings.categoryWorkflowService.setCategoryOverride(
+      transaction,
+      category,
+    );
   }
 
-  void createCategoryAndAssign(Transaction transaction, String rawName) {
-    bindings.categoryWorkflowService.createCategoryAndAssign(
+  Future<void> createCategoryAndAssign(
+    Transaction transaction,
+    String rawName,
+  ) {
+    return bindings.categoryWorkflowService.createCategoryAndAssign(
       transaction,
       rawName,
     );
   }
 
-  void deleteCategory(String canonicalLabel) {
-    bindings.categoryWorkflowService.deleteCategory(canonicalLabel);
+  Future<void> deleteCategory(String canonicalLabel) {
+    return bindings.categoryWorkflowService.deleteCategory(canonicalLabel);
   }
 
-  void renameCategory(String oldLabel, String newLabel) {
-    bindings.categoryWorkflowService.renameCategory(oldLabel, newLabel);
+  Future<void> renameCategory(String oldLabel, String newLabel) {
+    return bindings.categoryWorkflowService.renameCategory(oldLabel, newLabel);
   }
 
   Future<bool> deleteTransaction(Transaction transaction) {
@@ -351,44 +357,72 @@ final class AccountUiController extends _UiController {
   Future<List<Account>> get accounts => fetchAccounts();
 
   Future<bool> addAccount(Account account) async {
-    await bindings.accountService.createAccount(
-      name: account.name,
-      type: _accountTypeToDatabaseValue(account.type),
-      balance: account.currentBalance ?? 0,
-    );
-    notifyChanged();
-    return true;
+    return bindings.accountWorkflowService.addAccount(account);
   }
 
   Future<bool> deleteAccount(String accountId) async {
-    await bindings.accountService.deleteAccount(accountId);
-    notifyChanged();
-    return true;
+    return bindings.accountWorkflowService.deleteAccount(accountId);
   }
 
   Future<void> loadFromCsv(String utf8Text, {required String accountId}) async {
-    throw UnsupportedError(
-      'CSV import must be reconnected to Supabase transaction writes.',
+    await bindings.transactionWorkflowService.loadFromCsv(
+      utf8Text,
+      accountId: accountId,
     );
   }
 
-  bool needsImportAiAfterCsvUpload(String accountId) {
-    return false;
+  Future<bool> needsImportAiAfterCsvUpload(String accountId) {
+    return bindings.transactionWorkflowService.needsImportAiAfterCsvUpload(
+      accountId,
+    );
   }
 
   bool get importAiEngineConfigured => bindings.importAiEngineConfigured();
 
-  Future<void> startBackgroundImportAiCategorization(String accountId) async {}
+  Future<void> startBackgroundImportAiCategorization(String accountId) {
+    return bindings.transactionWorkflowService
+        .startBackgroundImportAiCategorization(accountId);
+  }
 
-  List<CsvImportBatchSummary> csvImportBatchesForAccount(String accountId) {
-    return const [];
+  Future<List<CsvImportBatchSummary>> csvImportBatchesForAccount(
+    String accountId,
+  ) async {
+    final id = accountId.trim();
+    if (id.isEmpty) return const [];
+    final records = await bindings.transactionService.fetchTransactions(
+      accountId: id,
+    );
+    final counts = <String, int>{};
+    for (final record in records) {
+      final importId = record.importId?.trim();
+      if (importId == null || importId.isEmpty) continue;
+      counts[importId] = (counts[importId] ?? 0) + 1;
+    }
+    final summaries = <CsvImportBatchSummary>[
+      for (final entry in counts.entries)
+        CsvImportBatchSummary(
+          importId: entry.key,
+          transactionCount: entry.value,
+          importedAtUtc: _importedAtFromImportId(entry.key),
+        ),
+    ];
+    summaries.sort((a, b) {
+      final ai = a.importedAtUtc?.microsecondsSinceEpoch;
+      final bi = b.importedAtUtc?.microsecondsSinceEpoch;
+      if (ai != null && bi != null && ai != bi) return bi.compareTo(ai);
+      return b.importId.compareTo(a.importId);
+    });
+    return summaries;
   }
 
   Future<int> deleteTransactionsForImportBatch({
     required String accountId,
     required String importId,
   }) async {
-    return 0;
+    return bindings.transactionWorkflowService.deleteTransactionsForImportBatch(
+      accountId: accountId,
+      importId: importId,
+    );
   }
 
   Future<DashboardSnapshot> buildSnapshotForAccount(String accountId) {
@@ -421,17 +455,26 @@ final class BudgetUiController extends _UiController {
     return '${_dateOnly(start)}_${_dateOnly(end)}';
   }
 
-  void setActiveBudgetPeriod({
+  Future<void> setActiveBudgetPeriod({
     required BudgetPeriodType type,
     required String key,
-  }) {}
+  }) {
+    return bindings.budgetWorkflowService.setActiveBudgetPeriod(
+      type: type,
+      key: key,
+    );
+  }
 
   Future<bool> commitBudgetDraft(
     BudgetPeriodType periodType,
     String periodKey,
     Map<String, double?> draftByNormalizedDisplayKey,
   ) async {
-    return false;
+    return bindings.budgetWorkflowService.commitBudgetDraft(
+      periodType,
+      periodKey,
+      draftByNormalizedDisplayKey,
+    );
   }
 
   Future<BudgetPerformanceSnapshot> budgetPerformanceForScope(
@@ -439,11 +482,19 @@ final class BudgetUiController extends _UiController {
     BudgetPeriodType? periodType,
     String? periodKey,
   }) async {
-    final budgets = await bindings.budgetService.fetchBudgets();
+    final effectiveType = periodType ?? BudgetPeriodType.monthly;
+    final effectiveKey = periodKey ?? _monthKey(spendReference);
+    final start = _periodStartFor(effectiveType, effectiveKey);
+    final end = _periodEndFor(effectiveType, effectiveKey);
+    final period = _budgetPeriodToDatabaseValue(effectiveType);
+    final allBudgets = await bindings.budgetService.fetchBudgets();
+    final budgets = allBudgets.where((budget) {
+      return budget.period == period && _sameDay(budget.startDate, start);
+    }).toList();
     final spentByCategory = await spentByDisplayCategoryForScopeInRange(
       scope,
-      start: _periodStartFor(periodType, periodKey),
-      end: _periodEndFor(periodType, periodKey),
+      start: start,
+      end: end,
     );
     final totalBudgeted = budgets.fold<double>(
       0,
@@ -454,9 +505,9 @@ final class BudgetUiController extends _UiController {
       (sum, amount) => sum + amount,
     );
     return BudgetPerformanceSnapshot(
-      periodType: periodType ?? BudgetPeriodType.monthly,
-      periodKey: periodKey ?? _monthKey(spendReference),
-      periodLabel: periodKey ?? _monthKey(spendReference),
+      periodType: effectiveType,
+      periodKey: effectiveKey,
+      periodLabel: effectiveKey,
       totalBudgeted: totalBudgeted,
       totalSpent: totalSpent,
       budgetedCategoryCount: budgets.length,
@@ -525,14 +576,6 @@ AccountType _accountTypeFromDatabaseValue(String value) {
   };
 }
 
-String _accountTypeToDatabaseValue(AccountType type) {
-  return switch (type) {
-    AccountType.checking => 'checking',
-    AccountType.savings => 'savings',
-    AccountType.creditCard => 'credit_card',
-  };
-}
-
 Transaction _transactionFromRecord(TransactionRecord record) {
   final amount = switch (record.type.trim().toLowerCase()) {
     'expense' => -record.amount.abs(),
@@ -545,7 +588,7 @@ Transaction _transactionFromRecord(TransactionRecord record) {
     amount: amount,
     accountId: record.accountId,
     categoryId: record.categoryId,
-    importId: record.importedFromCsv ? 'csv' : null,
+    importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
     fingerprint: record.id,
     financialRole: record.type.trim().toLowerCase() == 'income'
         ? FinancialRole.income
@@ -562,9 +605,15 @@ bool _isUncategorizedImportedTransaction(Transaction transaction) {
 DateTime _periodStartFor(BudgetPeriodType? periodType, String? periodKey) {
   final reference = DateTime.now();
   return switch (periodType) {
-    BudgetPeriodType.weekly => reference.subtract(
-      Duration(days: reference.weekday - 1),
-    ),
+    BudgetPeriodType.monthly =>
+      _parseYearMonthKey(periodKey) ??
+          DateTime(reference.year, reference.month),
+    BudgetPeriodType.weekly =>
+      _parseDateKey(periodKey) ??
+          reference.subtract(Duration(days: reference.weekday - 1)),
+    BudgetPeriodType.custom =>
+      _parseCustomRange(periodKey)?.start ??
+          DateTime(reference.year, reference.month),
     _ => DateTime(reference.year, reference.month),
   };
 }
@@ -573,8 +622,50 @@ DateTime _periodEndFor(BudgetPeriodType? periodType, String? periodKey) {
   final start = _periodStartFor(periodType, periodKey);
   return switch (periodType) {
     BudgetPeriodType.weekly => start.add(const Duration(days: 6)),
+    BudgetPeriodType.custom => _parseCustomRange(periodKey)?.end ?? start,
     _ => DateTime(start.year, start.month + 1, 0),
   };
+}
+
+String _budgetPeriodToDatabaseValue(BudgetPeriodType type) {
+  return switch (type) {
+    BudgetPeriodType.monthly => 'monthly',
+    BudgetPeriodType.weekly => 'weekly',
+    BudgetPeriodType.custom => 'custom',
+  };
+}
+
+bool _sameDay(DateTime? a, DateTime b) {
+  if (a == null) return false;
+  return a.year == b.year && a.month == b.month && a.day == b.day;
+}
+
+DateTime? _parseYearMonthKey(String? key) {
+  final parts = key?.split('-') ?? const <String>[];
+  if (parts.length != 2) return null;
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  if (year == null || month == null) return null;
+  return DateTime(year, month);
+}
+
+DateTime? _parseDateKey(String? key) {
+  final parts = key?.split('-') ?? const <String>[];
+  if (parts.length != 3) return null;
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null) return null;
+  return DateTime(year, month, day);
+}
+
+({DateTime start, DateTime end})? _parseCustomRange(String? key) {
+  final parts = key?.split('_') ?? const <String>[];
+  if (parts.length != 2) return null;
+  final start = _parseDateKey(parts[0]);
+  final end = _parseDateKey(parts[1]);
+  if (start == null || end == null) return null;
+  return (start: start, end: end);
 }
 
 String _monthKey(DateTime date) {
@@ -583,4 +674,10 @@ String _monthKey(DateTime date) {
 
 String _dateOnly(DateTime date) {
   return date.toIso8601String().split('T').first;
+}
+
+DateTime? _importedAtFromImportId(String importId) {
+  final micros = int.tryParse(importId);
+  if (micros == null) return null;
+  return DateTime.fromMicrosecondsSinceEpoch(micros, isUtc: true);
 }

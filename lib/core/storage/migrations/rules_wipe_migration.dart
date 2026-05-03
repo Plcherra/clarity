@@ -11,4 +11,3 @@ Future<void> runRulesWipeMigrationIfNeeded() async {
   await prefs.remove('category_rules_v1');
   await prefs.setBool(kRulesWipeMigrationDonePrefsKey, true);
 }
-

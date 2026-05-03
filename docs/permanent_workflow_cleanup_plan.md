@@ -1,5 +1,9 @@
 # Permanent Workflow Cleanup Plan
 
+Historical plan from the pre-Supabase cleanup. `AppState` has since been
+deleted. Current wiring lives in `AppComposition`; table data operations go
+through Supabase services.
+
 Use this plan before auth and API key work. The goal is to make extracted
 services permanent, not temporary routes back into old helpers.
 

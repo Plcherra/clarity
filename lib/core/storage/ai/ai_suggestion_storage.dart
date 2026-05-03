@@ -34,7 +34,9 @@ Future<Map<String, AiCategorySuggestion>> loadAiCategorySuggestions() async {
   return out;
 }
 
-Future<void> saveAiCategorySuggestions(Map<String, AiCategorySuggestion> map) async {
+Future<void> saveAiCategorySuggestions(
+  Map<String, AiCategorySuggestion> map,
+) async {
   final prefs = await SharedPreferences.getInstance();
   final serializable = <String, Object?>{};
   for (final e in map.entries) {
@@ -42,7 +44,10 @@ Future<void> saveAiCategorySuggestions(Map<String, AiCategorySuggestion> map) as
     if (k.isEmpty) continue;
     serializable[k] = e.value.toJson();
   }
-  await prefs.setString(kAiCategorySuggestionsPrefsKey, jsonEncode(serializable));
+  await prefs.setString(
+    kAiCategorySuggestionsPrefsKey,
+    jsonEncode(serializable),
+  );
 }
 
 Future<List<AiAppliedCategoryChange>> loadLastAiApplyBatch() async {
@@ -77,4 +82,3 @@ Future<void> saveLastAiApplyBatch(List<AiAppliedCategoryChange> batch) async {
     jsonEncode(batch.map((e) => e.toJson()).toList()),
   );
 }
-

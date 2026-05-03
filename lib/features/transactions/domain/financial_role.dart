@@ -58,4 +58,3 @@ FinancialRole effectiveFinancialRole({
   if (t.amount > 0) return FinancialRole.income;
   return FinancialRole.adjustment;
 }
-

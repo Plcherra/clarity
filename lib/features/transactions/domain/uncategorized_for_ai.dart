@@ -16,5 +16,8 @@ List<Transaction> uncategorizedDataRowsForImport({
     accountsById: const {},
     allTransactions: accountTransactions,
   );
-  return resolved.where((r) => r.needsCategorization).map((r) => r.transaction).toList();
+  return resolved
+      .where((r) => r.needsCategorization)
+      .map((r) => r.transaction)
+      .toList();
 }

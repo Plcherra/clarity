@@ -46,4 +46,3 @@ String merchantKeyLowerFromDescription(String description) {
   // Collapse multiple spaces.
   return kept.join(' ').trim();
 }
-

@@ -76,7 +76,8 @@ ConfirmedPaymentMatch? findConfirmedCreditCardPaymentMatch({
     if (c.accountId == t.accountId) continue;
     final target = accountsById[c.accountId];
     if (target == null || target.type != AccountType.creditCard) continue;
-    if (hasSpecificCardHint && !hintedCreditCardAccountIds.contains(c.accountId)) {
+    if (hasSpecificCardHint &&
+        !hintedCreditCardAccountIds.contains(c.accountId)) {
       continue;
     }
 
@@ -91,7 +92,9 @@ ConfirmedPaymentMatch? findConfirmedCreditCardPaymentMatch({
     var score = 1.0;
     score += (maxDayDelta - dayDelta) * 0.2; // closer dates win
 
-    final counterpartLooksLikePayment = _looksLikePaymentDescription(c.description);
+    final counterpartLooksLikePayment = _looksLikePaymentDescription(
+      c.description,
+    );
     if (counterpartLooksLikePayment) score += 0.25;
 
     final inst = target.institution;
@@ -110,4 +113,3 @@ ConfirmedPaymentMatch? findConfirmedCreditCardPaymentMatch({
 
   return best;
 }
-

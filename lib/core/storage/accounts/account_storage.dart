@@ -7,17 +7,17 @@ import '../../models/models.dart';
 const String kAccountsPrefsKey = 'accounts_v1';
 
 String _accountTypeToWire(AccountType t) => switch (t) {
-      AccountType.checking => 'checking',
-      AccountType.savings => 'savings',
-      AccountType.creditCard => 'creditCard',
-    };
+  AccountType.checking => 'checking',
+  AccountType.savings => 'savings',
+  AccountType.creditCard => 'creditCard',
+};
 
 AccountType? _accountTypeFromWire(String? raw) => switch (raw) {
-      'checking' => AccountType.checking,
-      'savings' => AccountType.savings,
-      'creditCard' => AccountType.creditCard,
-      _ => null,
-    };
+  'checking' => AccountType.checking,
+  'savings' => AccountType.savings,
+  'creditCard' => AccountType.creditCard,
+  _ => null,
+};
 
 /// Loads persisted accounts (best-effort; skips malformed entries).
 Future<List<Account>> loadAccounts() async {
@@ -82,4 +82,3 @@ Future<void> saveAccounts(List<Account> accounts) async {
   }
   await prefs.setString(kAccountsPrefsKey, jsonEncode(list));
 }
-
