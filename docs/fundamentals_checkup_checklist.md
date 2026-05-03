@@ -139,10 +139,10 @@ Completed: main cleanup candidates were:
 - Several service callback names still said `notifyListeners`, even when the
   callback now triggers scoped controller refreshes.
 - Budget repository comments described old `AppState` ownership.
-- `OPENAI_API_KEY` is still read from app `.env`; this should move behind a
-  backend/Supabase function before auth/API work.
+- `OPENAI_API_KEY` now belongs behind the Supabase Edge Function; Flutter `.env`
+  should only contain public Supabase client config.
 
 Follow-up cleanup resolved the stale docs, guarded debug CSV tests, updated the
 budget repository comment, and renamed obvious local refresh callbacks. Next:
-make a small AppState cleanup plan, then clean CSV/import workflow, then plan
-auth + Supabase + OpenAI API key together.
+make a small AppState cleanup plan, then clean CSV/import workflow, then verify
+auth + Supabase + secure AI proxy behavior.

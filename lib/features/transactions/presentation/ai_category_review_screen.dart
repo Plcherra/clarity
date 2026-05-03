@@ -188,12 +188,12 @@ class _ErrorBody extends StatelessWidget {
   final VoidCallback onSkip;
 
   String _message() {
-    if (error is MissingOpenAiApiKeyException) return error.toString();
+    if (error is OpenAiProxyUnavailableException) return error.toString();
     if (error is FormatException) {
       final m = (error as FormatException).message;
       if (m.isNotEmpty) return m;
     }
-    return 'Could not reach AI or parse the response. Check your network and API key.';
+    return 'Could not reach AI or parse the response. Check your network and Supabase AI function.';
   }
 
   @override

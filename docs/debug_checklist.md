@@ -4,7 +4,8 @@ Use after imports, refactors, or when “counts feel wrong.”
 
 ## Environment
 
-- [ ] `.env` contains `OPENAI_API_KEY` if testing AI flow (empty key → dialog should say to add key; see account/import flows).
+- [ ] `.env` contains `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
+- [ ] Supabase has the `call-openai` Edge Function deployed and the server-side `OPENAI_API_KEY` secret set if testing AI categorization.
 
 ## Debug build (inline line)
 
@@ -27,7 +28,7 @@ Use after imports, refactors, or when “counts feel wrong.”
 
 ## Import + AI (optional)
 
-- [ ] Import CSV with key present — AI flow opens when wired; accepting suggestions updates categories visible on dashboard/review.
+- [ ] Import CSV while signed in with the Edge Function configured — AI flow opens when wired; accepting suggestions updates categories visible on dashboard/review.
 
 ## Code-level quick grep (developers)
 

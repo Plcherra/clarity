@@ -1,4 +1,3 @@
-import '../../../core/constants/constants.dart';
 import '../../../core/models/models.dart';
 import '../../accounts/application/account_service.dart';
 import '../../categories/application/category_catalog_service.dart';
@@ -20,6 +19,7 @@ class TransactionWorkflowService {
     required this.accountService,
     required this.dashboardService,
     required this.aiCategorizationService,
+    required this.importAiEngineConfigured,
     required this.refreshAllState,
     required this.recomputeDashboard,
     required this.notifyTransactionDataChanged,
@@ -34,6 +34,7 @@ class TransactionWorkflowService {
   final AccountService accountService;
   final DashboardService dashboardService;
   final app_ai.AiCategorizationApplicationService aiCategorizationService;
+  final bool Function() importAiEngineConfigured;
   final void Function() refreshAllState;
   final TransactionDashboardRecompute recomputeDashboard;
   final void Function() notifyTransactionDataChanged;
@@ -114,7 +115,7 @@ class TransactionWorkflowService {
   Future<void> startBackgroundImportAiCategorization(String accountId) {
     return aiCategorizationService.startBackgroundImportAiCategorization(
       accountId,
-      importAiEngineConfigured: Constants.openAIKey.isNotEmpty,
+      importAiEngineConfigured: importAiEngineConfigured(),
       uncategorizedImportedRowsForAccount: (accountId) {
         return transactionService.uncategorizedImportedRowsForAccount(
           accountId,

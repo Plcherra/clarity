@@ -5,14 +5,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 const String kProfilePrefsKey = 'profile_v1';
 
 class LocalProfile {
-  const LocalProfile({required this.displayName, required this.createdAtUtcIso});
+  const LocalProfile({
+    required this.displayName,
+    required this.createdAtUtcIso,
+    this.email,
+    this.avatarUrl,
+  });
 
   final String displayName;
   final String createdAtUtcIso;
+  final String? email;
+  final String? avatarUrl;
 
   Map<String, dynamic> toJson() => {
     'displayName': displayName,
     'createdAtUtcIso': createdAtUtcIso,
+    if (email != null) 'email': email,
+    if (avatarUrl != null) 'avatarUrl': avatarUrl,
   };
 
   static LocalProfile? fromJson(Object? raw) {
@@ -21,7 +30,16 @@ class LocalProfile {
     final created = raw['createdAtUtcIso'];
     if (name is! String || name.trim().isEmpty) return null;
     if (created is! String || created.trim().isEmpty) return null;
-    return LocalProfile(displayName: name.trim(), createdAtUtcIso: created.trim());
+    final email = raw['email'];
+    final avatarUrl = raw['avatarUrl'];
+    return LocalProfile(
+      displayName: name.trim(),
+      createdAtUtcIso: created.trim(),
+      email: email is String && email.trim().isNotEmpty ? email.trim() : null,
+      avatarUrl: avatarUrl is String && avatarUrl.trim().isNotEmpty
+          ? avatarUrl.trim()
+          : null,
+    );
   }
 }
 
@@ -47,4 +65,3 @@ Future<void> clearLocalProfile() async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.remove(kProfilePrefsKey);
 }
-

@@ -120,9 +120,9 @@ class AiCategorizationApplicationService {
         },
       );
       importAiSnackMessage = 'Transactions categorized successfully';
-    } on data_ai.MissingOpenAiApiKeyException {
+    } on data_ai.OpenAiProxyUnavailableException {
       importAiSnackMessage =
-          'Add OPENAI_API_KEY to your .env file to use AI categorization.';
+          'Sign in and configure the Supabase AI Edge Function secret to use AI categorization.';
     } catch (e) {
       importAiSnackMessage = 'Could not categorize transactions: $e';
     } finally {

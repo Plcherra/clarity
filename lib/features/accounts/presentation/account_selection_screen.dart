@@ -53,7 +53,7 @@ class AccountSelectionScreen extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Add OPENAI_API_KEY to your .env file to use AI categorization.',
+                'Sign in and configure the Supabase AI Edge Function secret to use AI categorization.',
               ),
             ),
           );

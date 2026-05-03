@@ -1,6 +1,9 @@
 import '../core/models/models.dart';
+import '../core/supabase/supabase_service.dart';
 import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
+import '../features/auth/application/auth_controller.dart';
+import '../features/auth/application/auth_service.dart';
 import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/application/budget_workflow_service.dart';
 import '../features/categories/application/category_catalog_service.dart';
@@ -15,26 +18,48 @@ import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_parser.dart';
+import '../features/transactions/data/openai_proxy_client.dart';
 import 'app_notifications.dart';
 import 'app_startup_service.dart';
 import 'dashboard_refresh_coordinator.dart';
 import 'ui_dependencies.dart';
 
 final class AppComposition {
+  AppComposition({
+    SupabaseService? supabaseService,
+    bool initialAuthenticated = false,
+  }) : supabaseService = supabaseService ?? const SupabaseService(),
+       _initialAuthenticated = initialAuthenticated;
+
+  final SupabaseService supabaseService;
+  final bool _initialAuthenticated;
+
   final TransactionService transactionService = TransactionService();
   final CategoryService categoryService = CategoryService();
   final CategoryCatalogService categoryCatalogService =
       CategoryCatalogService();
   final MerchantService merchantService = MerchantService();
-  final ProfileService profileService = ProfileService();
+  late final ProfileService profileService = ProfileService(
+    supabaseService: supabaseService,
+  );
   final BudgetService budgetService = BudgetService();
   final AccountService accountService = AccountService();
   final DashboardService dashboardService = DashboardService();
   final app_ai.AiCategorizationApplicationService aiCategorizationService =
       app_ai.AiCategorizationApplicationService();
 
+  late final AuthService authService = AuthService(
+    supabaseService: supabaseService,
+  );
+
+  late final AuthController authController = AuthController(
+    authService: authService,
+    initialAuthenticated: _initialAuthenticated,
+  );
+
   late final ProfileController profileController = ProfileController(
     profileService: profileService,
+    authService: authService,
     syncAfterProfileChanged: _syncAfterProfileChanged,
   );
 
@@ -113,6 +138,8 @@ final class AppComposition {
         accountService: accountService,
         dashboardService: dashboardService,
         aiCategorizationService: aiCategorizationService,
+        importAiEngineConfigured: () =>
+            openAiProxyClient.isConfigured && authController.isAuthenticated,
         refreshAllState: dashboardRefreshCoordinator.refreshAllState,
         recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
         notifyTransactionDataChanged: () =>
@@ -135,7 +162,13 @@ final class AppComposition {
       budgetWorkflowService: budgetWorkflowService,
       aiCategorizationService: aiCategorizationService,
       accountWorkflowService: accountWorkflowService,
+      importAiEngineConfigured: () =>
+          openAiProxyClient.isConfigured && authController.isAuthenticated,
     ),
+  );
+
+  late final OpenAiProxyClient openAiProxyClient = SupabaseOpenAiProxyClient(
+    supabaseService: supabaseService,
   );
 
   Future<void> _syncAfterProfileChanged() async {
@@ -161,6 +194,7 @@ final class AppComposition {
 
   void dispose() {
     ui.dispose();
+    authController.dispose();
     profileController.dispose();
   }
 }

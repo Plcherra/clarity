@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../features/auth/application/auth_controller.dart';
+import '../features/auth/presentation/auth_screen.dart';
 import '../features/profile/application/profile_controller.dart';
 import '../features/shell/presentation/home_shell.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
@@ -9,10 +11,12 @@ final class ClarityApp extends StatelessWidget {
   const ClarityApp({
     super.key,
     required this.ui,
+    required this.authController,
     required this.profileController,
   });
 
   final AppUiDependencies ui;
+  final AuthController authController;
   final ProfileController profileController;
 
   static ThemeData _buildTheme() {
@@ -100,20 +104,45 @@ final class ClarityApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: profileController,
+      listenable: authController,
       builder: (context, _) {
-        return MaterialApp(
-          title: 'Clarity',
-          debugShowCheckedModeBanner: false,
-          theme: _buildTheme(),
-          home: profileController.localProfile == null
-              ? OnboardingScreen(
-                  saveLocalProfile: profileController.setLocalProfile,
-                  ui: ui,
-                )
-              : HomeShell(ui: ui),
+        return ListenableBuilder(
+          listenable: profileController,
+          builder: (context, _) {
+            return MaterialApp(
+              title: 'Clarity',
+              debugShowCheckedModeBanner: false,
+              theme: _buildTheme(),
+              home: _homeForCurrentState(),
+            );
+          },
         );
       },
     );
+  }
+
+  Widget _homeForCurrentState() {
+    if (authController.isLoading || profileController.isLoading) {
+      return const _AppLoadingScreen();
+    }
+    if (!authController.isAuthenticated) {
+      return AuthScreen(controller: authController);
+    }
+    if (!profileController.hasCompleteProfile) {
+      return OnboardingScreen(
+        saveLocalProfile: profileController.setLocalProfile,
+        ui: ui,
+      );
+    }
+    return HomeShell(ui: ui, signOut: authController.signOut);
+  }
+}
+
+final class _AppLoadingScreen extends StatelessWidget {
+  const _AppLoadingScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }

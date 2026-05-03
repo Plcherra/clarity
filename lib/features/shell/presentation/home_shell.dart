@@ -7,9 +7,10 @@ import '../../budgets/presentation/budgets_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key, required this.ui});
+  const HomeShell({super.key, required this.ui, this.signOut});
 
   final AppUiDependencies ui;
+  final Future<void> Function()? signOut;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
@@ -34,6 +35,13 @@ class _HomeShellState extends State<HomeShell> {
         controller: widget.ui.importAiStatus,
         child: IndexedStack(index: _idx, children: pages),
       ),
+      floatingActionButton: widget.signOut == null
+          ? null
+          : FloatingActionButton.small(
+              tooltip: 'Sign out',
+              onPressed: widget.signOut,
+              child: const Icon(Icons.logout_rounded),
+            ),
       bottomNavigationBar: NavigationBar(
         backgroundColor: cs.surface,
         surfaceTintColor: Colors.transparent,

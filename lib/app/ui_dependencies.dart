@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-import '../core/constants/constants.dart';
 import '../core/models/models.dart';
 import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
@@ -36,6 +35,7 @@ final class AppUiControllerBindings {
     required this.budgetWorkflowService,
     required this.aiCategorizationService,
     required this.accountWorkflowService,
+    required this.importAiEngineConfigured,
   });
 
   final DashboardService dashboardService;
@@ -50,6 +50,7 @@ final class AppUiControllerBindings {
   final BudgetWorkflowService budgetWorkflowService;
   final app_ai.AiCategorizationApplicationService aiCategorizationService;
   final AccountWorkflowService accountWorkflowService;
+  final bool Function() importAiEngineConfigured;
 }
 
 final class AppUiDependencies {
@@ -313,7 +314,7 @@ final class AccountUiController extends _UiController {
     );
   }
 
-  bool get importAiEngineConfigured => Constants.openAIKey.isNotEmpty;
+  bool get importAiEngineConfigured => bindings.importAiEngineConfigured();
 
   Future<void> startBackgroundImportAiCategorization(String accountId) {
     return bindings.transactionWorkflowService

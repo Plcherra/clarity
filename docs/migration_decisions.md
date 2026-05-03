@@ -11,7 +11,7 @@ Record **what we chose** so refactors do not re-litigate the same questions. Upd
 | **Banner “needs attention” vs Review** | Same definition: `uncategorizedTransactionCount` / `uncategorizedBankStatementLines` on **`transactionsForDashboardScope(scope)`** — was fixed so Overview and `TransactionReviewScreen` share scope. |
 | **Month detail** | Driven by **passed `MonthlyBankGroup`** from snapshot list, not `AppState.monthlyGroups` lookup for Overview. |
 | **Rules** | Removed from active app behavior. The one-time migration deletes old persisted rules data; categorization now uses saved category IDs, manual overrides, merchant memory, keywords, and CSV labels. |
-| **AI categorization** | Optional path when `OPENAI_API_KEY` is present in app `.env` for now (see [`constants.dart`](../lib/core/constants/constants.dart)); should move behind backend/Supabase before production auth/API work. |
+| **AI categorization** | Flutter calls the Supabase `call-openai` Edge Function through `Supabase.functions.invoke`; the real OpenAI key is stored only as a Supabase secret. |
 | **Financial semantics** | `FinancialRole` + `effectiveFinancialRole` used for spend/income in snapshot (with global context for internal payments). |
 
 ## Open / product choices (explicitly not locked here unless stated)

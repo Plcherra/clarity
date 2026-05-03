@@ -1,3 +1,4 @@
+import 'package:clarity/core/models/models.dart';
 import 'package:clarity/features/transactions/data/ai_categorization_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -52,4 +53,57 @@ void main() {
       expect(out['k1'], isNull);
     });
   });
+
+  test('suggestCategories sends chat payload through proxy client', () async {
+    final fakeClient = _FakeOpenAiProxyClient();
+    final service = AICategorizationService(openAiClient: fakeClient);
+    final transaction = Transaction(
+      date: DateTime.utc(2026, 1, 2, 12),
+      description: 'Coffee Shop',
+      amount: -4.5,
+      accountId: 'checking',
+    );
+
+    final out = await service.suggestCategories(
+      transactions: [transaction],
+      allowedCategoryIds: ['Food & Drink'],
+    );
+
+    expect(fakeClient.lastBody?['model'], openAiModel);
+    expect(fakeClient.lastBody?['response_format'], {'type': 'json_object'});
+    expect(fakeClient.lastBody?['messages'], isA<List>());
+    expect(out.values.single, 'Food & Drink');
+  });
+}
+
+final class _FakeOpenAiProxyClient implements OpenAiProxyClient {
+  Map<String, dynamic>? lastBody;
+
+  @override
+  bool get isConfigured => true;
+
+  @override
+  Future<Map<String, dynamic>> createChatCompletion(
+    Map<String, dynamic> body,
+  ) async {
+    lastBody = body;
+    final messages = body['messages'];
+    final userMessage = messages is List ? messages.last : null;
+    final userContent = userMessage is Map ? userMessage['content'] : null;
+    final keyMatch = RegExp(r'"key":"([^"]+)"').firstMatch('$userContent');
+    final key = keyMatch?.group(1) ?? 'missing';
+    return {
+      'choices': [
+        {
+          'message': {
+            'content':
+                '{"suggestions":[{"key":"$key","categoryId":"Food & Drink"}]}',
+          },
+        },
+      ],
+    };
+  }
+
+  @override
+  void close() {}
 }

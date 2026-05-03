@@ -1,30 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:http/http.dart' as http;
-
-import '../../../core/constants/constants.dart';
 import '../../../core/models/models.dart';
 import '../domain/spend_categories.dart';
+import 'openai_proxy_client.dart';
 
-const String _openAiChatCompletionsUrl =
-    'https://api.openai.com/v1/chat/completions';
+export 'openai_proxy_client.dart'
+    show OpenAiProxyClient, OpenAiProxyUnavailableException;
 
 const String openAiModel = 'gpt-4o-mini';
 
 const int _defaultBatchSize = 30;
-
-/// Wall-clock limit per OpenAI HTTP request (large batches can be slow).
-const Duration _openAiRequestTimeout = Duration(seconds: 120);
-
-/// Thrown when `OPENAI_API_KEY` from `.env` is missing or empty.
-class MissingOpenAiApiKeyException implements Exception {
-  @override
-  String toString() =>
-      'OpenAI API key is not configured. Add OPENAI_API_KEY to the `.env` file '
-      'in the project root (see README or team docs).';
-}
 
 /// Maps model output to an allowed canonical label, or null (leave uncategorized).
 String? normalizeSuggestionToAllowed(
@@ -71,7 +57,8 @@ Map<String, String?> parseSuggestionsFromResponseContent(
   return out;
 }
 
-Map<String, AiCategorySuggestion> parseSuggestionsWithConfidenceFromResponseContent(
+Map<String, AiCategorySuggestion>
+parseSuggestionsWithConfidenceFromResponseContent(
   String messageContent,
   List<String> allowedCanonicals,
   Set<String> expectedKeys,
@@ -132,10 +119,10 @@ String unwrapOpenAiMessageContent(String raw) {
 }
 
 class AICategorizationService {
-  AICategorizationService({http.Client? httpClient})
-      : _client = httpClient ?? http.Client();
+  AICategorizationService({OpenAiProxyClient? openAiClient})
+    : _client = openAiClient ?? SupabaseOpenAiProxyClient();
 
-  final http.Client _client;
+  final OpenAiProxyClient _client;
 
   /// Sequential batches; returns one map entry per [transactions] key (may be null).
   Future<Map<String, String?>> suggestCategories({
@@ -144,8 +131,8 @@ class AICategorizationService {
     void Function(int completed, int total)? onBatchProgress,
     Future<void> Function(Map<String, String?>)? onPartialBatch,
   }) async {
-    if (Constants.openAIKey.isEmpty) {
-      throw MissingOpenAiApiKeyException();
+    if (!_client.isConfigured) {
+      throw const OpenAiProxyUnavailableException();
     }
     if (transactions.isEmpty) return {};
     if (allowedCategoryIds.isEmpty) {
@@ -193,8 +180,8 @@ class AICategorizationService {
     required int promptVersion,
     void Function(int completed, int total)? onBatchProgress,
   }) async {
-    if (Constants.openAIKey.isEmpty) {
-      throw MissingOpenAiApiKeyException();
+    if (!_client.isConfigured) {
+      throw const OpenAiProxyUnavailableException();
     }
     if (transactions.isEmpty) return {};
     if (allowedCategoryIds.isEmpty) {
@@ -276,50 +263,16 @@ class AICategorizationService {
         'Transactions (JSON array of objects with key, date, amount, description, optional bankCategory):\n'
         '$linesJson';
 
-    final body = jsonEncode({
+    final body = <String, dynamic>{
       'model': openAiModel,
       'response_format': {'type': 'json_object'},
       'messages': [
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user},
       ],
-    });
+    };
 
-    http.Response res;
-    try {
-      res = await _client
-          .post(
-            Uri.parse(_openAiChatCompletionsUrl),
-            headers: {
-              'Authorization': 'Bearer ${Constants.openAIKey}',
-              'Content-Type': 'application/json',
-            },
-            body: body,
-          )
-          .timeout(_openAiRequestTimeout);
-    } on TimeoutException {
-      throw const FormatException(
-        'OpenAI request timed out. Try again with fewer transactions or check your connection.',
-      );
-    } on SocketException catch (e) {
-      throw FormatException('Network error: ${e.message}');
-    } on http.ClientException catch (e) {
-      throw FormatException('Network error: ${e.message}');
-    }
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw FormatException(_friendlyOpenAiHttpError(res.statusCode, res.body));
-    }
-
-    dynamic outer;
-    try {
-      outer = jsonDecode(res.body);
-    } on FormatException catch (e) {
-      throw FormatException('OpenAI response was not valid JSON: ${e.message}');
-    }
-    if (outer is! Map<String, dynamic>) {
-      throw const FormatException('OpenAI envelope is not a JSON object.');
-    }
+    final outer = await _client.createChatCompletion(body);
     final choices = outer['choices'];
     if (choices is! List || choices.isEmpty) {
       throw const FormatException('OpenAI response has no choices.');
@@ -388,50 +341,16 @@ class AICategorizationService {
         'Transactions (JSON array of objects with key, date, amount, description, optional bankCategory):\n'
         '$linesJson';
 
-    final body = jsonEncode({
+    final body = <String, dynamic>{
       'model': openAiModel,
       'response_format': {'type': 'json_object'},
       'messages': [
         {'role': 'system', 'content': system},
         {'role': 'user', 'content': user},
       ],
-    });
+    };
 
-    http.Response res;
-    try {
-      res = await _client
-          .post(
-            Uri.parse(_openAiChatCompletionsUrl),
-            headers: {
-              'Authorization': 'Bearer ${Constants.openAIKey}',
-              'Content-Type': 'application/json',
-            },
-            body: body,
-          )
-          .timeout(_openAiRequestTimeout);
-    } on TimeoutException {
-      throw const FormatException(
-        'OpenAI request timed out. Try again with fewer transactions or check your connection.',
-      );
-    } on SocketException catch (e) {
-      throw FormatException('Network error: ${e.message}');
-    } on http.ClientException catch (e) {
-      throw FormatException('Network error: ${e.message}');
-    }
-
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw FormatException(_friendlyOpenAiHttpError(res.statusCode, res.body));
-    }
-
-    dynamic outer;
-    try {
-      outer = jsonDecode(res.body);
-    } on FormatException catch (e) {
-      throw FormatException('OpenAI response was not valid JSON: ${e.message}');
-    }
-    if (outer is! Map<String, dynamic>) {
-      throw const FormatException('OpenAI envelope is not a JSON object.');
-    }
+    final outer = await _client.createChatCompletion(body);
     final choices = outer['choices'];
     if (choices is! List || choices.isEmpty) {
       throw const FormatException('OpenAI response has no choices.');
@@ -474,31 +393,4 @@ class AICategorizationService {
   void close() {
     _client.close();
   }
-}
-
-String _friendlyOpenAiHttpError(int statusCode, String body) {
-  // Default: keep original payload for debugging.
-  var message = 'OpenAI request failed ($statusCode): $body';
-  try {
-    final decoded = jsonDecode(body);
-    if (decoded is Map<String, dynamic>) {
-      final err = decoded['error'];
-      if (err is Map<String, dynamic>) {
-        final type = err['type'];
-        final msg = err['message'];
-        if (type == 'insufficient_quota') {
-          return 'OpenAI quota exceeded. Add billing/credits to your OpenAI account and try again.';
-        }
-        if (statusCode == 401) {
-          return 'OpenAI authentication failed. Check that OPENAI_API_KEY is valid.';
-        }
-        if (msg is String && msg.trim().isNotEmpty) {
-          message = 'OpenAI request failed ($statusCode): ${msg.trim()}';
-        }
-      }
-    }
-  } on Object {
-    // Ignore parse errors; keep raw message.
-  }
-  return message;
 }
