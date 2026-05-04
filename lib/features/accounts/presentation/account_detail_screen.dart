@@ -196,7 +196,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
 
   Future<void> _importCsvForThisAccount(BuildContext context) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
         allowMultiple: false,

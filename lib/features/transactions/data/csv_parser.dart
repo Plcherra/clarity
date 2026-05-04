@@ -459,10 +459,9 @@ List<List<dynamic>> _parseRows(String input) {
   if (semi > comma && semi >= tab) delim = ';';
   if (tab > comma && tab > semi) delim = '\t';
 
-  final converter = CsvToListConverter(
+  final converter = CsvDecoder(
     fieldDelimiter: delim,
-    eol: '\n',
-    shouldParseNumbers: false,
+    dynamicTyping: false,
   );
   return converter.convert(
     input.replaceAll('\r\n', '\n').replaceAll('\r', '\n'),

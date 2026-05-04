@@ -20,7 +20,7 @@ class _UploadScreenState extends State<UploadScreen> {
   Future<void> _import() async {
     setState(() => _busy = true);
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['csv'],
         allowMultiple: false,
