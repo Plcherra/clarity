@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../../core/models/models.dart';
+import '../../../core/supabase/supabase_records.dart';
 import '../../dashboard/domain/balance_resolve.dart';
 import '../domain/bank_statement_monthly.dart';
 import '../domain/spend_categories.dart';
@@ -8,7 +9,7 @@ import '../domain/transaction_fingerprint.dart';
 import '../domain/transaction_resolution.dart' as transaction_resolution;
 import '../domain/uncategorized_for_ai.dart';
 import 'csv_parser.dart';
-import 'transaction_repository.dart';
+import 'transaction_service.dart';
 
 class CsvImportBatchSummary {
   const CsvImportBatchSummary({
@@ -116,14 +117,14 @@ class CsvImportService {
     );
   }
 
-  CsvImportResult loadFromCsv(
+  Future<CsvImportResult> loadFromCsv(
     String utf8Text, {
     required String accountId,
     required DateTime? reference,
     required List<Account> accounts,
     required Map<String, String> transactionCategoryAssignments,
-    required TransactionRepository transactionRepository,
-  }) {
+    required TransactionService transactionService,
+  }) async {
     final id = accountId.trim();
     if (id.isEmpty) {
       throw const FormatException('An account must be selected.');
@@ -135,9 +136,10 @@ class CsvImportService {
     final result = parseBankCsv(utf8Text);
     final importId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
 
-    final existing = List<Transaction>.from(
-      transactionRepository.transactionsByAccount[id] ?? const [],
+    final existingRecords = await transactionService.fetchTransactions(
+      accountId: id,
     );
+    final existing = existingRecords.map(_transactionFromRecord).toList();
     final existingFingerprints = <String>{};
     for (final t in existing) {
       // Always use the current stable identity key for dedupe, regardless of
@@ -203,14 +205,26 @@ class CsvImportService {
       );
     }
 
-    final merged = [...existing, ...stampedNew];
-    transactionRepository.transactionsByAccount = {
-      ...transactionRepository.transactionsByAccount,
-      id: List<Transaction>.unmodifiable(merged),
-    };
-    transactionRepository.save();
+    for (final transaction in stampedNew) {
+      await transactionService.createTransaction(
+        accountId: transaction.accountId,
+        categoryId: transaction.categoryId,
+        amount: transaction.amount.abs(),
+        type: transaction.amount < 0 ? 'expense' : 'income',
+        description: transaction.description,
+        date: transaction.date,
+        merchant: transaction.description,
+        importedFromCsv: true,
+        importId: transaction.importId,
+      );
+    }
 
-    final transactions = List<Transaction>.unmodifiable(merged);
+    final transactionRecords = await transactionService.fetchTransactions(
+      accountId: id,
+    );
+    final transactions = List<Transaction>.unmodifiable(
+      transactionRecords.map(_transactionFromRecord),
+    );
     return CsvImportResult(
       activeAccountId: id,
       spendReference: ref,
@@ -220,4 +234,24 @@ class CsvImportService {
       diagnostics: result.diagnostics,
     );
   }
+}
+
+Transaction _transactionFromRecord(TransactionRecord record) {
+  final amount = switch (record.type.trim().toLowerCase()) {
+    'expense' => -record.amount.abs(),
+    'income' => record.amount.abs(),
+    _ => record.amount,
+  };
+  return Transaction(
+    date: record.date,
+    description: record.description ?? record.merchant ?? '',
+    amount: amount,
+    accountId: record.accountId,
+    categoryId: record.categoryId,
+    importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
+    fingerprint: record.id,
+    financialRole: record.type.trim().toLowerCase() == 'income'
+        ? FinancialRole.income
+        : FinancialRole.expense,
+  );
 }

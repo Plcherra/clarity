@@ -1,24 +1,24 @@
 import '../core/models/models.dart';
 import '../core/supabase/supabase_repository.dart';
 import '../core/supabase/supabase_service.dart';
-import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
+import '../features/accounts/data/account_service.dart';
 import '../features/auth/application/auth_controller.dart';
 import '../features/auth/application/auth_service.dart';
-import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/application/budget_workflow_service.dart';
+import '../features/budgets/data/budget_service.dart';
 import '../features/categories/application/category_read_model.dart';
-import '../features/categories/application/category_service.dart';
+import '../features/categories/data/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/profile/application/profile_controller.dart';
 import '../features/profile/application/profile_service.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
 import '../features/transactions/application/category_workflow_service.dart';
-import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_parser.dart';
 import '../features/transactions/data/openai_proxy_client.dart';
+import '../features/transactions/data/transaction_service.dart';
 import 'app_notifications.dart';
 import 'app_startup_service.dart';
 import 'dashboard_refresh_coordinator.dart';
@@ -45,7 +45,7 @@ final class AppComposition {
   late final CategoryService categoryService = supabaseRepository.categories;
 
   // Synchronous UI category state derived from the Supabase categories table.
-  // This preserves existing picker/controller APIs without SharedPreferences.
+  // This preserves existing picker/controller APIs without local persistence.
   late final CategoryReadModel categoryReadModel = CategoryReadModel(
     categoryService: categoryService,
   );

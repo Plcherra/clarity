@@ -1,11 +1,11 @@
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_records.dart';
-import '../../accounts/application/account_service.dart';
+import '../../accounts/data/account_service.dart';
 import '../../categories/application/category_read_model.dart';
-import '../../categories/application/category_service.dart';
+import '../../categories/data/category_service.dart';
 import '../../profile/application/profile_service.dart';
+import '../data/transaction_service.dart';
 import '../domain/spend_categories.dart';
-import 'transaction_service.dart';
 
 class CategoryWorkflowService {
   CategoryWorkflowService({

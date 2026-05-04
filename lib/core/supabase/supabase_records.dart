@@ -40,61 +40,6 @@ final class ProfileRecord {
   };
 }
 
-final class AccountRecord {
-  const AccountRecord({
-    required this.id,
-    required this.userId,
-    required this.name,
-    required this.type,
-    required this.balance,
-    required this.currency,
-    required this.isActive,
-    required this.createdAt,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String userId;
-  final String name;
-  final String type;
-  final double balance;
-  final String currency;
-  final bool isActive;
-  final DateTime createdAt;
-  final DateTime updatedAt;
-
-  factory AccountRecord.fromJson(Map<String, dynamic> json) {
-    return AccountRecord(
-      id: _string(json, 'id'),
-      userId: _string(json, 'user_id'),
-      name: _string(json, 'name'),
-      type: _string(json, 'type'),
-      balance: _money(json, 'balance'),
-      currency: _string(json, 'currency'),
-      isActive: _bool(json, 'is_active'),
-      createdAt: _dateTime(json, 'created_at'),
-      updatedAt: _dateTime(json, 'updated_at'),
-    );
-  }
-
-  Map<String, dynamic> toInsertJson(String userId) => {
-    'user_id': userId,
-    'name': name,
-    'type': type,
-    'balance': balance,
-    'currency': currency,
-    'is_active': isActive,
-  };
-
-  Map<String, dynamic> toUpdateJson() => {
-    'name': name,
-    'type': type,
-    'balance': balance,
-    'currency': currency,
-    'is_active': isActive,
-  };
-}
-
 final class CategoryRecord {
   const CategoryRecord({
     required this.id,

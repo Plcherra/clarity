@@ -2,14 +2,14 @@ import 'dart:async';
 
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_records.dart';
-import '../../accounts/application/account_service.dart';
+import '../../accounts/data/account_service.dart';
 import '../../dashboard/application/dashboard_service.dart';
 import '../data/csv_parser.dart';
+import '../data/transaction_service.dart';
 import '../domain/spend_categories.dart';
 import '../domain/transaction_fingerprint.dart';
 import 'ai_categorization_service.dart' as app_ai;
 import 'category_workflow_service.dart';
-import 'transaction_service.dart';
 
 typedef TransactionDashboardRecompute =
     FutureOr<void> Function({

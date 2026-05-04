@@ -1,12 +1,12 @@
 import 'dart:async';
 
 import '../core/supabase/supabase_exceptions.dart';
-import '../features/accounts/application/account_service.dart';
+import '../features/accounts/data/account_service.dart';
 import '../features/auth/application/auth_service.dart';
-import '../features/budgets/application/budget_service.dart';
+import '../features/budgets/data/budget_service.dart';
 import '../features/categories/application/category_read_model.dart';
-import '../features/categories/application/category_service.dart';
-import '../features/transactions/application/transaction_service.dart';
+import '../features/categories/data/category_service.dart';
+import '../features/transactions/data/transaction_service.dart';
 
 class AppStartupService {
   AppStartupService({

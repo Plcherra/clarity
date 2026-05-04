@@ -2,22 +2,22 @@ import 'package:flutter/foundation.dart';
 
 import '../core/models/models.dart';
 import '../core/supabase/supabase_records.dart';
-import '../features/accounts/application/account_service.dart';
 import '../features/accounts/application/account_workflow_service.dart';
-import '../features/budgets/application/budget_service.dart';
+import '../features/accounts/data/account_service.dart';
 import '../features/budgets/application/budget_workflow_service.dart';
+import '../features/budgets/data/budget_service.dart';
 import '../features/budgets/domain/budget_models.dart';
 import '../features/categories/application/category_read_model.dart';
-import '../features/categories/application/category_service.dart';
+import '../features/categories/data/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/dashboard/domain/dashboard_queries.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
 import '../features/transactions/application/category_workflow_service.dart';
-import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_import_service.dart';
+import '../features/transactions/data/transaction_service.dart';
 import '../features/transactions/domain/bank_statement_monthly.dart';
 import '../features/transactions/domain/spend_categories.dart';
 import '../features/transactions/domain/transaction_resolution.dart'
@@ -106,14 +106,11 @@ base class _UiController extends ChangeNotifier {
   void notifyChanged() => notifyListeners();
 
   Future<List<Account>> fetchAccounts() async {
-    final records = await bindings.accountService.fetchAccounts();
-    return records.map(_accountFromRecord).toList();
+    return bindings.accountService.fetchAccounts();
   }
 
   Stream<List<Account>> watchAccounts() {
-    return bindings.accountService.watchAccounts().map(
-      (records) => records.map(_accountFromRecord).toList(),
-    );
+    return bindings.accountService.watchAccounts();
   }
 
   Future<List<Transaction>> fetchTransactions({String? accountId}) async {
@@ -556,23 +553,6 @@ final class ImportAiStatusController extends _UiController {
   String? consumeImportAiSnackMessage() {
     return bindings.aiCategorizationService.consumeImportAiSnackMessage();
   }
-}
-
-Account _accountFromRecord(AccountRecord record) {
-  return Account(
-    id: record.id,
-    name: record.name,
-    type: _accountTypeFromDatabaseValue(record.type),
-    currentBalance: record.balance,
-  );
-}
-
-AccountType _accountTypeFromDatabaseValue(String value) {
-  return switch (value.trim().toLowerCase()) {
-    'savings' => AccountType.savings,
-    'credit_card' || 'creditcard' || 'credit card' => AccountType.creditCard,
-    _ => AccountType.checking,
-  };
 }
 
 Transaction _transactionFromRecord(

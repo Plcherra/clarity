@@ -1,6 +1,6 @@
 import '../../../core/models/models.dart';
-import '../../transactions/application/transaction_service.dart';
-import 'account_service.dart';
+import '../../transactions/data/transaction_service.dart';
+import '../data/account_service.dart';
 
 class AccountWorkflowService {
   AccountWorkflowService({
@@ -16,11 +16,7 @@ class AccountWorkflowService {
   final void Function() notifyAccountsChanged;
 
   Future<bool> addAccount(Account account) async {
-    await accountService.createAccount(
-      name: account.name,
-      type: _accountTypeToDatabaseValue(account.type),
-      balance: account.currentBalance ?? 0,
-    );
+    await accountService.createAccount(account);
     notifyAccountsChanged();
     await refreshAllState();
     return true;
@@ -32,12 +28,4 @@ class AccountWorkflowService {
     await refreshAllState();
     return true;
   }
-}
-
-String _accountTypeToDatabaseValue(AccountType type) {
-  return switch (type) {
-    AccountType.checking => 'checking',
-    AccountType.savings => 'savings',
-    AccountType.creditCard => 'credit_card',
-  };
 }

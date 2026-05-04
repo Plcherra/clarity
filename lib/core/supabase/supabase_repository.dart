@@ -1,8 +1,8 @@
-import '../../features/accounts/application/account_service.dart';
-import '../../features/budgets/application/budget_service.dart';
-import '../../features/categories/application/category_service.dart';
+import '../../features/accounts/data/account_service.dart';
+import '../../features/budgets/data/budget_service.dart';
+import '../../features/categories/data/category_service.dart';
 import '../../features/profile/application/profile_service.dart';
-import '../../features/transactions/application/transaction_service.dart';
+import '../../features/transactions/data/transaction_service.dart';
 import 'supabase_service.dart';
 
 final class SupabaseRepository {

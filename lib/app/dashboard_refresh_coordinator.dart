@@ -1,10 +1,10 @@
 import '../core/models/models.dart';
 import '../core/supabase/supabase_records.dart';
-import '../features/accounts/application/account_service.dart';
+import '../features/accounts/data/account_service.dart';
 import '../features/categories/application/category_read_model.dart';
 import '../features/dashboard/application/dashboard_service.dart';
-import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/data/csv_parser.dart';
+import '../features/transactions/data/transaction_service.dart';
 import '../features/transactions/domain/transaction_resolution.dart' as tx_res;
 
 /// Coordinates dashboard recomputation from the app service graph.
@@ -94,8 +94,7 @@ class DashboardRefreshCoordinator {
   }
 
   Future<List<Account>> _fetchAccounts() async {
-    final records = await accountService.fetchAccounts();
-    return records.map(_accountFromRecord).toList();
+    return accountService.fetchAccounts();
   }
 
   Future<List<Transaction>> _fetchTransactions() async {
@@ -109,23 +108,6 @@ class DashboardRefreshCoordinator {
         )
         .toList();
   }
-}
-
-Account _accountFromRecord(AccountRecord record) {
-  return Account(
-    id: record.id,
-    name: record.name,
-    type: _accountTypeFromDatabaseValue(record.type),
-    currentBalance: record.balance,
-  );
-}
-
-AccountType _accountTypeFromDatabaseValue(String value) {
-  return switch (value.trim().toLowerCase()) {
-    'savings' => AccountType.savings,
-    'credit_card' || 'creditcard' || 'credit card' => AccountType.creditCard,
-    _ => AccountType.checking,
-  };
 }
 
 Transaction _transactionFromRecord(

@@ -1,5 +1,5 @@
 import '../domain/budget_models.dart';
-import 'budget_service.dart';
+import '../data/budget_service.dart';
 
 class BudgetWorkflowService {
   BudgetWorkflowService({

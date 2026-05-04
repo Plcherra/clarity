@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/supabase/supabase_records.dart';
 import '../../transactions/domain/spend_categories.dart';
-import 'category_service.dart';
+import '../data/category_service.dart';
 
 final class CategoryReadModel extends ChangeNotifier {
   CategoryReadModel({required CategoryService categoryService})
