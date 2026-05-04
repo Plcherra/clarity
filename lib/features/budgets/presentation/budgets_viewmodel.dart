@@ -47,16 +47,16 @@ class BudgetCategoryListItemData {
   const BudgetCategoryListItemData({
     required this.canonical,
     required this.displayLabel,
-    required this.indicatorColor,
     required this.statusText,
-    required this.statusColor,
+    required this.hasBudget,
+    required this.isOverspent,
   });
 
   final String canonical;
   final String displayLabel;
-  final Color indicatorColor;
   final String statusText;
-  final Color statusColor;
+  final bool hasBudget;
+  final bool isOverspent;
 }
 
 class BudgetsViewModel {
@@ -300,7 +300,6 @@ class BudgetsViewModel {
     required BudgetPeriodType periodType,
     required String periodKey,
     required Map<String, double> spentByDisplay,
-    required ColorScheme colorScheme,
   }) async {
     final budgets = await _fetchBudgetsForPeriod(periodType, periodKey);
     final items = <BudgetCategoryListItemData>[];
@@ -311,26 +310,18 @@ class BudgetsViewModel {
           : null;
       final overspent = budget != null && spent > budget;
       final remaining = budget == null ? null : budget - spent;
-      final indicatorColor = budget == null
-          ? colorScheme.onSurface.withValues(alpha: 0.32)
-          : overspent
-          ? const Color(0xFFC41E3A)
-          : const Color(0xFF1B7A4C);
       final statusText = budget == null
           ? 'Spent ${formatMoney(spent)} · No budget'
           : overspent
           ? 'Spent ${formatMoney(spent)} · Over ${formatMoney(-remaining!)}'
           : 'Spent ${formatMoney(spent)} · Left ${formatMoney(remaining!)}';
-      final statusColor = overspent
-          ? const Color(0xFFC41E3A)
-          : colorScheme.onSurface.withValues(alpha: 0.58);
       items.add(
         BudgetCategoryListItemData(
           canonical: row.canonical,
           displayLabel: row.displayLabel,
-          indicatorColor: indicatorColor,
           statusText: statusText,
-          statusColor: statusColor,
+          hasBudget: budget != null,
+          isOverspent: overspent,
         ),
       );
     }

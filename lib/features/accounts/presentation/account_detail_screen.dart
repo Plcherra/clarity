@@ -10,7 +10,7 @@ import '../../transactions/data/csv_import_service.dart';
 import '../../dashboard/domain/dashboard_snapshot.dart';
 import '../../dashboard/presentation/financial_dashboard_view.dart';
 
-class AccountDetailScreen extends StatelessWidget {
+class AccountDetailScreen extends StatefulWidget {
   const AccountDetailScreen({
     super.key,
     required this.controller,
@@ -19,6 +19,50 @@ class AccountDetailScreen extends StatelessWidget {
 
   final AccountUiController controller;
   final String accountId;
+
+  @override
+  State<AccountDetailScreen> createState() => _AccountDetailScreenState();
+}
+
+class _AccountDetailScreenState extends State<AccountDetailScreen> {
+  late final _AccountDetailDataNotifier _dataNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataNotifier = _AccountDetailDataNotifier();
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant AccountDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.accountId != widget.accountId) {
+      _loadData();
+    }
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    _dataNotifier.setLoading();
+    try {
+      final accounts = await widget.controller.accounts;
+      if (!mounted) return;
+      _dataNotifier.setData(accounts);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
+  }
 
   String _batchLabel(CsvImportBatchSummary batch) {
     final utc = batch.importedAtUtc;
@@ -33,7 +77,9 @@ class AccountDetailScreen extends StatelessWidget {
   }
 
   Future<void> _deleteCsvUploadBatch(BuildContext context) async {
-    final batches = await controller.csvImportBatchesForAccount(accountId);
+    final batches = await widget.controller.csvImportBatchesForAccount(
+      widget.accountId,
+    );
     if (!context.mounted) return;
     if (batches.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -94,8 +140,8 @@ class AccountDetailScreen extends StatelessWidget {
     );
     if (confirm != true) return;
 
-    final deleted = await controller.deleteTransactionsForImportBatch(
-      accountId: accountId,
+    final deleted = await widget.controller.deleteTransactionsForImportBatch(
+      accountId: widget.accountId,
       importId: selected.importId,
     );
     if (!context.mounted) return;
@@ -133,7 +179,7 @@ class AccountDetailScreen extends StatelessWidget {
     );
     if (confirm != true) return;
 
-    final ok = await controller.deleteAccount(accountId);
+    final ok = await widget.controller.deleteAccount(widget.accountId);
     if (!context.mounted) return;
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -161,11 +207,13 @@ class AccountDetailScreen extends StatelessWidget {
       final file = result.files.single;
       final text = await readPickedFileContents(file);
       if (!context.mounted) return;
-      await controller.loadFromCsv(text, accountId: accountId);
+      await widget.controller.loadFromCsv(text, accountId: widget.accountId);
       if (!context.mounted) return;
-      if (await controller.needsImportAiAfterCsvUpload(accountId)) {
+      if (await widget.controller.needsImportAiAfterCsvUpload(
+        widget.accountId,
+      )) {
         if (!context.mounted) return;
-        if (!controller.importAiEngineConfigured) {
+        if (!widget.controller.importAiEngineConfigured) {
           if (!context.mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -176,7 +224,9 @@ class AccountDetailScreen extends StatelessWidget {
           );
         } else {
           unawaited(
-            controller.startBackgroundImportAiCategorization(accountId),
+            widget.controller.startBackgroundImportAiCategorization(
+              widget.accountId,
+            ),
           );
         }
       }
@@ -198,43 +248,74 @@ class AccountDetailScreen extends StatelessWidget {
   }
 
   @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: _dataNotifier,
       builder: (context, _) {
-        return FutureBuilder<List<Account>>(
-          future: controller.accounts,
-          builder: (context, snapshot) {
-            if (snapshot.hasError) {
-              return const Scaffold(
-                body: Center(child: Text('Could not load account.')),
-              );
-            }
-            final accounts = snapshot.data;
-            if (accounts == null) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-            final account = accounts
-                .where((a) => a.id == accountId)
-                .cast<Account?>()
-                .firstWhere((a) => a != null, orElse: () => null);
-            final title = account?.name ?? 'Account';
-            return FinancialDashboardView(
-              controller: controller.ui.dashboard,
-              scope: AccountDashboardScope(accountId),
-              showBackButton: true,
-              title: title,
-              buildSnapshot: (_, _) =>
-                  controller.buildSnapshotForAccount(accountId),
-              onUploadTransactions: () => _importCsvForThisAccount(context),
-              onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
-              onDeleteAccount: () => _deleteAccount(context, title),
+        final accounts = _dataNotifier.data;
+        if (accounts == null) {
+          if (_dataNotifier.error != null) {
+            return const Scaffold(
+              body: Center(child: Text('Could not load account.')),
             );
-          },
+          }
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final account = accounts
+            .where((a) => a.id == widget.accountId)
+            .cast<Account?>()
+            .firstWhere((a) => a != null, orElse: () => null);
+        final title = account?.name ?? 'Account';
+        return FinancialDashboardView(
+          controller: widget.controller.ui.dashboard,
+          scope: AccountDashboardScope(widget.accountId),
+          showBackButton: true,
+          title: title,
+          buildSnapshot: (_, _) =>
+              widget.controller.buildSnapshotForAccount(widget.accountId),
+          onUploadTransactions: () => _importCsvForThisAccount(context),
+          onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
+          onDeleteAccount: () => _deleteAccount(context, title),
         );
       },
     );
+  }
+}
+
+class _AccountDetailDataNotifier extends ChangeNotifier {
+  List<Account>? _data;
+  Object? _error;
+  var _loading = false;
+
+  List<Account>? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(List<Account> data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }

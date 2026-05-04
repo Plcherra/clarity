@@ -25,6 +25,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   final Map<String, FocusNode> _focusNodes = {};
 
   late final BudgetsViewModel _viewModel;
+  late final _BudgetsDataNotifier _dataNotifier;
 
   BudgetPeriodType _selectedType = BudgetPeriodType.monthly;
   String _selectedPeriodKey = '';
@@ -35,6 +36,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
   void initState() {
     super.initState();
     _viewModel = BudgetsViewModel(controller: widget.controller);
+    _dataNotifier = _BudgetsDataNotifier();
     _selectedType = _viewModel.initialPeriodType();
     _selectedPeriodKey = _viewModel.initialPeriodKey();
     final customRange = _viewModel.initialCustomRange(
@@ -43,10 +45,14 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     );
     _customStart = customRange.start;
     _customEnd = customRange.end;
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
   }
 
   @override
   void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
     for (final c in _controllers.values) {
       c.dispose();
     }
@@ -55,6 +61,10 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     }
     _viewModel.dispose();
     super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
   }
 
   void _schedulePruneOrphans(Set<String> keep) {
@@ -83,7 +93,6 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     required bool hasSelectedPeriod,
     required BudgetPeriodType periodType,
     required String periodKey,
-    required ColorScheme colorScheme,
   }) async {
     if (hasSelectedPeriod) {
       await _viewModel.syncControllersFromState(
@@ -106,10 +115,43 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       periodType: periodType,
       periodKey: periodKey,
       spentByDisplay: metrics.spentByDisplay,
-      colorScheme: colorScheme,
     );
 
     return _BudgetScreenData(metrics: metrics, categoryItems: categoryItems);
+  }
+
+  Future<void> _loadData() async {
+    final keys = _viewModel.periodKeys(_selectedType);
+    _selectedPeriodKey = _viewModel.normalizeSelectedPeriodKey(
+      periodType: _selectedType,
+      selectedPeriodKey: _selectedPeriodKey,
+      availableKeys: keys,
+    );
+    final hasSelectedPeriod = _selectedPeriodKey.trim().isNotEmpty;
+    final rows = _viewModel.sortedRows();
+    final keep = rows.map((r) => r.canonical).toSet();
+
+    _viewModel.ensureControllers(
+      canonicalKeys: keep,
+      controllers: _controllers,
+      focusNodes: _focusNodes,
+    );
+    _schedulePruneOrphans(keep);
+
+    _dataNotifier.setLoading();
+    try {
+      final data = await _loadScreenData(
+        rows: rows,
+        hasSelectedPeriod: hasSelectedPeriod,
+        periodType: _selectedType,
+        periodKey: _selectedPeriodKey,
+      );
+      if (!mounted) return;
+      _dataNotifier.setData(data);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
   }
 
   void _activatePeriod(BudgetPeriodType type, String key) {
@@ -178,6 +220,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       _customEnd = change.customEnd;
     });
     _activatePeriod(type, change.periodKey);
+    await _loadData();
   }
 
   Future<void> _pickMonthly() async {
@@ -190,6 +233,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
 
     setState(() => _selectedPeriodKey = picked);
     _activatePeriod(BudgetPeriodType.monthly, picked);
+    await _loadData();
   }
 
   Future<void> _pickWeeklyStartDate() async {
@@ -205,6 +249,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     final key = widget.controller.budgetWeekStartKey(picked);
     setState(() => _selectedPeriodKey = key);
     _activatePeriod(BudgetPeriodType.weekly, key);
+    await _loadData();
   }
 
   Future<void> _pickCustomDate({required bool start}) async {
@@ -235,6 +280,7 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
     });
     if (_customStart != null && _customEnd != null) {
       _activatePeriod(BudgetPeriodType.custom, _selectedPeriodKey);
+      await _loadData();
     }
   }
 
@@ -254,6 +300,8 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
       return false;
     }
     _viewModel.clearUnsavedChanges();
+    await _loadData();
+    if (!mounted) return false;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
@@ -334,20 +382,16 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-              child: FutureBuilder<_BudgetScreenData>(
-                future: _loadScreenData(
-                  rows: rows,
-                  hasSelectedPeriod: hasSelectedPeriod,
-                  periodType: _selectedType,
-                  periodKey: _selectedPeriodKey,
-                  colorScheme: cs,
-                ),
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return const Center(child: Text('Could not load budgets.'));
-                  }
-                  final data = snapshot.data;
+              child: ListenableBuilder(
+                listenable: _dataNotifier,
+                builder: (context, _) {
+                  final data = _dataNotifier.data;
                   if (data == null) {
+                    if (_dataNotifier.error != null) {
+                      return const Center(
+                        child: Text('Could not load budgets.'),
+                      );
+                    }
                     return const Center(child: CircularProgressIndicator());
                   }
                   final metrics = data.metrics;
@@ -466,6 +510,35 @@ class _BudgetsScreenState extends State<BudgetsScreen> {
         );
       },
     );
+  }
+}
+
+class _BudgetsDataNotifier extends ChangeNotifier {
+  _BudgetScreenData? _data;
+  Object? _error;
+  var _loading = false;
+
+  _BudgetScreenData? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(_BudgetScreenData data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }
 

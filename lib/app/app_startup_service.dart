@@ -4,6 +4,8 @@ import '../core/supabase/supabase_exceptions.dart';
 import '../features/accounts/application/account_service.dart';
 import '../features/auth/application/auth_service.dart';
 import '../features/budgets/application/budget_service.dart';
+import '../features/categories/application/category_read_model.dart';
+import '../features/categories/application/category_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 
 class AppStartupService {
@@ -11,6 +13,8 @@ class AppStartupService {
     required this.authService,
     required this.budgetService,
     required this.accountService,
+    required this.categoryService,
+    required this.categoryReadModel,
     required this.transactionService,
     required this.notifyDashboardAndBudgetsChanged,
     required this.notifyAccountsChanged,
@@ -20,6 +24,8 @@ class AppStartupService {
   final AuthService authService;
   final BudgetService budgetService;
   final AccountService accountService;
+  final CategoryService categoryService;
+  final CategoryReadModel categoryReadModel;
   final TransactionService transactionService;
   final void Function() notifyDashboardAndBudgetsChanged;
   final void Function() notifyAccountsChanged;
@@ -43,6 +49,11 @@ class AppStartupService {
     final budgetsLoaded = await _runIfAuthenticated(budgetService.fetchBudgets);
     if (budgetsLoaded) notifyDashboardAndBudgetsChanged();
 
+    final categoriesLoaded = await _runIfAuthenticated(
+      categoryReadModel.refresh,
+    );
+    if (categoriesLoaded) notifyTransactionDataChanged();
+
     final transactionsLoaded = await _runIfAuthenticated(
       transactionService.fetchTransactions,
     );
@@ -60,6 +71,16 @@ class AppStartupService {
       budgetService.watchBudgets,
       (_) => notifyDashboardAndBudgetsChanged(),
     );
+    try {
+      categoryReadModel.startWatching(
+        onChanged: () {
+          notifyDashboardAndBudgetsChanged();
+          notifyTransactionDataChanged();
+        },
+      );
+    } on SupabaseAuthRequiredException {
+      return;
+    }
     _listenIfAuthenticated(
       transactionService.watchTransactions,
       (_) => notifyTransactionDataChanged(),
@@ -70,6 +91,7 @@ class AppStartupService {
     _authSubscription ??= authService.authStateChanges.listen((_) async {
       if (authService.currentUser == null) {
         _stopSupabaseWatchers();
+        categoryReadModel.stopWatching();
         notifyAccountsChanged();
         notifyDashboardAndBudgetsChanged();
         notifyTransactionDataChanged();
@@ -112,5 +134,6 @@ class AppStartupService {
       unawaited(subscription.cancel());
     }
     _subscriptions.clear();
+    categoryReadModel.stopWatching();
   }
 }

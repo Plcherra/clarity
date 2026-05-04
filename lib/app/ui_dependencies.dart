@@ -7,15 +7,14 @@ import '../features/accounts/application/account_workflow_service.dart';
 import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/application/budget_workflow_service.dart';
 import '../features/budgets/domain/budget_models.dart';
-import '../features/categories/application/category_catalog_service.dart';
+import '../features/categories/application/category_read_model.dart';
+import '../features/categories/application/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/dashboard/domain/dashboard_queries.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
-import '../features/transactions/application/category_service.dart';
 import '../features/transactions/application/category_workflow_service.dart';
-import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_import_service.dart';
@@ -31,8 +30,7 @@ final class AppUiControllerBindings {
     required this.categoryService,
     required this.categoryWorkflowService,
     required this.transactionWorkflowService,
-    required this.categoryCatalogService,
-    required this.merchantService,
+    required this.categoryReadModel,
     required this.accountService,
     required this.budgetService,
     required this.budgetWorkflowService,
@@ -46,8 +44,7 @@ final class AppUiControllerBindings {
   final CategoryService categoryService;
   final CategoryWorkflowService categoryWorkflowService;
   final TransactionWorkflowService transactionWorkflowService;
-  final CategoryCatalogService categoryCatalogService;
-  final MerchantService merchantService;
+  final CategoryReadModel categoryReadModel;
   final AccountService accountService;
   final BudgetService budgetService;
   final BudgetWorkflowService budgetWorkflowService;
@@ -123,13 +120,30 @@ base class _UiController extends ChangeNotifier {
     final records = await bindings.transactionService.fetchTransactions(
       accountId: accountId,
     );
-    return records.map(_transactionFromRecord).toList();
+    return records
+        .map(
+          (record) => _transactionFromRecord(
+            record,
+            categoryNameForId: bindings.categoryReadModel.categoryNameForId,
+          ),
+        )
+        .toList();
   }
 
   Stream<List<Transaction>> watchTransactions({String? accountId}) {
     return bindings.transactionService
         .watchTransactions(accountId: accountId)
-        .map((records) => records.map(_transactionFromRecord).toList());
+        .map(
+          (records) => records
+              .map(
+                (record) => _transactionFromRecord(
+                  record,
+                  categoryNameForId:
+                      bindings.categoryReadModel.categoryNameForId,
+                ),
+              )
+              .toList(),
+        );
   }
 
   Future<Map<String, List<Transaction>>> fetchTransactionsByAccount() async {
@@ -137,7 +151,12 @@ base class _UiController extends ChangeNotifier {
     final grouped = <String, List<Transaction>>{};
     for (final record in records) {
       grouped.putIfAbsent(record.accountId, () => <Transaction>[]);
-      grouped[record.accountId]!.add(_transactionFromRecord(record));
+      grouped[record.accountId]!.add(
+        _transactionFromRecord(
+          record,
+          categoryNameForId: bindings.categoryReadModel.categoryNameForId,
+        ),
+      );
     }
     return {
       for (final entry in grouped.entries)
@@ -163,9 +182,9 @@ final class DashboardUiController extends _UiController {
       accounts: accounts,
       allTransactions: allTransactions,
       scopedTransactions: scopedTransactions,
-      categoryOverrides: bindings.categoryService.categoryOverrides,
+      categoryOverrides: const {},
       categoryDisplayRenamesLower:
-          bindings.categoryCatalogService.categoryDisplayRenames,
+          bindings.categoryReadModel.categoryDisplayRenames,
       scopedBalanceFromStatement: null,
     );
   }
@@ -193,9 +212,9 @@ final class DashboardUiController extends _UiController {
     return uncategorizedTransactionsForDashboardScope(
       scope,
       scopedTransactions: await transactionsForDashboardScope(scope),
-      categoryOverrides: bindings.categoryService.categoryOverrides,
+      categoryOverrides: const {},
       categoryDisplayRenamesLower:
-          bindings.categoryCatalogService.categoryDisplayRenames,
+          bindings.categoryReadModel.categoryDisplayRenames,
     );
   }
 
@@ -216,10 +235,10 @@ final class DashboardUiController extends _UiController {
       if (current == null) continue;
       final resolved = transaction_resolution.resolveTransaction(
         t: current,
-        categoryOverrides: bindings.categoryService.categoryOverrides,
+        categoryOverrides: const {},
         categoryDisplayRenamesLower:
-            bindings.categoryCatalogService.categoryDisplayRenames,
-        merchantCategoryMemory: bindings.merchantService.merchantCategoryMemory,
+            bindings.categoryReadModel.categoryDisplayRenames,
+        merchantCategoryMemory: const {},
         accountsById: accountsById,
         allTransactions: allTransactions,
       );
@@ -267,23 +286,22 @@ final class TransactionUiController extends _UiController {
   late final AppUiDependencies _ui;
 
   List<String> get allowedCategoryPickerLabels =>
-      bindings.categoryCatalogService.allowedCategoryPickerLabels;
+      bindings.categoryReadModel.allowedCategoryPickerLabels;
 
   List<String> get customCategories =>
-      bindings.categoryCatalogService.customCategories;
+      bindings.categoryReadModel.customCategories;
 
   Map<String, String> get categoryDisplayRenames =>
-      bindings.categoryCatalogService.categoryDisplayRenames;
+      bindings.categoryReadModel.categoryDisplayRenames;
 
   Set<String> get categoriesHiddenFromPicker =>
-      bindings.categoryCatalogService.categoriesHiddenFromPicker;
+      bindings.categoryReadModel.categoriesHiddenFromPicker;
 
   Map<String, String> get transactionCategoryAssignments => const {};
 
   Map<String, AiCategorySuggestion> get aiCategorySuggestions => const {};
 
-  Map<String, String> get merchantCategoryMemory =>
-      bindings.merchantService.merchantCategoryMemory;
+  Map<String, String> get merchantCategoryMemory => const {};
 
   Future<List<BankStatementLine>> uncategorizedQueue(DashboardScope scope) {
     return _ui.dashboard.uncategorizedQueue(scope);
@@ -438,13 +456,13 @@ final class BudgetUiController extends _UiController {
   DateTime get spendReference => bindings.dashboardService.spendReference;
 
   List<String> get customCategories =>
-      bindings.categoryCatalogService.customCategories;
+      bindings.categoryReadModel.customCategories;
 
   Map<String, String> get categoryDisplayRenames =>
-      bindings.categoryCatalogService.categoryDisplayRenames;
+      bindings.categoryReadModel.categoryDisplayRenames;
 
   Set<String> get categoriesHiddenFromPicker =>
-      bindings.categoryCatalogService.categoriesHiddenFromPicker;
+      bindings.categoryReadModel.categoriesHiddenFromPicker;
 
   String budgetWeekStartKey(DateTime date) {
     final monday = date.subtract(Duration(days: date.weekday - 1));
@@ -533,10 +551,9 @@ final class BudgetUiController extends _UiController {
       end: end,
       allTransactions: allTransactions,
       transactionsByAccount: transactionsByAccount,
-      categoryOverrides: bindings.categoryService.categoryOverrides,
-      categoryDisplayRenames:
-          bindings.categoryCatalogService.categoryDisplayRenames,
-      merchantCategoryMemory: bindings.merchantService.merchantCategoryMemory,
+      categoryOverrides: const {},
+      categoryDisplayRenames: bindings.categoryReadModel.categoryDisplayRenames,
+      merchantCategoryMemory: const {},
       accounts: accounts,
     );
   }
@@ -576,7 +593,10 @@ AccountType _accountTypeFromDatabaseValue(String value) {
   };
 }
 
-Transaction _transactionFromRecord(TransactionRecord record) {
+Transaction _transactionFromRecord(
+  TransactionRecord record, {
+  String? Function(String? id)? categoryNameForId,
+}) {
   final amount = switch (record.type.trim().toLowerCase()) {
     'expense' => -record.amount.abs(),
     'income' => record.amount.abs(),
@@ -587,7 +607,7 @@ Transaction _transactionFromRecord(TransactionRecord record) {
     description: record.description ?? record.merchant ?? '',
     amount: amount,
     accountId: record.accountId,
-    categoryId: record.categoryId,
+    categoryId: categoryNameForId?.call(record.categoryId),
     importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
     fingerprint: record.id,
     financialRole: record.type.trim().toLowerCase() == 'income'

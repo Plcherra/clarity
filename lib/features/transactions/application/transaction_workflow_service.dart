@@ -3,16 +3,13 @@ import 'dart:async';
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../accounts/application/account_service.dart';
-import '../../categories/application/category_catalog_service.dart';
 import '../../dashboard/application/dashboard_service.dart';
 import '../data/ai_categorization_service.dart' as data_ai;
 import '../data/csv_parser.dart';
 import '../domain/spend_categories.dart';
 import '../domain/transaction_fingerprint.dart';
 import 'ai_categorization_service.dart' as app_ai;
-import 'category_service.dart';
 import 'category_workflow_service.dart';
-import 'merchant_service.dart';
 import 'transaction_service.dart';
 
 typedef TransactionDashboardRecompute =
@@ -26,10 +23,7 @@ typedef TransactionDashboardRecompute =
 class TransactionWorkflowService {
   TransactionWorkflowService({
     required this.transactionService,
-    required this.categoryService,
-    required this.categoryCatalogService,
     required this.categoryWorkflowService,
-    required this.merchantService,
     required this.accountService,
     required this.dashboardService,
     required this.aiCategorizationService,
@@ -41,10 +35,7 @@ class TransactionWorkflowService {
   });
 
   final TransactionService transactionService;
-  final CategoryService categoryService;
-  final CategoryCatalogService categoryCatalogService;
   final CategoryWorkflowService categoryWorkflowService;
-  final MerchantService merchantService;
   final AccountService accountService;
   final DashboardService dashboardService;
   final app_ai.AiCategorizationApplicationService aiCategorizationService;

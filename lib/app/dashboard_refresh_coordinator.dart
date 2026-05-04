@@ -1,10 +1,8 @@
 import '../core/models/models.dart';
 import '../core/supabase/supabase_records.dart';
 import '../features/accounts/application/account_service.dart';
-import '../features/categories/application/category_catalog_service.dart';
+import '../features/categories/application/category_read_model.dart';
 import '../features/dashboard/application/dashboard_service.dart';
-import '../features/transactions/application/category_service.dart';
-import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/data/csv_parser.dart';
 import '../features/transactions/domain/transaction_resolution.dart' as tx_res;
@@ -15,18 +13,14 @@ class DashboardRefreshCoordinator {
     required this.dashboardService,
     required this.transactionService,
     required this.accountService,
-    required this.categoryService,
-    required this.categoryCatalogService,
-    required this.merchantService,
+    required this.categoryReadModel,
     required this.notifyTransactionDataChanged,
   });
 
   final DashboardService dashboardService;
   final TransactionService transactionService;
   final AccountService accountService;
-  final CategoryService categoryService;
-  final CategoryCatalogService categoryCatalogService;
-  final MerchantService merchantService;
+  final CategoryReadModel categoryReadModel;
   final void Function() notifyTransactionDataChanged;
 
   Future<List<Transaction>> refreshAllState() async {
@@ -72,8 +66,8 @@ class DashboardRefreshCoordinator {
       transactionsForCsvDiagnostics: transactionsForCsvDiagnostics,
       diag: diagnostics,
       accounts: accounts,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenames: categoryCatalogService.categoryDisplayRenames,
+      categoryOverrides: const {},
+      categoryDisplayRenames: categoryReadModel.categoryDisplayRenames,
       resolveTransactions: (txs, {required allTransactionsContext}) {
         return _resolveTransactions(
           txs,
@@ -91,10 +85,9 @@ class DashboardRefreshCoordinator {
   }) {
     return tx_res.resolveTransactions(
       txs,
-      categoryOverrides: categoryService.categoryOverrides,
-      categoryDisplayRenamesLower:
-          categoryCatalogService.categoryDisplayRenames,
-      merchantCategoryMemory: merchantService.merchantCategoryMemory,
+      categoryOverrides: const {},
+      categoryDisplayRenamesLower: categoryReadModel.categoryDisplayRenames,
+      merchantCategoryMemory: const {},
       accountsById: {for (final account in accounts) account.id: account},
       allTransactions: allTransactionsContext,
     );
@@ -107,7 +100,14 @@ class DashboardRefreshCoordinator {
 
   Future<List<Transaction>> _fetchTransactions() async {
     final records = await transactionService.fetchTransactions();
-    return records.map(_transactionFromRecord).toList();
+    return records
+        .map(
+          (record) => _transactionFromRecord(
+            record,
+            categoryNameForId: categoryReadModel.categoryNameForId,
+          ),
+        )
+        .toList();
   }
 }
 
@@ -128,7 +128,10 @@ AccountType _accountTypeFromDatabaseValue(String value) {
   };
 }
 
-Transaction _transactionFromRecord(TransactionRecord record) {
+Transaction _transactionFromRecord(
+  TransactionRecord record, {
+  String? Function(String? id)? categoryNameForId,
+}) {
   final amount = switch (record.type.trim().toLowerCase()) {
     'expense' => -record.amount.abs(),
     'income' => record.amount.abs(),
@@ -139,7 +142,7 @@ Transaction _transactionFromRecord(TransactionRecord record) {
     description: record.description ?? record.merchant ?? '',
     amount: amount,
     accountId: record.accountId,
-    categoryId: record.categoryId,
+    categoryId: categoryNameForId?.call(record.categoryId),
     importId: record.importId ?? (record.importedFromCsv ? 'csv' : null),
     fingerprint: record.id,
     financialRole: record.type.trim().toLowerCase() == 'income'

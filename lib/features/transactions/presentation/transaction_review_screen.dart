@@ -15,7 +15,7 @@ const double _kReviewScrollBottomPadding = 32;
 ///
 /// [scope] must match the dashboard that opened this screen ([GlobalDashboardScope]
 /// for Overview, [AccountDashboardScope] for an account).
-class TransactionReviewScreen extends StatelessWidget {
+class TransactionReviewScreen extends StatefulWidget {
   const TransactionReviewScreen({
     super.key,
     required this.controller,
@@ -26,79 +26,169 @@ class TransactionReviewScreen extends StatelessWidget {
   final DashboardScope scope;
 
   @override
+  State<TransactionReviewScreen> createState() =>
+      _TransactionReviewScreenState();
+}
+
+class _TransactionReviewScreenState extends State<TransactionReviewScreen> {
+  late final _TransactionReviewDataNotifier _dataNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataNotifier = _TransactionReviewDataNotifier();
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionReviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.scope != widget.scope) {
+      _loadData();
+    }
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    _dataNotifier.setLoading();
+    try {
+      final data = await widget.controller.uncategorizedQueue(widget.scope);
+      if (!mounted) return;
+      _dataNotifier.setData(data);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
     return ListenableBuilder(
-      listenable: controller,
+      listenable: _dataNotifier,
       builder: (context, _) {
-        return FutureBuilder<List<BankStatementLine>>(
-          future: controller.uncategorizedQueue(scope),
-          builder: (context, snapshot) {
-            final uncategorizedQueue = snapshot.data;
-            return Scaffold(
-              backgroundColor: const Color(0xFFF7F5F2),
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                title: Text(
-                  uncategorizedQueue == null || uncategorizedQueue.isEmpty
-                      ? 'Review'
-                      : '${uncategorizedQueue.length} left',
-                ),
-                leading: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: cs.onSurface.withValues(alpha: 0.55),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: Text(
-                      'Done',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: cs.primary,
-                      ),
-                    ),
-                  ),
-                ],
+        final uncategorizedQueue = _dataNotifier.data;
+        return Scaffold(
+          backgroundColor: const Color(0xFFF7F5F2),
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            title: Text(
+              uncategorizedQueue == null || uncategorizedQueue.isEmpty
+                  ? 'Review'
+                  : '${uncategorizedQueue.length} left',
+            ),
+            leading: IconButton(
+              icon: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: cs.onSurface.withValues(alpha: 0.55),
               ),
-              body: SafeArea(
-                child: switch (snapshot.connectionState) {
-                  ConnectionState.waiting => const Center(
-                    child: CircularProgressIndicator(),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: Text(
+                  'Done',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary,
                   ),
-                  _ when snapshot.hasError => Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(_kReviewHorizontalPadding),
-                      child: Text(
-                        'Could not load transactions.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyLarge,
-                      ),
-                    ),
-                  ),
-                  _ =>
-                    (uncategorizedQueue == null || uncategorizedQueue.isEmpty)
-                        ? _ReviewDoneEmptyState(theme: theme, colorScheme: cs)
-                        : _SingleUncategorizedReview(
-                            controller: controller,
-                            theme: theme,
-                            colorScheme: cs,
-                            line: uncategorizedQueue.first,
-                          ),
-                },
+                ),
               ),
-            );
-          },
+            ],
+          ),
+          body: SafeArea(
+            child: _buildBody(
+              theme: theme,
+              colorScheme: cs,
+              uncategorizedQueue: uncategorizedQueue,
+            ),
+          ),
         );
       },
     );
+  }
+
+  Widget _buildBody({
+    required ThemeData theme,
+    required ColorScheme colorScheme,
+    required List<BankStatementLine>? uncategorizedQueue,
+  }) {
+    if (uncategorizedQueue == null) {
+      if (_dataNotifier.error != null) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(_kReviewHorizontalPadding),
+            child: Text(
+              'Could not load transactions.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyLarge,
+            ),
+          ),
+        );
+      }
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (uncategorizedQueue.isEmpty) {
+      return _ReviewDoneEmptyState(theme: theme, colorScheme: colorScheme);
+    }
+
+    return _SingleUncategorizedReview(
+      controller: widget.controller,
+      theme: theme,
+      colorScheme: colorScheme,
+      line: uncategorizedQueue.first,
+    );
+  }
+}
+
+class _TransactionReviewDataNotifier extends ChangeNotifier {
+  List<BankStatementLine>? _data;
+  Object? _error;
+  var _loading = false;
+
+  List<BankStatementLine>? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(List<BankStatementLine> data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }
 

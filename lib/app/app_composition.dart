@@ -7,15 +7,14 @@ import '../features/auth/application/auth_controller.dart';
 import '../features/auth/application/auth_service.dart';
 import '../features/budgets/application/budget_service.dart';
 import '../features/budgets/application/budget_workflow_service.dart';
-import '../features/categories/application/category_catalog_service.dart';
+import '../features/categories/application/category_read_model.dart';
+import '../features/categories/application/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/profile/application/profile_controller.dart';
 import '../features/profile/application/profile_service.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
-import '../features/transactions/application/category_service.dart';
 import '../features/transactions/application/category_workflow_service.dart';
-import '../features/transactions/application/merchant_service.dart';
 import '../features/transactions/application/transaction_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_parser.dart';
@@ -39,12 +38,17 @@ final class AppComposition {
     supabaseService: supabaseService,
   );
 
+  // Supabase-backed table services. AppComposition no longer constructs
+  // local storage category, merchant-memory, or transaction override services.
   late final TransactionService transactionService =
       supabaseRepository.transactions;
-  final CategoryService categoryService = CategoryService();
-  final CategoryCatalogService categoryCatalogService =
-      CategoryCatalogService();
-  final MerchantService merchantService = MerchantService();
+  late final CategoryService categoryService = supabaseRepository.categories;
+
+  // Synchronous UI category state derived from the Supabase categories table.
+  // This preserves existing picker/controller APIs without SharedPreferences.
+  late final CategoryReadModel categoryReadModel = CategoryReadModel(
+    categoryService: categoryService,
+  );
   late final ProfileService profileService = supabaseRepository.profiles;
   late final BudgetService budgetService = supabaseRepository.budgets;
   late final AccountService accountService = supabaseRepository.accounts;
@@ -64,7 +68,11 @@ final class AppComposition {
   late final ProfileController profileController = ProfileController(
     profileService: profileService,
     authService: authService,
-    syncAfterProfileChanged: _syncAfterProfileChanged,
+    syncAfterProfileChanged: () async {
+      // No local profile or merchant-memory hydration remains after auth/profile
+      // changes; scoped UI controllers only need to refresh their Supabase data.
+      notifications.transactionDataChanged();
+    },
   );
 
   late final AppNotifications notifications = AppNotifications(ui: ui);
@@ -73,7 +81,6 @@ final class AppComposition {
       AccountWorkflowService(
         accountService: accountService,
         transactionService: transactionService,
-        categoryService: categoryService,
         refreshAllState: dashboardRefreshCoordinator.refreshAllState,
         notifyAccountsChanged: () => notifications.accountsChanged(),
       );
@@ -91,6 +98,8 @@ final class AppComposition {
     budgetService: budgetService,
     accountService: accountService,
     transactionService: transactionService,
+    categoryService: categoryService,
+    categoryReadModel: categoryReadModel,
     notifyDashboardAndBudgetsChanged: () =>
         notifications.dashboardAndBudgetsChanged(),
     notifyAccountsChanged: () => notifications.accountsChanged(),
@@ -102,9 +111,7 @@ final class AppComposition {
         dashboardService: dashboardService,
         transactionService: transactionService,
         accountService: accountService,
-        categoryService: categoryService,
-        categoryCatalogService: categoryCatalogService,
-        merchantService: merchantService,
+        categoryReadModel: categoryReadModel,
         notifyTransactionDataChanged: () =>
             notifications.transactionDataChanged(),
       );
@@ -112,9 +119,8 @@ final class AppComposition {
   late final CategoryWorkflowService categoryWorkflowService =
       CategoryWorkflowService(
         categoryService: categoryService,
-        categoryCatalogService: categoryCatalogService,
+        categoryReadModel: categoryReadModel,
         transactionService: transactionService,
-        merchantService: merchantService,
         accountService: accountService,
         profileService: profileService,
         refreshAllState: dashboardRefreshCoordinator.refreshAllState,
@@ -125,10 +131,7 @@ final class AppComposition {
   late final TransactionWorkflowService transactionWorkflowService =
       TransactionWorkflowService(
         transactionService: transactionService,
-        categoryService: categoryService,
-        categoryCatalogService: categoryCatalogService,
         categoryWorkflowService: categoryWorkflowService,
-        merchantService: merchantService,
         accountService: accountService,
         dashboardService: dashboardService,
         aiCategorizationService: aiCategorizationService,
@@ -149,8 +152,7 @@ final class AppComposition {
       categoryService: categoryService,
       categoryWorkflowService: categoryWorkflowService,
       transactionWorkflowService: transactionWorkflowService,
-      categoryCatalogService: categoryCatalogService,
-      merchantService: merchantService,
+      categoryReadModel: categoryReadModel,
       accountService: accountService,
       budgetService: budgetService,
       budgetWorkflowService: budgetWorkflowService,
@@ -164,17 +166,6 @@ final class AppComposition {
   late final OpenAiProxyClient openAiProxyClient = SupabaseOpenAiProxyClient(
     supabaseService: supabaseService,
   );
-
-  Future<void> _syncAfterProfileChanged() async {
-    await merchantService.hydrateMerchantCategoryMemory(
-      _userNamespaceForMerchantMemory(),
-    );
-    notifications.transactionDataChanged();
-  }
-
-  String _userNamespaceForMerchantMemory() {
-    return authController.currentUser?.id ?? 'signed-out';
-  }
 
   void _syncDashboardAfterTransactionWorkflow({
     required List<Transaction> activeAccountTransactions,
@@ -192,6 +183,7 @@ final class AppComposition {
 
   void dispose() {
     startupService.dispose();
+    categoryReadModel.dispose();
     ui.dispose();
     authController.dispose();
     profileController.dispose();

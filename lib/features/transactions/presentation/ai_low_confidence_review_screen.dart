@@ -22,15 +22,55 @@ class AiLowConfidenceReviewScreen extends StatefulWidget {
 
 class _AiLowConfidenceReviewScreenState
     extends State<AiLowConfidenceReviewScreen> {
+  late final _AiLowConfidenceReviewDataNotifier _dataNotifier;
   late Map<String, String?> _choice;
 
   @override
   void initState() {
     super.initState();
+    _dataNotifier = _AiLowConfidenceReviewDataNotifier();
     _choice = {};
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant AiLowConfidenceReviewScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.autoApplyThreshold != widget.autoApplyThreshold) {
+      _loadData();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
+    super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
   }
 
   List<String> get _allowed => widget.controller.allowedCategoryPickerLabels;
+
+  Future<void> _loadData() async {
+    _dataNotifier.setLoading();
+    try {
+      final items = await _loadItems();
+      if (!mounted) return;
+      _dataNotifier.setData(items);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
+  }
 
   Future<List<Transaction>> _loadItems() async {
     final unc = await widget.controller.uncategorizedImportedRowsGlobal();
@@ -80,11 +120,13 @@ class _AiLowConfidenceReviewScreenState
                 label: 'Undo',
                 onPressed: () async {
                   await widget.controller.undoCategoryApplyBatch(backfillBatch);
+                  if (!mounted) return;
+                  _loadData();
                 },
               ),
       ),
     );
-    setState(() {});
+    _loadData();
   }
 
   @override
@@ -109,7 +151,7 @@ class _AiLowConfidenceReviewScreenState
                   ),
                 ),
               );
-              setState(() {});
+              _loadData();
             },
             icon: Icon(
               Icons.undo_rounded,
@@ -118,14 +160,14 @@ class _AiLowConfidenceReviewScreenState
           ),
         ],
       ),
-      body: FutureBuilder<List<Transaction>>(
-        future: _loadItems(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return const Center(child: Text('Could not load suggestions.'));
-          }
-          final items = snapshot.data;
+      body: ListenableBuilder(
+        listenable: _dataNotifier,
+        builder: (context, _) {
+          final items = _dataNotifier.data;
           if (items == null) {
+            if (_dataNotifier.error != null) {
+              return const Center(child: Text('Could not load suggestions.'));
+            }
             return const Center(child: CircularProgressIndicator());
           }
           if (items.isEmpty) {
@@ -203,10 +245,10 @@ class _AiLowConfidenceReviewScreenState
           );
         },
       ),
-      floatingActionButton: FutureBuilder<List<Transaction>>(
-        future: _loadItems(),
-        builder: (context, snapshot) {
-          final items = snapshot.data;
+      floatingActionButton: ListenableBuilder(
+        listenable: _dataNotifier,
+        builder: (context, _) {
+          final items = _dataNotifier.data;
           if (items == null || items.isEmpty) return const SizedBox();
           return FloatingActionButton.extended(
             onPressed: _save,
@@ -224,5 +266,34 @@ class _AiLowConfidenceReviewScreenState
       if (a == selected) return selected;
     }
     return null;
+  }
+}
+
+class _AiLowConfidenceReviewDataNotifier extends ChangeNotifier {
+  List<Transaction>? _data;
+  Object? _error;
+  var _loading = false;
+
+  List<Transaction>? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(List<Transaction> data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }

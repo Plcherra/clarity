@@ -90,13 +90,21 @@ class BudgetCategoryList extends StatelessWidget {
                       if (controller == null || focusNode == null) {
                         return const SizedBox.shrink();
                       }
+                      final indicatorColor = !item.hasBudget
+                          ? cs.onSurface.withValues(alpha: 0.32)
+                          : item.isOverspent
+                          ? const Color(0xFFC41E3A)
+                          : const Color(0xFF1B7A4C);
+                      final statusColor = item.isOverspent
+                          ? const Color(0xFFC41E3A)
+                          : cs.onSurface.withValues(alpha: 0.58);
                       return BudgetCategoryRowTile(
                         displayLabel: item.displayLabel,
                         controller: controller,
                         focusNode: focusNode,
-                        indicatorColor: item.indicatorColor,
+                        indicatorColor: indicatorColor,
                         statusText: item.statusText,
-                        statusColor: item.statusColor,
+                        statusColor: statusColor,
                         onValueChanged: onCategoryValueChanged,
                       );
                     },

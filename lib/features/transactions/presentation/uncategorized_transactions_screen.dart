@@ -7,7 +7,7 @@ import '../../../core/formatting/formatting.dart';
 import 'widgets/transaction_category_dropdown.dart';
 
 /// All statement rows whose effective category is Uncategorized, newest first.
-class UncategorizedTransactionsScreen extends StatelessWidget {
+class UncategorizedTransactionsScreen extends StatefulWidget {
   const UncategorizedTransactionsScreen({super.key, required this.controller});
 
   final TransactionUiController controller;
@@ -21,100 +21,169 @@ class UncategorizedTransactionsScreen extends StatelessWidget {
   }
 
   @override
+  State<UncategorizedTransactionsScreen> createState() =>
+      _UncategorizedTransactionsScreenState();
+}
+
+class _UncategorizedTransactionsScreenState
+    extends State<UncategorizedTransactionsScreen> {
+  late final _UncategorizedTransactionsDataNotifier _dataNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataNotifier = _UncategorizedTransactionsDataNotifier();
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant UncategorizedTransactionsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+      _loadData();
+    }
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    _dataNotifier.setLoading();
+    try {
+      final lines = await UncategorizedTransactionsScreen.uncategorizedLines(
+        widget.controller,
+      );
+      if (!mounted) return;
+      _dataNotifier.setData(lines);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return ListenableBuilder(
-      listenable: controller,
-      builder: (context, _) {
-        return FutureBuilder<List<BankStatementLine>>(
-          future: uncategorizedLines(controller),
-          builder: (context, snapshot) {
-            final lines = snapshot.data;
-            return Scaffold(
-              backgroundColor: const Color(0xFFF7F5F2),
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                scrolledUnderElevation: 0,
-                title: const Text('Uncategorized'),
-                leading: IconButton(
-                  icon: Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    color: cs.onSurface.withValues(alpha: 0.55),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7F5F2),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: const Text('Uncategorized'),
+        leading: IconButton(
+          icon: Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: cs.onSurface.withValues(alpha: 0.55),
+          ),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      body: ListenableBuilder(
+        listenable: _dataNotifier,
+        builder: (context, _) {
+          final lines = _dataNotifier.data;
+          if (lines == null) {
+            if (_dataNotifier.error != null) {
+              return const Center(child: Text('Could not load transactions.'));
+            }
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (lines.isEmpty) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Nothing left to categorize.',
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.45),
                   ),
-                  onPressed: () => Navigator.of(context).pop(),
                 ),
               ),
-              body: switch (snapshot.connectionState) {
-                ConnectionState.waiting => const Center(
-                  child: CircularProgressIndicator(),
-                ),
-                _ when snapshot.hasError => const Center(
-                  child: Text('Could not load transactions.'),
-                ),
-                _ =>
-                  (lines == null || lines.isEmpty)
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child: Text(
-                              'Nothing left to categorize.',
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.bodyLarge?.copyWith(
-                                color: cs.onSurface.withValues(alpha: 0.45),
-                              ),
-                            ),
-                          ),
-                        )
-                      : ListView(
-                          padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                          children: [
-                            Text(
-                              '${lines.length} transaction${lines.length == 1 ? '' : 's'}',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                letterSpacing: 0.8,
-                                color: cs.onSurface.withValues(alpha: 0.45),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: cs.surface,
-                                borderRadius: BorderRadius.circular(22),
-                                border: Border.all(
-                                  color: const Color(0xFFE4E0D8),
-                                ),
-                              ),
-                              child: Column(
-                                children: [
-                                  for (var i = 0; i < lines.length; i++) ...[
-                                    if (i > 0)
-                                      Divider(
-                                        height: 1,
-                                        thickness: 1,
-                                        color: cs.outlineVariant.withValues(
-                                          alpha: 0.35,
-                                        ),
-                                      ),
-                                    _LineTile(
-                                      line: lines[i],
-                                      controller: controller,
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-              },
             );
-          },
-        );
-      },
+          }
+
+          return ListView(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            children: [
+              Text(
+                '${lines.length} transaction${lines.length == 1 ? '' : 's'}',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  letterSpacing: 0.8,
+                  color: cs.onSurface.withValues(alpha: 0.45),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: const Color(0xFFE4E0D8)),
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < lines.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          color: cs.outlineVariant.withValues(alpha: 0.35),
+                        ),
+                      _LineTile(line: lines[i], controller: widget.controller),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     );
+  }
+}
+
+class _UncategorizedTransactionsDataNotifier extends ChangeNotifier {
+  List<BankStatementLine>? _data;
+  Object? _error;
+  var _loading = false;
+
+  List<BankStatementLine>? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(List<BankStatementLine> data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }
 

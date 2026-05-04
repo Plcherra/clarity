@@ -59,18 +59,62 @@ class FinancialDashboardView extends StatefulWidget {
 }
 
 class _FinancialDashboardViewState extends State<FinancialDashboardView> {
-  Future<_FinancialDashboardData> _loadDashboardData(
-    DashboardUiController controller,
-    DashboardScope scope,
-  ) async {
-    final snap = await widget.buildSnapshot(controller, scope);
-    final budgetPerformance = await controller.budgetPerformanceForScope(scope);
-    final uncategorizedQueue = await controller.uncategorizedQueue(scope);
-    return _FinancialDashboardData(
-      snapshot: snap,
-      budgetPerformance: budgetPerformance,
-      uncategorizedQueue: uncategorizedQueue,
-    );
+  late final _DashboardDataNotifier _dataNotifier;
+
+  @override
+  void initState() {
+    super.initState();
+    _dataNotifier = _DashboardDataNotifier();
+    widget.controller.addListener(_handleControllerChanged);
+    _loadData();
+  }
+
+  @override
+  void didUpdateWidget(covariant FinancialDashboardView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+    if (oldWidget.controller != widget.controller ||
+        oldWidget.scope != widget.scope ||
+        oldWidget.buildSnapshot != widget.buildSnapshot) {
+      _loadData();
+    }
+  }
+
+  void _handleControllerChanged() {
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    _dataNotifier.setLoading();
+    try {
+      final snap = await widget.buildSnapshot(widget.controller, widget.scope);
+      final budgetPerformance = await widget.controller
+          .budgetPerformanceForScope(widget.scope);
+      final uncategorizedQueue = await widget.controller.uncategorizedQueue(
+        widget.scope,
+      );
+      if (!mounted) return;
+      _dataNotifier.setData(
+        _FinancialDashboardData(
+          snapshot: snap,
+          budgetPerformance: budgetPerformance,
+          uncategorizedQueue: uncategorizedQueue,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _dataNotifier.setError(error);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _dataNotifier.dispose();
+    super.dispose();
   }
 
   @override
@@ -78,74 +122,95 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
 
-    return ListenableBuilder(
-      listenable: widget.controller,
-      builder: (context, _) {
-        final controller = widget.controller;
-        final scope = widget.scope;
-
-        return Scaffold(
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            leading: widget.showBackButton
-                ? IconButton(
-                    icon: Icon(
-                      Icons.arrow_back_ios_new_rounded,
-                      color: cs.onSurface.withValues(alpha: 0.55),
-                    ),
-                    onPressed: () => Navigator.of(context).pop(),
-                  )
-                : null,
-            actions: [
-              if (widget.onDeleteCsvImportBatch != null)
-                IconButton(
-                  tooltip: 'Delete CSV upload',
-                  icon: const Icon(Icons.playlist_remove_rounded),
-                  color: Colors.red.shade500,
-                  onPressed: widget.onDeleteCsvImportBatch,
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        leading: widget.showBackButton
+            ? IconButton(
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: cs.onSurface.withValues(alpha: 0.55),
                 ),
-              if (widget.onDeleteAccount != null)
-                IconButton(
-                  tooltip: 'Delete account',
-                  icon: const Icon(Icons.delete_forever_rounded),
-                  color: Colors.red.shade700,
-                  onPressed: widget.onDeleteAccount,
-                ),
-            ],
-          ),
-          body: FutureBuilder<_FinancialDashboardData>(
-            future: _loadDashboardData(controller, scope),
-            builder: (context, snapshot) {
-              if (snapshot.hasError) {
-                return _DashboardLoadMessage(message: '${snapshot.error}');
-              }
-              final data = snapshot.data;
-              if (data == null) {
-                return const _DashboardLoadingBody();
-              }
-              final scrollBody = _DashboardScrollBody(
-                title: widget.title,
-                controller: controller,
-                scope: scope,
-                snapshot: data.snapshot,
-                budgetPerformance: data.budgetPerformance,
-                attentionCount: data.uncategorizedQueue.length,
-                onUploadTransactions: widget.onUploadTransactions,
-              );
-              return widget.showBackButton
-                  ? ImportAiStatusHost(
-                      controller: controller.ui.importAiStatus,
-                      child: scrollBody,
-                    )
-                  : scrollBody;
-            },
-          ),
-        );
-      },
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
+        actions: [
+          if (widget.onDeleteCsvImportBatch != null)
+            IconButton(
+              tooltip: 'Delete CSV upload',
+              icon: const Icon(Icons.playlist_remove_rounded),
+              color: Colors.red.shade500,
+              onPressed: widget.onDeleteCsvImportBatch,
+            ),
+          if (widget.onDeleteAccount != null)
+            IconButton(
+              tooltip: 'Delete account',
+              icon: const Icon(Icons.delete_forever_rounded),
+              color: Colors.red.shade700,
+              onPressed: widget.onDeleteAccount,
+            ),
+        ],
+      ),
+      body: ListenableBuilder(
+        listenable: _dataNotifier,
+        builder: (context, _) {
+          final data = _dataNotifier.data;
+          if (data == null) {
+            if (_dataNotifier.error != null) {
+              return _DashboardLoadMessage(message: '${_dataNotifier.error}');
+            }
+            return const _DashboardLoadingBody();
+          }
+          final scrollBody = _DashboardScrollBody(
+            title: widget.title,
+            controller: widget.controller,
+            scope: widget.scope,
+            snapshot: data.snapshot,
+            budgetPerformance: data.budgetPerformance,
+            attentionCount: data.uncategorizedQueue.length,
+            onUploadTransactions: widget.onUploadTransactions,
+          );
+          return widget.showBackButton
+              ? ImportAiStatusHost(
+                  controller: widget.controller.ui.importAiStatus,
+                  child: scrollBody,
+                )
+              : scrollBody;
+        },
+      ),
     );
+  }
+}
+
+class _DashboardDataNotifier extends ChangeNotifier {
+  _FinancialDashboardData? _data;
+  Object? _error;
+  var _loading = false;
+
+  _FinancialDashboardData? get data => _data;
+  Object? get error => _error;
+  bool get loading => _loading;
+
+  void setLoading() {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+  }
+
+  void setData(_FinancialDashboardData data) {
+    _data = data;
+    _error = null;
+    _loading = false;
+    notifyListeners();
+  }
+
+  void setError(Object error) {
+    _error = error;
+    _loading = false;
+    notifyListeners();
   }
 }
 
