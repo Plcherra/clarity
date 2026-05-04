@@ -26,18 +26,6 @@ class CategoryWorkflowService {
   final Future<void> Function() refreshAllState;
   final void Function() notifyTransactionDataChanged;
 
-  List<AiAppliedCategoryChange> applyCategoriesWithMerchantLearning(
-    Map<String, String> keyToCanonicalCategory,
-  ) {
-    return const [];
-  }
-
-  Future<int> undoCategoryApplyBatch(
-    List<AiAppliedCategoryChange> batch,
-  ) async {
-    return 0;
-  }
-
   Future<void> setCategoryOverride(
     Transaction transaction,
     String category,

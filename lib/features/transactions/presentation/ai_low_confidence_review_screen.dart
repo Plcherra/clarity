@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../app/ui_dependencies.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
+import '../data/ai_categorization_service.dart';
 import '../domain/spend_categories.dart';
 
 class AiLowConfidenceReviewScreen extends StatefulWidget {
@@ -22,12 +23,14 @@ class AiLowConfidenceReviewScreen extends StatefulWidget {
 
 class _AiLowConfidenceReviewScreenState
     extends State<AiLowConfidenceReviewScreen> {
+  late final AICategorizationService _service;
   late final _AiLowConfidenceReviewDataNotifier _dataNotifier;
   late Map<String, String?> _choice;
 
   @override
   void initState() {
     super.initState();
+    _service = AICategorizationService();
     _dataNotifier = _AiLowConfidenceReviewDataNotifier();
     _choice = {};
     widget.controller.addListener(_handleControllerChanged);
@@ -50,6 +53,7 @@ class _AiLowConfidenceReviewScreenState
   @override
   void dispose() {
     widget.controller.removeListener(_handleControllerChanged);
+    _service.close();
     _dataNotifier.dispose();
     super.dispose();
   }
@@ -74,25 +78,27 @@ class _AiLowConfidenceReviewScreenState
 
   Future<List<Transaction>> _loadItems() async {
     final unc = await widget.controller.uncategorizedImportedRowsGlobal();
+    if (unc.isEmpty) return const [];
+    final suggestions = await _service.suggestCategories(
+      transactions: unc,
+      allowedCategoryIds: _allowed,
+    );
     final out = <Transaction>[];
     for (final t in unc) {
       final k = transactionCategoryKey(t);
       final already = widget.controller.transactionCategoryAssignments[k]
           ?.trim();
       if (already != null && already.isNotEmpty) continue;
-      final s = widget.controller.aiCategorySuggestions[k];
-      if (s == null) continue;
-      final cat = s.suggestedCanonical?.trim();
+      final cat = suggestions[k]?.trim();
       if (cat == null || cat.isEmpty) continue;
       if (!_allowed.contains(cat)) continue;
-      if (s.confidence >= widget.autoApplyThreshold) continue;
       out.add(t);
       _choice.putIfAbsent(k, () => cat);
     }
     return out;
   }
 
-  void _save() {
+  Future<void> _save() async {
     final toSave = <String, String>{};
     for (final e in _choice.entries) {
       final k = e.key.trim();
@@ -102,28 +108,23 @@ class _AiLowConfidenceReviewScreenState
       toSave[k] = v;
     }
     if (toSave.isEmpty) return;
-    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
-      toSave,
-    );
+    final transactions = _dataNotifier.data ?? const <Transaction>[];
+    var saved = 0;
+    for (final transaction in transactions) {
+      final key = transactionCategoryKey(transaction);
+      final category = toSave[key];
+      if (category == null || category.trim().isEmpty) continue;
+      await widget.controller.setCategoryOverride(transaction, category);
+      saved += 1;
+    }
     if (!mounted) return;
     final snack = ScaffoldMessenger.of(context);
     snack.clearSnackBars();
     snack.showSnackBar(
       SnackBar(
         content: Text(
-          'Saved ${toSave.length} categor${toSave.length == 1 ? 'y' : 'ies'}. '
-          'Applied to similar merchants too.',
+          saved == 1 ? 'Saved 1 category.' : 'Saved $saved categories.',
         ),
-        action: backfillBatch.isEmpty
-            ? null
-            : SnackBarAction(
-                label: 'Undo',
-                onPressed: () async {
-                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
-                  if (!mounted) return;
-                  _loadData();
-                },
-              ),
       ),
     );
     _loadData();
@@ -134,32 +135,7 @@ class _AiLowConfidenceReviewScreenState
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI review'),
-        actions: [
-          IconButton(
-            tooltip: 'Undo last AI auto-apply',
-            onPressed: () async {
-              final undone = await widget.controller.undoLastAiAutoApply();
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    undone == 0
-                        ? 'Nothing to undo.'
-                        : 'Undid $undone AI categor${undone == 1 ? 'y' : 'ies'}.',
-                  ),
-                ),
-              );
-              _loadData();
-            },
-            icon: Icon(
-              Icons.undo_rounded,
-              color: cs.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('AI review')),
       body: ListenableBuilder(
         listenable: _dataNotifier,
         builder: (context, _) {
@@ -191,8 +167,6 @@ class _AiLowConfidenceReviewScreenState
             itemBuilder: (context, i) {
               final t = items[i];
               final k = transactionCategoryKey(t);
-              final s = widget.controller.aiCategorySuggestions[k]!;
-              final confPct = (s.confidence * 100).round();
               final selected = _choice[k];
               return Material(
                 color: cs.surfaceContainerLowest,
@@ -213,7 +187,7 @@ class _AiLowConfidenceReviewScreenState
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${formatShortDate(t.date)} · ${formatMoney(t.amount)} · $confPct% confident',
+                        '${formatShortDate(t.date)} · ${formatMoney(t.amount)}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: cs.onSurface.withValues(alpha: 0.55),
                         ),

@@ -293,7 +293,7 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
     });
   }
 
-  void _saveAllAiSuggestions() {
+  Future<void> _saveAllAiSuggestions() async {
     final toSave = <String, String>{};
     for (final t in widget.transactions) {
       final k = transactionCategoryKey(t);
@@ -313,33 +313,27 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       );
       return;
     }
-    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
-      toSave,
-    );
+    var saved = 0;
+    for (final transaction in widget.transactions) {
+      final category = toSave[transactionCategoryKey(transaction)];
+      if (category == null || category.trim().isEmpty) continue;
+      await widget.controller.setCategoryOverride(transaction, category);
+      saved += 1;
+    }
     if (!mounted) return;
-    final n = toSave.length;
     final snack = ScaffoldMessenger.of(context);
     snack.clearSnackBars();
     snack.showSnackBar(
       SnackBar(
         content: Text(
-          'Saved $n AI ${n == 1 ? 'category' : 'categories'}. '
-          'Applied to similar merchants too.',
+          saved == 1 ? 'Saved 1 category.' : 'Saved $saved categories.',
         ),
-        action: backfillBatch.isEmpty
-            ? null
-            : SnackBarAction(
-                label: 'Undo',
-                onPressed: () async {
-                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
-                },
-              ),
       ),
     );
     widget.onSkip();
   }
 
-  void _saveFromChoices() {
+  Future<void> _saveFromChoices() async {
     final toSave = <String, String>{};
     for (final t in widget.transactions) {
       final k = transactionCategoryKey(t);
@@ -359,27 +353,21 @@ class _AiCategoryReviewScreenState extends State<AiCategoryReviewScreen> {
       );
       return;
     }
-    final backfillBatch = widget.controller.applyCategoriesWithMerchantLearning(
-      toSave,
-    );
+    var saved = 0;
+    for (final transaction in widget.transactions) {
+      final category = toSave[transactionCategoryKey(transaction)];
+      if (category == null || category.trim().isEmpty) continue;
+      await widget.controller.setCategoryOverride(transaction, category);
+      saved += 1;
+    }
     if (!mounted) return;
-    final n = toSave.length;
     final snack = ScaffoldMessenger.of(context);
     snack.clearSnackBars();
     snack.showSnackBar(
       SnackBar(
         content: Text(
-          'Saved $n ${n == 1 ? 'category' : 'categories'}. '
-          'Applied to similar merchants too.',
+          saved == 1 ? 'Saved 1 category.' : 'Saved $saved categories.',
         ),
-        action: backfillBatch.isEmpty
-            ? null
-            : SnackBarAction(
-                label: 'Undo',
-                onPressed: () async {
-                  await widget.controller.undoCategoryApplyBatch(backfillBatch);
-                },
-              ),
       ),
     );
     widget.onSkip();

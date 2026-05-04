@@ -210,9 +210,9 @@ Done notes:
   services.
 - The broader codebase is not fully clean yet. Old local-storage-backed helpers
   still exist outside the strict table-service layer:
-  `CategoryCatalogService`, AI suggestion storage, merchant memory storage,
-  old transaction repository/storage, old budget repository/storage, old
-  account/profile storage, and the rules wipe migration helper.
+  `CategoryCatalogService`, merchant memory storage, old transaction
+  repository/storage, old budget repository/storage, old account/profile
+  storage, and the rules wipe migration helper.
 - Leave the global no-local-storage checkbox open until those legacy helpers
   are removed or replaced in later phases.
 
@@ -251,17 +251,13 @@ Done notes:
   files and the account, budget, transaction, and category workflow services.
 - Keep the in-memory dependency checkbox open. The app controller layer still
   uses old local-first helpers: `CategoryCatalogService`, the old
-  transaction/category override service, `MerchantService`, and AI suggestion
-  storage.
+  transaction/category override service, and `MerchantService`.
 - `AppComposition` still wires the old transaction category service instead of
   the Supabase `features/categories/application/CategoryService`. That is the
   largest remaining mismatch in this layer.
 - Remaining placeholder methods that need real Supabase redesign:
   `TransactionWorkflowService.deleteTransactionsForImportBatch`,
-  `needsImportAiAfterCsvUpload`, `startBackgroundImportAiCategorization`,
-  `autoCategorizeGlobalUncategorized`, `undoLastAiAutoApply`,
-  `CategoryWorkflowService.applyCategoriesWithMerchantLearning`,
-  `undoCategoryApplyBatch`, and
+  `needsImportAiAfterCsvUpload`, `startBackgroundImportAiCategorization`, and
   `AccountUiController.csvImportBatchesForAccount`.
 - Import batch support cannot be fully restored with the current transactions
   schema because transactions only store `imported_from_csv`, not an import
@@ -462,9 +458,10 @@ Done notes:
   call-openai`, `supabase secrets set OPENAI_API_KEY=...`, and
   `deno check supabase/functions/call-openai/index.ts`.
 - Known temporary gaps are documented: local compatibility helpers remain for
-  category catalog/merchant memory/AI suggestions, AI after import is disabled
-  until Supabase-backed category assignments are complete, and repeated
-  `FutureBuilder` fetches should later move to scoped stream/viewmodel state.
+  category catalog/merchant memory, AI categorization uses the Supabase Edge
+  Function and applies selected categories through Supabase-backed
+  transaction/category services, and repeated `FutureBuilder` fetches should
+  later move to scoped stream/viewmodel state.
 
 ## Phase 12 - Final Verification
 
@@ -508,6 +505,6 @@ Done notes:
   `lib/core/supabase/supabase_service.dart`, which is the intended boundary.
 - The local app data search still finds known legacy compatibility code outside
   the strict Supabase table-service layer: old storage helpers, transaction
-  repository helpers, category catalog storage, merchant memory, and AI
-  suggestion storage. This matches the open Phase 5/6 cleanup notes and should
-  be handled in the next dedicated local-data removal pass.
+  repository helpers, category catalog storage, and merchant memory. This
+  matches the open Phase 5/6 cleanup notes and should be handled in the next
+  dedicated local-data removal pass.

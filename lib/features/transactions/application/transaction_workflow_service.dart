@@ -4,7 +4,6 @@ import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../accounts/application/account_service.dart';
 import '../../dashboard/application/dashboard_service.dart';
-import '../data/ai_categorization_service.dart' as data_ai;
 import '../data/csv_parser.dart';
 import '../domain/spend_categories.dart';
 import '../domain/transaction_fingerprint.dart';
@@ -161,18 +160,6 @@ class TransactionWorkflowService {
     aiCategorizationService.importAiSnackMessage =
         'AI categorization after import is temporarily disabled until category assignments are moved to Supabase.';
     notifyImportAiStatusChanged();
-  }
-
-  Future<({int applied, int queuedForReview})>
-  autoCategorizeGlobalUncategorized({
-    required data_ai.AICategorizationService service,
-    double autoApplyConfidenceThreshold = 0.90,
-  }) async {
-    return (applied: 0, queuedForReview: 0);
-  }
-
-  Future<int> undoLastAiAutoApply() async {
-    return 0;
   }
 
   Future<TransactionRecord> _createTransactionFromModel(

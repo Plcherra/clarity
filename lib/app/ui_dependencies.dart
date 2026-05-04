@@ -299,8 +299,6 @@ final class TransactionUiController extends _UiController {
 
   Map<String, String> get transactionCategoryAssignments => const {};
 
-  Map<String, AiCategorySuggestion> get aiCategorySuggestions => const {};
-
   Map<String, String> get merchantCategoryMemory => const {};
 
   Future<List<BankStatementLine>> uncategorizedQueue(DashboardScope scope) {
@@ -317,22 +315,6 @@ final class TransactionUiController extends _UiController {
   ) async {
     final transactions = await fetchTransactions(accountId: accountId);
     return transactions.where(_isUncategorizedImportedTransaction).toList();
-  }
-
-  List<AiAppliedCategoryChange> applyCategoriesWithMerchantLearning(
-    Map<String, String> keyToCanonicalCategory,
-  ) {
-    return bindings.categoryWorkflowService.applyCategoriesWithMerchantLearning(
-      keyToCanonicalCategory,
-    );
-  }
-
-  Future<int> undoCategoryApplyBatch(List<AiAppliedCategoryChange> batch) {
-    return bindings.categoryWorkflowService.undoCategoryApplyBatch(batch);
-  }
-
-  Future<int> undoLastAiAutoApply() {
-    return bindings.transactionWorkflowService.undoLastAiAutoApply();
   }
 
   Future<void> setCategoryOverride(Transaction transaction, String category) {

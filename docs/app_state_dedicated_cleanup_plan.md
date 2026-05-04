@@ -59,7 +59,6 @@ state and profile should own profile state.
 - `hydratePersistedTransactions`
 - `dedupePersistedTransactionsIfNeeded`
 - `hydrateTransactionCategoryAssignments`
-- `hydrateAiCategorySuggestions`
 - `hydrateMerchantCategoryMemory`
 
 These are bootstrap orchestration methods. They are good candidates for a small
@@ -89,11 +88,10 @@ Dashboard state:
 - `monthlyGroups`
 - `spendReference`
 
-Category and AI state:
+Category and merchant state:
 
 - `categoryOverrides`
 - `transactionCategoryAssignments`
-- `aiCategorySuggestions`
 - `merchantCategoryMemory`
 - `customCategories`
 - `categoryDisplayRenames`
@@ -162,7 +160,7 @@ comments without changing behavior.
       `hydrateAppStateForStartup(appState)` or an `AppHydrationService`.
 - [x] Preserve current order:
       budgets -> category catalog -> accounts -> transactions -> transaction
-      assignments -> AI suggestions -> dedupe -> profile -> merchant memory.
+      assignments -> dedupe -> profile -> merchant memory.
 
 Why next: startup is easy to reason about and has low UI risk.
 
@@ -247,9 +245,9 @@ paths.
 
 ## Phase 6 - Move Remaining Category / Merchant Coordination
 
-- [x] Review `applyCategoriesWithMerchantLearning`.
+- [x] Review legacy AI-assisted category apply coordination.
 - [x] Review `_applyCategoryAssignments`.
-- [x] Review `undoCategoryApplyBatch`.
+- [x] Review legacy category apply undo coordination.
 - [x] Review `setCategoryOverride`.
 - [x] Review `bulkSetCategoryOverrides`.
 - [x] Review `createCategoryAndAssign`.
@@ -261,12 +259,12 @@ paths.
 Why after tests: this area touches transactions, merchant memory, category
 catalog, dashboard refresh, and persistence.
 
-Completed: added `CategoryWorkflowService` for category assignment, merchant
-learning, undo, create, delete, and rename coordination. `AppState` no longer
-contains those workflow methods, and `TransactionUiController` now uses the
-workflow service directly. Removed the old `CategoryService` workflow wrappers
-so `CategoryService` keeps the lower-level category mutation helpers while the
-new workflow service owns cross-service coordination.
+Completed: added `CategoryWorkflowService` for category assignment, create,
+delete, and rename coordination. `AppState` no longer contains those workflow
+methods, and `TransactionUiController` now uses the workflow service directly.
+Removed the old `CategoryService` workflow wrappers so `CategoryService` keeps
+the lower-level category mutation helpers while the new workflow service owns
+cross-service coordination.
 
 ## Phase 7 - Move CSV / Import Coordination
 
@@ -276,7 +274,7 @@ new workflow service owns cross-service coordination.
 - [x] Review `deleteTransactionsForImportBatch`.
 - [x] Review `needsImportAiAfterCsvUpload`.
 - [x] Review `startBackgroundImportAiCategorization`.
-- [x] Review `autoCategorizeGlobalUncategorized`.
+- [x] Review legacy global AI categorization coordination.
 - [x] Decide whether this belongs in a transaction workflow coordinator before
       changing code.
 
@@ -284,10 +282,10 @@ Why late: CSV/import is the broadest workflow and easiest place to accidentally
 rebuild the god object under another name.
 
 Completed: added `TransactionWorkflowService` in the transactions application
-layer for CSV import, transaction deletion, import batch deletion, import AI,
-global AI categorization, and AI undo coordination. `AppState` no longer exposes
-those workflow methods, UI controllers call the transaction workflow service
-directly, and tests that still need integration behavior use
+layer for CSV import, transaction deletion, import batch deletion, and import AI
+coordination. `AppState` no longer exposes those workflow methods, UI
+controllers call the transaction workflow service directly, and tests that still
+need integration behavior use
 `state.transactionWorkflowService`. Removed the old transaction `*Workflow`
 helpers from `TransactionService` so the coordination logic exists in one place.
 `AppState` was 427 lines after Phase 7.
@@ -301,10 +299,10 @@ helpers from `TransactionService` so the coordination logic exists in one place.
 - [x] Re-run import searches after each removal.
 
 Completed: removed the broad compatibility getter/setter facade for accounts,
-transactions, dashboard derived fields, category state, AI suggestion state, and
-merchant memory. Integration tests now read/write through feature services or
-scoped UI snapshots instead of `AppState` delegates. `AppState` is now 294
-lines and still owns startup hydration, profile/onboarding routing,
+transactions, dashboard derived fields, category state, legacy AI category
+state, and merchant memory. Integration tests now read/write through feature
+services or scoped UI snapshots instead of `AppState` delegates. `AppState` is
+now 294 lines and still owns startup hydration, profile/onboarding routing,
 account/budget mutation callbacks, service composition, and refresh
 coordination.
 
