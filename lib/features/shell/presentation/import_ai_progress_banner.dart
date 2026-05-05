@@ -3,7 +3,7 @@ import 'package:flutter/scheduler.dart';
 
 import '../../../app/ui_dependencies.dart';
 
-/// Top banner: `Categorizing transactions… X of Y (Z%)`.
+/// Top banner for the unified CSV upload + AI categorization job.
 class ImportAiProgressBanner extends StatelessWidget {
   const ImportAiProgressBanner({super.key, required this.controller});
 
@@ -16,6 +16,7 @@ class ImportAiProgressBanner extends StatelessWidget {
     final total = controller.importAiProgressTotal;
     final done = controller.importAiProgressCompleted;
     final pct = total > 0 ? ((done / total) * 100).round() : 0;
+    final message = controller.importProgressMessage;
     return Material(
       color: cs.surfaceContainerHighest.withValues(alpha: 0.85),
       child: Padding(
@@ -25,7 +26,7 @@ class ImportAiProgressBanner extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Categorizing transactions… $done of $total ($pct%)',
+              '$message $pct%',
               style: theme.textTheme.bodyMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),

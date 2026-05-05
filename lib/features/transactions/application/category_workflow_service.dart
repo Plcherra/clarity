@@ -44,29 +44,61 @@ class CategoryWorkflowService {
   }
 
   Future<void> bulkSetCategoryOverrides(
-    Map<String, String> keyToCanonicalCategory,
-  ) async {
+    Map<String, String> keyToCanonicalCategory, {
+    Iterable<Transaction>? availableTransactions,
+    bool refreshAfter = true,
+  }) async {
     if (keyToCanonicalCategory.isEmpty) return;
-    final records = await transactionService.fetchTransactions();
-    final recordsByKey = {
-      for (final record in records)
-        transactionCategoryKey(_transactionFromRecord(record)): record,
-    };
+    final transactionIdsByKey = <String, String>{};
+    if (availableTransactions != null) {
+      for (final transaction in availableTransactions) {
+        final id = transaction.fingerprint?.trim();
+        if (id == null || id.isEmpty) continue;
+        transactionIdsByKey[transactionCategoryKey(transaction)] = id;
+      }
+    } else {
+      final records = await transactionService.fetchTransactions();
+      for (final record in records) {
+        transactionIdsByKey[transactionCategoryKey(
+              _transactionFromRecord(record),
+            )] =
+            record.id;
+      }
+    }
+
+    final categoryByName = <String, CategoryRecord>{};
+    for (final categoryName in keyToCanonicalCategory.values) {
+      final name = categoryName.trim();
+      if (name.isEmpty || categoryByName.containsKey(name.toLowerCase())) {
+        continue;
+      }
+      categoryByName[name.toLowerCase()] = await categoryReadModel
+          .ensureExpenseCategory(name);
+    }
+
+    final transactionIdsByCategoryId = <String, List<String>>{};
     for (final entry in keyToCanonicalCategory.entries) {
       final categoryName = entry.value.trim();
       if (categoryName.isEmpty) continue;
-      final transactionRecord = recordsByKey[entry.key];
-      if (transactionRecord == null) continue;
-      final categoryRecord = await categoryReadModel.ensureExpenseCategory(
-        categoryName,
-      );
-      await transactionService.updateTransaction(
-        transactionRecord.id,
-        categoryId: categoryRecord.id,
+      final transactionId = transactionIdsByKey[entry.key];
+      if (transactionId == null) continue;
+      final categoryRecord = categoryByName[categoryName.toLowerCase()];
+      if (categoryRecord == null) continue;
+      transactionIdsByCategoryId
+          .putIfAbsent(categoryRecord.id, () => <String>[])
+          .add(transactionId);
+    }
+
+    for (final entry in transactionIdsByCategoryId.entries) {
+      await transactionService.updateTransactionsCategory(
+        ids: entry.value,
+        categoryId: entry.key,
       );
     }
-    await refreshAllState();
-    notifyTransactionDataChanged();
+    if (refreshAfter) {
+      await refreshAllState();
+      notifyTransactionDataChanged();
+    }
   }
 
   Future<void> createCategoryAndAssign(

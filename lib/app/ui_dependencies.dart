@@ -10,7 +10,6 @@ import '../features/budgets/domain/budget_models.dart';
 import '../features/categories/application/category_read_model.dart';
 import '../features/categories/data/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
-import '../features/dashboard/domain/dashboard_queries.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
 import '../features/transactions/application/ai_categorization_service.dart'
     as app_ai;
@@ -36,7 +35,6 @@ final class AppUiControllerBindings {
     required this.budgetWorkflowService,
     required this.aiCategorizationService,
     required this.accountWorkflowService,
-    required this.importAiEngineConfigured,
   });
 
   final DashboardService dashboardService;
@@ -50,7 +48,6 @@ final class AppUiControllerBindings {
   final BudgetWorkflowService budgetWorkflowService;
   final app_ai.AiCategorizationApplicationService aiCategorizationService;
   final AccountWorkflowService accountWorkflowService;
-  final bool Function() importAiEngineConfigured;
 }
 
 final class AppUiDependencies {
@@ -203,18 +200,6 @@ final class DashboardUiController extends _UiController {
     };
   }
 
-  Future<List<BankStatementLine>> uncategorizedQueue(
-    DashboardScope scope,
-  ) async {
-    return uncategorizedTransactionsForDashboardScope(
-      scope,
-      scopedTransactions: await transactionsForDashboardScope(scope),
-      categoryOverrides: const {},
-      categoryDisplayRenamesLower:
-          bindings.categoryReadModel.categoryDisplayRenames,
-    );
-  }
-
   Future<List<BankStatementLine>> refreshedLinesForMonth(
     MonthlyBankGroup group,
   ) async {
@@ -298,22 +283,6 @@ final class TransactionUiController extends _UiController {
 
   Map<String, String> get merchantCategoryMemory => const {};
 
-  Future<List<BankStatementLine>> uncategorizedQueue(DashboardScope scope) {
-    return _ui.dashboard.uncategorizedQueue(scope);
-  }
-
-  Future<List<Transaction>> uncategorizedImportedRowsGlobal() async {
-    final transactions = await fetchTransactions();
-    return transactions.where(_isUncategorizedImportedTransaction).toList();
-  }
-
-  Future<List<Transaction>> uncategorizedImportedRowsForAccount(
-    String accountId,
-  ) async {
-    final transactions = await fetchTransactions(accountId: accountId);
-    return transactions.where(_isUncategorizedImportedTransaction).toList();
-  }
-
   Future<void> setCategoryOverride(Transaction transaction, String category) {
     return bindings.categoryWorkflowService.setCategoryOverride(
       transaction,
@@ -366,19 +335,6 @@ final class AccountUiController extends _UiController {
       utf8Text,
       accountId: accountId,
     );
-  }
-
-  Future<bool> needsImportAiAfterCsvUpload(String accountId) {
-    return bindings.transactionWorkflowService.needsImportAiAfterCsvUpload(
-      accountId,
-    );
-  }
-
-  bool get importAiEngineConfigured => bindings.importAiEngineConfigured();
-
-  Future<void> startBackgroundImportAiCategorization(String accountId) {
-    return bindings.transactionWorkflowService
-        .startBackgroundImportAiCategorization(accountId);
   }
 
   Future<List<CsvImportBatchSummary>> csvImportBatchesForAccount(
@@ -550,6 +506,9 @@ final class ImportAiStatusController extends _UiController {
   int get importAiProgressTotal =>
       bindings.aiCategorizationService.importAiProgressTotal;
 
+  String get importProgressMessage =>
+      bindings.aiCategorizationService.importProgressMessage;
+
   String? consumeImportAiSnackMessage() {
     return bindings.aiCategorizationService.consumeImportAiSnackMessage();
   }
@@ -576,12 +535,6 @@ Transaction _transactionFromRecord(
         ? FinancialRole.income
         : FinancialRole.expense,
   );
-}
-
-bool _isUncategorizedImportedTransaction(Transaction transaction) {
-  return transaction.importId != null &&
-      (transaction.categoryId == null ||
-          transaction.categoryId!.trim().isEmpty);
 }
 
 DateTime _periodStartFor(BudgetPeriodType? periodType, String? periodKey) {

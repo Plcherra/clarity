@@ -10,7 +10,8 @@ export 'openai_proxy_client.dart'
 
 const String openAiModel = 'gpt-4o-mini';
 
-const int _defaultBatchSize = 30;
+const int kAiCategorizationBatchSize = 200;
+const int kAiCategorizationMaxConcurrency = 4;
 
 /// Maps model output to an allowed canonical label, or null (leave uncategorized).
 String? normalizeSuggestionToAllowed(
@@ -78,7 +79,7 @@ class AICategorizationService {
 
   final OpenAiProxyClient _client;
 
-  /// Sequential batches; returns one map entry per [transactions] key (may be null).
+  /// Parallel batches; returns one map entry per [transactions] key (may be null).
   Future<Map<String, String?>> suggestCategories({
     required List<Transaction> transactions,
     required List<String> allowedCategoryIds,
@@ -96,31 +97,46 @@ class AICategorizationService {
     }
     final allowed = List<String>.from(allowedCategoryIds);
     final batches = <List<Transaction>>[];
-    for (var i = 0; i < transactions.length; i += _defaultBatchSize) {
+    for (var i = 0; i < transactions.length; i += kAiCategorizationBatchSize) {
       batches.add(
         transactions.sublist(
           i,
-          i + _defaultBatchSize > transactions.length
+          i + kAiCategorizationBatchSize > transactions.length
               ? transactions.length
-              : i + _defaultBatchSize,
+              : i + kAiCategorizationBatchSize,
         ),
       );
     }
     final out = <String, String?>{};
-    var done = 0;
-    for (final batch in batches) {
-      final partial = await _suggestBatch(
-        batch: batch,
-        allowedCategoryIds: allowed,
-      );
-      out.addAll(partial);
-      done += batch.length;
-      onBatchProgress?.call(done, transactions.length);
-      if (onPartialBatch != null) {
-        await onPartialBatch(partial);
-        await Future<void>.delayed(Duration.zero);
+    var completed = 0;
+    var nextBatchIndex = 0;
+
+    Future<void> worker() async {
+      while (true) {
+        final batchIndex = nextBatchIndex;
+        if (batchIndex >= batches.length) return;
+        nextBatchIndex += 1;
+
+        final batch = batches[batchIndex];
+        final partial = await _suggestBatch(
+          batch: batch,
+          allowedCategoryIds: allowed,
+        );
+        out.addAll(partial);
+        if (onPartialBatch != null) {
+          await onPartialBatch(partial);
+          await Future<void>.delayed(Duration.zero);
+        }
+        completed += batch.length;
+        onBatchProgress?.call(completed, transactions.length);
       }
     }
+
+    final workerCount = batches.length < kAiCategorizationMaxConcurrency
+        ? batches.length
+        : kAiCategorizationMaxConcurrency;
+    await Future.wait([for (var i = 0; i < workerCount; i++) worker()]);
+
     for (final t in transactions) {
       final k = transactionCategoryKey(t);
       out.putIfAbsent(k, () => null);

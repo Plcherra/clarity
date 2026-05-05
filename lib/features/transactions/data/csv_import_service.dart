@@ -3,11 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../../../core/models/models.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../dashboard/domain/balance_resolve.dart';
-import '../domain/bank_statement_monthly.dart';
 import '../domain/spend_categories.dart';
 import '../domain/transaction_fingerprint.dart';
-import '../domain/transaction_resolution.dart' as transaction_resolution;
-import '../domain/uncategorized_for_ai.dart';
 import 'csv_parser.dart';
 import 'transaction_service.dart';
 
@@ -78,43 +75,6 @@ class CsvImportService {
       return b.importId.compareTo(a.importId);
     });
     return out;
-  }
-
-  List<Transaction> uncategorizedImportedRowsGlobal({
-    required List<Account> accounts,
-    required List<Transaction> allTransactions,
-    required Map<String, String> categoryOverrides,
-    required Map<String, String> categoryDisplayRenames,
-  }) {
-    final accountsById = {for (final a in accounts) a.id: a};
-    final kept = allTransactions.where(isBankStatementDataRow).toList();
-    final resolved = transaction_resolution.resolveTransactions(
-      kept,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
-      accountsById: accountsById,
-      allTransactions: allTransactions,
-    );
-    return resolved
-        .where((r) => r.needsCategorization)
-        .map((r) => r.transaction)
-        .toList();
-  }
-
-  List<Transaction> uncategorizedImportedRowsForAccount(
-    String accountId, {
-    required Map<String, List<Transaction>> transactionsByAccount,
-    required Map<String, String> categoryOverrides,
-    required Map<String, String> categoryDisplayRenames,
-  }) {
-    final id = accountId.trim();
-    if (id.isEmpty) return const [];
-    final list = transactionsByAccount[id] ?? const <Transaction>[];
-    return uncategorizedDataRowsForImport(
-      accountTransactions: list,
-      categoryOverrides: categoryOverrides,
-      categoryDisplayRenamesLower: categoryDisplayRenames,
-    );
   }
 
   Future<CsvImportResult> loadFromCsv(

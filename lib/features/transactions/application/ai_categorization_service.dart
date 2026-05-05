@@ -5,20 +5,58 @@ import '../data/ai_categorization_service.dart' as data_ai;
 import '../domain/spend_categories.dart';
 
 class AiCategorizationApplicationService {
-  /// CSV import background AI job.
+  /// Unified CSV import progress: upload first, then AI categorization.
   bool importAiCategorizationRunning = false;
   int importAiProgressCompleted = 0;
-  int importAiProgressTotal = 0;
+  int importAiProgressTotal = 100;
+  String importProgressMessage = 'Uploading transactions...';
+  bool _aiCategorizationRunning = false;
 
   /// One-shot snack text for ImportAiStatusHost.
   String? importAiSnackMessage;
 
-  bool needsImportAiAfterCsvUpload(
-    String accountId, {
-    required List<Transaction> Function(String accountId)
-    uncategorizedImportedRowsForAccount,
+  void startCsvImportProgress({required VoidCallback notifyStatusChanged}) {
+    importAiCategorizationRunning = true;
+    importAiProgressCompleted = 0;
+    importAiProgressTotal = 100;
+    importProgressMessage = 'Uploading transactions...';
+    importAiSnackMessage = null;
+    notifyStatusChanged();
+  }
+
+  void updateCsvUploadProgress({
+    required int processedRows,
+    required int totalRows,
+    required VoidCallback notifyStatusChanged,
   }) {
-    return uncategorizedImportedRowsForAccount(accountId.trim()).isNotEmpty;
+    importAiCategorizationRunning = true;
+    importAiProgressTotal = 100;
+    importProgressMessage = 'Uploading transactions...';
+    if (totalRows <= 0) {
+      importAiProgressCompleted = 50;
+    } else {
+      importAiProgressCompleted = ((processedRows / totalRows) * 50)
+          .round()
+          .clamp(0, 50);
+    }
+    notifyStatusChanged();
+  }
+
+  void finishCsvImportProgress({
+    required VoidCallback notifyStatusChanged,
+    String fallbackSnackMessage = 'Import complete.',
+  }) {
+    importAiProgressCompleted = 100;
+    importAiProgressTotal = 100;
+    importProgressMessage = 'Import complete.';
+    importAiCategorizationRunning = false;
+    importAiSnackMessage ??= fallbackSnackMessage;
+    notifyStatusChanged();
+  }
+
+  void stopCsvImportProgress({required VoidCallback notifyStatusChanged}) {
+    importAiCategorizationRunning = false;
+    notifyStatusChanged();
   }
 
   String? consumeImportAiSnackMessage() {
@@ -32,20 +70,20 @@ class AiCategorizationApplicationService {
     String accountId, {
     required bool importAiEngineConfigured,
     required List<Transaction> Function(String accountId)
-    uncategorizedImportedRowsForAccount,
+    pendingImportedRowsForAccount,
     required Map<String, String> merchantCategoryMemory,
     required Future<void> Function(Map<String, String> prefilled)
     applyPrefilledMerchantChunks,
     required List<String> allowedCategoryPickerLabels,
-    required void Function(Map<String, String>) applyCategories,
+    required Future<void> Function(Map<String, String>) applyCategories,
     required VoidCallback notifyStatusChanged,
   }) async {
     await Future<void>.delayed(Duration.zero);
     final id = accountId.trim();
     if (id.isEmpty) return;
-    if (importAiCategorizationRunning) return;
+    if (_aiCategorizationRunning) return;
 
-    var unc = uncategorizedImportedRowsForAccount(id);
+    var unc = pendingImportedRowsForAccount(id);
     final prefilled = <String, String>{};
     for (final t in unc) {
       final k = transactionCategoryKey(t);
@@ -58,7 +96,7 @@ class AiCategorizationApplicationService {
     }
     await applyPrefilledMerchantChunks(prefilled);
 
-    unc = uncategorizedImportedRowsForAccount(id);
+    unc = pendingImportedRowsForAccount(id);
     if (unc.isEmpty) {
       importAiSnackMessage = 'Transactions categorized successfully';
       notifyStatusChanged();
@@ -66,12 +104,17 @@ class AiCategorizationApplicationService {
     }
 
     if (!importAiEngineConfigured) {
+      importAiSnackMessage =
+          'Sign in and configure the Supabase AI Edge Function secret to use AI categorization.';
+      notifyStatusChanged();
       return;
     }
 
+    _aiCategorizationRunning = true;
     importAiCategorizationRunning = true;
-    importAiProgressCompleted = 0;
-    importAiProgressTotal = unc.length;
+    importProgressMessage = 'Categorizing with AI...';
+    importAiProgressCompleted = 50;
+    importAiProgressTotal = 100;
     notifyStatusChanged();
 
     final service = data_ai.AICategorizationService();
@@ -80,8 +123,11 @@ class AiCategorizationApplicationService {
         transactions: unc,
         allowedCategoryIds: allowedCategoryPickerLabels,
         onBatchProgress: (completed, total) {
-          importAiProgressCompleted = completed;
-          importAiProgressTotal = total;
+          importProgressMessage = 'Categorizing with AI...';
+          importAiProgressCompleted = total > 0
+              ? (50 + ((completed / total) * 50).round()).clamp(50, 99)
+              : 50;
+          importAiProgressTotal = 100;
           notifyStatusChanged();
         },
         onPartialBatch: (partial) async {
@@ -93,7 +139,7 @@ class AiCategorizationApplicationService {
             }
           }
           if (toApply.isNotEmpty) {
-            applyCategories(toApply);
+            await applyCategories(toApply);
           }
           await Future<void>.delayed(Duration.zero);
         },
@@ -106,7 +152,7 @@ class AiCategorizationApplicationService {
       importAiSnackMessage = 'Could not categorize transactions: $e';
     } finally {
       service.close();
-      importAiCategorizationRunning = false;
+      _aiCategorizationRunning = false;
       notifyStatusChanged();
     }
   }

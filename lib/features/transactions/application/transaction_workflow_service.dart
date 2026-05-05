@@ -59,52 +59,92 @@ class TransactionWorkflowService {
       throw const FormatException('Unknown account.');
     }
 
-    final parsed = parseBankCsv(utf8Text);
-    final importId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
-    final existing = await _fetchTransactions(accountId: id);
-    final existingFingerprints = existing.map(transactionFingerprint).toSet();
-    final created = <Transaction>[];
-
-    for (final transaction in parsed.transactions) {
-      final stamped = Transaction(
-        date: transaction.date,
-        description: transaction.description,
-        amount: transaction.amount,
-        accountId: id,
-        category: transaction.category,
-        balanceAfter: transaction.balanceAfter,
-      );
-      final fingerprint = transactionFingerprint(stamped);
-      if (existingFingerprints.contains(fingerprint)) continue;
-      existingFingerprints.add(fingerprint);
-      final record = await _createTransactionFromModel(
-        Transaction(
-          date: stamped.date,
-          description: stamped.description,
-          amount: stamped.amount,
-          accountId: stamped.accountId,
-          category: stamped.category,
-          balanceAfter: stamped.balanceAfter,
-          fingerprint: fingerprint,
-        ),
-        importedFromCsv: true,
-        importId: importId,
-      );
-      created.add(_transactionFromRecord(record));
-    }
-
-    final accountTransactions = await _fetchTransactions(accountId: id);
-    dashboardService.spendReference = reference ?? DateTime.now();
-    await recomputeDashboard(
-      activeAccountTransactions: accountTransactions,
-      allTransactionsForMetrics: await _fetchTransactions(),
-      transactionsForCsvDiagnostics: accountTransactions,
-      diag: parsed.diagnostics,
+    aiCategorizationService.startCsvImportProgress(
+      notifyStatusChanged: notifyImportAiStatusChanged,
     );
-    notifyTransactionDataChanged();
+    try {
+      final parsed = parseBankCsv(utf8Text);
+      final importId = DateTime.now().toUtc().microsecondsSinceEpoch.toString();
+      final existing = await _fetchTransactions(accountId: id);
+      final existingFingerprints = existing.map(transactionFingerprint).toSet();
+      final created = <Transaction>[];
+      final totalRows = parsed.transactions.length;
+      var processedRows = 0;
+      aiCategorizationService.updateCsvUploadProgress(
+        processedRows: processedRows,
+        totalRows: totalRows,
+        notifyStatusChanged: notifyImportAiStatusChanged,
+      );
 
-    if (created.isNotEmpty && await needsImportAiAfterCsvUpload(id)) {
-      unawaited(startBackgroundImportAiCategorization(id));
+      for (final transaction in parsed.transactions) {
+        final stamped = Transaction(
+          date: transaction.date,
+          description: transaction.description,
+          amount: transaction.amount,
+          accountId: id,
+          category: transaction.category,
+          balanceAfter: transaction.balanceAfter,
+        );
+        final fingerprint = transactionFingerprint(stamped);
+        if (existingFingerprints.contains(fingerprint)) {
+          processedRows += 1;
+          aiCategorizationService.updateCsvUploadProgress(
+            processedRows: processedRows,
+            totalRows: totalRows,
+            notifyStatusChanged: notifyImportAiStatusChanged,
+          );
+          continue;
+        }
+        existingFingerprints.add(fingerprint);
+        final record = await _createTransactionFromModel(
+          Transaction(
+            date: stamped.date,
+            description: stamped.description,
+            amount: stamped.amount,
+            accountId: stamped.accountId,
+            category: stamped.category,
+            balanceAfter: stamped.balanceAfter,
+            fingerprint: fingerprint,
+          ),
+          importedFromCsv: true,
+          importId: importId,
+        );
+        created.add(_transactionFromRecord(record));
+        processedRows += 1;
+        aiCategorizationService.updateCsvUploadProgress(
+          processedRows: processedRows,
+          totalRows: totalRows,
+          notifyStatusChanged: notifyImportAiStatusChanged,
+        );
+      }
+
+      aiCategorizationService.updateCsvUploadProgress(
+        processedRows: totalRows,
+        totalRows: totalRows,
+        notifyStatusChanged: notifyImportAiStatusChanged,
+      );
+
+      dashboardService.spendReference = reference ?? DateTime.now();
+      if (created.isNotEmpty && await _hasImportedRowsPendingCategory(id)) {
+        await _categorizeImportedTransactions(id);
+      }
+
+      final accountTransactions = await _fetchTransactions(accountId: id);
+      await recomputeDashboard(
+        activeAccountTransactions: accountTransactions,
+        allTransactionsForMetrics: await _fetchTransactions(),
+        transactionsForCsvDiagnostics: accountTransactions,
+        diag: parsed.diagnostics,
+      );
+      notifyTransactionDataChanged();
+      aiCategorizationService.finishCsvImportProgress(
+        notifyStatusChanged: notifyImportAiStatusChanged,
+      );
+    } catch (_) {
+      aiCategorizationService.stopCsvImportProgress(
+        notifyStatusChanged: notifyImportAiStatusChanged,
+      );
+      rethrow;
     }
   }
 
@@ -138,28 +178,61 @@ class TransactionWorkflowService {
     final id = accountId.trim();
     final batchId = importId.trim();
     if (id.isEmpty || batchId.isEmpty) return 0;
-    final records = await transactionService.fetchTransactions(
+    final deleted = await transactionService.deleteTransactionsForImportBatch(
       accountId: id,
       importId: batchId,
     );
-    for (final record in records) {
-      await transactionService.deleteTransaction(record.id);
-    }
-    if (records.isNotEmpty) {
+    if (deleted > 0) {
       await refreshAllState();
     }
-    return records.length;
+    return deleted;
   }
 
-  Future<bool> needsImportAiAfterCsvUpload(String accountId) async {
+  Future<bool> _hasImportedRowsPendingCategory(String accountId) async {
     final transactions = await _fetchTransactions(accountId: accountId.trim());
     return transactions.any(_isUncategorizedImportedTransaction);
   }
 
-  Future<void> startBackgroundImportAiCategorization(String accountId) async {
-    aiCategorizationService.importAiSnackMessage =
-        'AI categorization after import is temporarily disabled until category assignments are moved to Supabase.';
-    notifyImportAiStatusChanged();
+  Future<void> _categorizeImportedTransactions(String accountId) async {
+    final id = accountId.trim();
+    if (id.isEmpty) return;
+
+    var importedAiRows = <Transaction>[];
+
+    List<Transaction> pendingImportedRowsForAccount(String accountId) {
+      if (accountId.trim() != id) return const [];
+      return importedAiRows
+          .where(
+            (transaction) => _isUncategorizedImportedTransaction(transaction),
+          )
+          .toList();
+    }
+
+    importedAiRows = await _fetchTransactions(accountId: id);
+    await aiCategorizationService.startBackgroundImportAiCategorization(
+      id,
+      importAiEngineConfigured: importAiEngineConfigured(),
+      pendingImportedRowsForAccount: pendingImportedRowsForAccount,
+      merchantCategoryMemory: const {},
+      applyPrefilledMerchantChunks: (_) async {},
+      allowedCategoryPickerLabels: kSelectableSpendCategories,
+      applyCategories: (assignments) async {
+        if (assignments.isEmpty) return;
+        await categoryWorkflowService.bulkSetCategoryOverrides(
+          assignments,
+          availableTransactions: importedAiRows,
+          refreshAfter: false,
+        );
+        final assignedKeys = assignments.keys.toSet();
+        importedAiRows = importedAiRows
+            .where(
+              (transaction) =>
+                  !assignedKeys.contains(transactionCategoryKey(transaction)),
+            )
+            .toList();
+      },
+      notifyStatusChanged: notifyImportAiStatusChanged,
+    );
   }
 
   Future<TransactionRecord> _createTransactionFromModel(

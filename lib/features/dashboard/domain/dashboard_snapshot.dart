@@ -39,7 +39,6 @@ class DashboardSnapshot {
     required this.spentThisMonth,
     required this.incomeThisMonth,
     required this.availableThisMonth,
-    required this.uncategorizedCount,
     required this.topCategories,
     required this.biggestLeaksThisMonth,
     required this.burnRunwayDays,
@@ -50,7 +49,6 @@ class DashboardSnapshot {
   final double spentThisMonth;
   final double incomeThisMonth;
   final double availableThisMonth;
-  final int uncategorizedCount;
   final List<CategorySpend> topCategories;
   final List<CategoryLeakStat> biggestLeaksThisMonth;
   final int? burnRunwayDays;
@@ -91,8 +89,6 @@ DashboardSnapshot buildDashboardSnapshot({
   }
 
   final available = income - spent;
-
-  final uncategorized = resolved.where((r) => r.needsCategorization).length;
 
   // Top categories (scoped, expense-role only).
   final topMap = <String, double>{};
@@ -151,7 +147,6 @@ DashboardSnapshot buildDashboardSnapshot({
     spentThisMonth: spent,
     incomeThisMonth: income,
     availableThisMonth: available,
-    uncategorizedCount: uncategorized,
     topCategories: top5,
     biggestLeaksThisMonth: leaks,
     burnRunwayDays: runway,

@@ -14,7 +14,6 @@ class DashboardDerivedValues {
     required this.spentThisMonth,
     required this.incomeThisMonth,
     required this.availableThisMonth,
-    required this.uncategorizedCount,
     required this.biggestLeaksThisMonth,
     required this.burnRunwayDays,
     required this.topCategories,
@@ -24,7 +23,6 @@ class DashboardDerivedValues {
   final double spentThisMonth;
   final double incomeThisMonth;
   final double availableThisMonth;
-  final int uncategorizedCount;
   final List<CategoryLeakStat> biggestLeaksThisMonth;
   final int? burnRunwayDays;
   final List<CategorySpend> topCategories;
@@ -37,7 +35,6 @@ class DashboardService {
   double spentThisMonth = 0;
   double incomeThisMonth = 0;
   double availableThisMonth = 0;
-  int uncategorizedCount = 0;
   List<CategorySpend> topCategories = const [];
   List<CategoryLeakStat> biggestLeaksThisMonth = const [];
   int? burnRunwayDays;
@@ -61,7 +58,6 @@ class DashboardService {
     spentThisMonth = 0;
     incomeThisMonth = 0;
     availableThisMonth = 0;
-    uncategorizedCount = 0;
     topCategories = const [];
     biggestLeaksThisMonth = const [];
     burnRunwayDays = null;
@@ -219,7 +215,6 @@ class DashboardService {
     spentThisMonth = d.spentThisMonth;
     incomeThisMonth = d.incomeThisMonth;
     availableThisMonth = d.availableThisMonth;
-    uncategorizedCount = d.uncategorizedCount;
     biggestLeaksThisMonth = d.biggestLeaksThisMonth;
     burnRunwayDays = d.burnRunwayDays;
     topCategories = d.topCategories;
@@ -256,10 +251,6 @@ class DashboardService {
       categoryDisplayRenamesLower: categoryDisplayRenames,
     );
     final availableVal = incomeVal - spentThisMonthVal;
-    final uncategorizedCt = resolveTransactions(
-      allTransactionsForMetrics,
-      allTransactionsContext: allTransactionsForMetrics,
-    ).where((r) => r.needsCategorization).length;
     final leaks = List<CategoryLeakStat>.unmodifiable(
       biggestCategoryLeaks(
         allTransactionsForMetrics,
@@ -304,7 +295,6 @@ class DashboardService {
       spentThisMonth: spentThisMonthVal,
       incomeThisMonth: incomeVal,
       availableThisMonth: availableVal,
-      uncategorizedCount: uncategorizedCt,
       biggestLeaksThisMonth: leaks,
       burnRunwayDays: runway,
       topCategories: topCats,

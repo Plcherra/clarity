@@ -39,22 +39,6 @@ double totalIncomeInMonth(
   return sum;
 }
 
-/// Count of statement rows whose effective category is Uncategorized.
-int uncategorizedTransactionCount(
-  List<Transaction> txs, {
-  required Map<String, String> categoryOverrides,
-  required Map<String, String> categoryDisplayRenamesLower,
-}) {
-  final resolved = resolveTransactions(
-    txs,
-    categoryOverrides: categoryOverrides,
-    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    accountsById: const {},
-    allTransactions: txs,
-  );
-  return resolved.where((r) => r.needsCategorization).length;
-}
-
 /// Spending by category (outflows, non-income labels), same rules as dashboard top categories.
 Map<String, double> _spendByCategoryInMonth(
   List<Transaction> txs,

@@ -1,11 +1,10 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../app/ui_dependencies.dart';
 import '../../../core/models/models.dart';
 import '../../shell/presentation/home_shell.dart';
+import '../../shell/presentation/import_ai_progress_banner.dart';
 
 /// Shown after the user picks a CSV; they must pick or create an account before import runs.
 class AccountSelectionScreen extends StatefulWidget {
@@ -98,24 +97,6 @@ class _AccountSelectionScreenState extends State<AccountSelectionScreen> {
         accountId: account.id,
       );
       if (!context.mounted) return;
-      if (await widget.controller.needsImportAiAfterCsvUpload(account.id)) {
-        if (!context.mounted) return;
-        if (!widget.controller.importAiEngineConfigured) {
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Sign in and configure the Supabase AI Edge Function secret to use AI categorization.',
-              ),
-            ),
-          );
-        } else {
-          unawaited(
-            widget.controller.startBackgroundImportAiCategorization(account.id),
-          );
-        }
-      }
-      if (!context.mounted) return;
       await Navigator.of(context).pushReplacement<void, void>(
         MaterialPageRoute<void>(
           builder: (context) => HomeShell(ui: widget.controller.ui),
@@ -143,142 +124,149 @@ class _AccountSelectionScreenState extends State<AccountSelectionScreen> {
         backgroundColor: theme.colorScheme.surface,
         surfaceTintColor: Colors.transparent,
       ),
-      body: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              theme.colorScheme.surface,
-              theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            ],
+      body: ImportAiStatusHost(
+        controller: widget.controller.ui.importAiStatus,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                theme.colorScheme.surface,
+                theme.colorScheme.surfaceContainerHighest.withValues(
+                  alpha: 0.35,
+                ),
+              ],
+            ),
           ),
-        ),
-        child: ListenableBuilder(
-          listenable: _dataNotifier,
-          builder: (context, _) {
-            final accounts = _dataNotifier.data;
-            if (accounts == null) {
-              if (_dataNotifier.error != null) {
-                return const Center(child: Text('Could not load accounts.'));
+          child: ListenableBuilder(
+            listenable: _dataNotifier,
+            builder: (context, _) {
+              final accounts = _dataNotifier.data;
+              if (accounts == null) {
+                if (_dataNotifier.error != null) {
+                  return const Center(child: Text('Could not load accounts.'));
+                }
+                return const Center(child: CircularProgressIndicator());
               }
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (accounts.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Add an account for this statement',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          color: theme.colorScheme.onSurface.withValues(
-                            alpha: 0.75,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton.icon(
-                        onPressed: () => _showAddAccountDialog(context),
-                        icon: const Icon(Icons.add_rounded, size: 22),
-                        label: const Text('Add account'),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-                  child: Text(
-                    'Which account is this CSV for?',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                    itemCount: accounts.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (context, i) {
-                      final a = accounts[i];
-                      return Material(
-                        color: theme.colorScheme.surfaceContainerLowest,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                          side: BorderSide(
-                            color: theme.colorScheme.outline.withValues(
-                              alpha: 0.1,
+              if (accounts.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Add an account for this statement',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.onSurface.withValues(
+                              alpha: 0.75,
                             ),
                           ),
                         ),
-                        child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
-                          leading: CircleAvatar(
-                            radius: 22,
-                            backgroundColor: theme
-                                .colorScheme
-                                .surfaceContainerHighest
-                                .withValues(alpha: 0.65),
-                            child: Icon(
-                              switch (a.type) {
-                                AccountType.checking =>
-                                  Icons.account_balance_wallet_outlined,
-                                AccountType.savings => Icons.savings_outlined,
-                                AccountType.creditCard =>
-                                  Icons.credit_card_rounded,
-                              },
-                              size: 22,
-                              color: theme.colorScheme.onSurface.withValues(
-                                alpha: 0.65,
+                        const SizedBox(height: 24),
+                        FilledButton.icon(
+                          onPressed: () => _showAddAccountDialog(context),
+                          icon: const Icon(Icons.add_rounded, size: 22),
+                          label: const Text('Add account'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
+                    child: Text(
+                      'Which account is this CSV for?',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(
+                          alpha: 0.6,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                      itemCount: accounts.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (context, i) {
+                        final a = accounts[i];
+                        return Material(
+                          color: theme.colorScheme.surfaceContainerLowest,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                            side: BorderSide(
+                              color: theme.colorScheme.outline.withValues(
+                                alpha: 0.1,
                               ),
                             ),
                           ),
-                          title: Text(
-                            a.name,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 4,
                             ),
-                          ),
-                          subtitle: Text(a.type.displayLabel),
-                          trailing: Icon(
-                            Icons.chevron_right_rounded,
-                            color: theme.colorScheme.onSurface.withValues(
-                              alpha: 0.35,
+                            leading: CircleAvatar(
+                              radius: 22,
+                              backgroundColor: theme
+                                  .colorScheme
+                                  .surfaceContainerHighest
+                                  .withValues(alpha: 0.65),
+                              child: Icon(
+                                switch (a.type) {
+                                  AccountType.checking =>
+                                    Icons.account_balance_wallet_outlined,
+                                  AccountType.savings => Icons.savings_outlined,
+                                  AccountType.creditCard =>
+                                    Icons.credit_card_rounded,
+                                },
+                                size: 22,
+                                color: theme.colorScheme.onSurface.withValues(
+                                  alpha: 0.65,
+                                ),
+                              ),
                             ),
+                            title: Text(
+                              a.name,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(a.type.displayLabel),
+                            trailing: Icon(
+                              Icons.chevron_right_rounded,
+                              color: theme.colorScheme.onSurface.withValues(
+                                alpha: 0.35,
+                              ),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            onTap: () => _importForAccount(context, a),
                           ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          onTap: () => _importForAccount(context, a),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  child: OutlinedButton.icon(
-                    onPressed: () => _showAddAccountDialog(context),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add account'),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                    child: OutlinedButton.icon(
+                      onPressed: () => _showAddAccountDialog(context),
+                      icon: const Icon(Icons.add_rounded),
+                      label: const Text('Add account'),
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

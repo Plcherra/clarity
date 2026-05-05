@@ -26,6 +26,7 @@ class AccountDetailScreen extends StatefulWidget {
 
 class _AccountDetailScreenState extends State<AccountDetailScreen> {
   late final _AccountDetailDataNotifier _dataNotifier;
+  var _deletingCsvUpload = false;
 
   @override
   void initState() {
@@ -77,6 +78,8 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
   }
 
   Future<void> _deleteCsvUploadBatch(BuildContext context) async {
+    if (_deletingCsvUpload) return;
+
     final batches = await widget.controller.csvImportBatchesForAccount(
       widget.accountId,
     );
@@ -140,17 +143,47 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
     );
     if (confirm != true) return;
 
-    final deleted = await widget.controller.deleteTransactionsForImportBatch(
-      accountId: widget.accountId,
-      importId: selected.importId,
-    );
+    setState(() => _deletingCsvUpload = true);
+    var deleted = 0;
+    Object? error;
+    var progressDialogShown = false;
+    if (context.mounted) {
+      progressDialogShown = true;
+      unawaited(
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => const _CsvUploadDeletingDialog(),
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+    }
+    try {
+      deleted = await widget.controller.deleteTransactionsForImportBatch(
+        accountId: widget.accountId,
+        importId: selected.importId,
+      );
+    } on Object catch (e) {
+      error = e;
+    } finally {
+      if (mounted) setState(() => _deletingCsvUpload = false);
+      if (progressDialogShown && context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
     if (!context.mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not delete CSV upload.')),
+      );
+      return;
+    }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           deleted > 0
               ? 'Deleted $deleted transaction${deleted == 1 ? '' : 's'} from CSV upload.'
-              : 'Could not delete CSV upload.',
+              : 'CSV upload was already deleted.',
         ),
       ),
     );
@@ -208,32 +241,6 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
       final text = await readPickedFileContents(file);
       if (!context.mounted) return;
       await widget.controller.loadFromCsv(text, accountId: widget.accountId);
-      if (!context.mounted) return;
-      if (await widget.controller.needsImportAiAfterCsvUpload(
-        widget.accountId,
-      )) {
-        if (!context.mounted) return;
-        if (!widget.controller.importAiEngineConfigured) {
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Sign in and configure the Supabase AI Edge Function secret to use AI categorization.',
-              ),
-            ),
-          );
-        } else {
-          unawaited(
-            widget.controller.startBackgroundImportAiCategorization(
-              widget.accountId,
-            ),
-          );
-        }
-      }
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Imported statement.')));
     } on FormatException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
@@ -283,10 +290,34 @@ class _AccountDetailScreenState extends State<AccountDetailScreen> {
           buildSnapshot: (_, _) =>
               widget.controller.buildSnapshotForAccount(widget.accountId),
           onUploadTransactions: () => _importCsvForThisAccount(context),
-          onDeleteCsvImportBatch: () => _deleteCsvUploadBatch(context),
+          onDeleteCsvImportBatch: _deletingCsvUpload
+              ? null
+              : () => _deleteCsvUploadBatch(context),
           onDeleteAccount: () => _deleteAccount(context, title),
         );
       },
+    );
+  }
+}
+
+class _CsvUploadDeletingDialog extends StatelessWidget {
+  const _CsvUploadDeletingDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return const AlertDialog(
+      content: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+          SizedBox(width: 20),
+          Expanded(child: Text('Deleting CSV upload...')),
+        ],
+      ),
     );
   }
 }

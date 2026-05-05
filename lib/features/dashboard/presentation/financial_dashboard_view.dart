@@ -1,16 +1,14 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../app/ui_dependencies.dart';
 import '../../budgets/domain/budget_models.dart';
-import '../../transactions/domain/bank_statement_monthly.dart';
 import '../domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../../budgets/presentation/budgets_screen.dart';
 import '../../shell/presentation/import_ai_progress_banner.dart';
+import '../../transactions/domain/bank_statement_monthly.dart';
 import 'month_detail_screen.dart';
-import '../../transactions/presentation/transaction_review_screen.dart';
 
 typedef SnapshotBuilder =
     Future<DashboardSnapshot> Function(
@@ -93,15 +91,11 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
       final snap = await widget.buildSnapshot(widget.controller, widget.scope);
       final budgetPerformance = await widget.controller
           .budgetPerformanceForScope(widget.scope);
-      final uncategorizedQueue = await widget.controller.uncategorizedQueue(
-        widget.scope,
-      );
       if (!mounted) return;
       _dataNotifier.setData(
         _FinancialDashboardData(
           snapshot: snap,
           budgetPerformance: budgetPerformance,
-          uncategorizedQueue: uncategorizedQueue,
         ),
       );
     } on Object catch (error) {
@@ -167,10 +161,8 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
           final scrollBody = _DashboardScrollBody(
             title: widget.title,
             controller: widget.controller,
-            scope: widget.scope,
             snapshot: data.snapshot,
             budgetPerformance: data.budgetPerformance,
-            attentionCount: data.uncategorizedQueue.length,
             onUploadTransactions: widget.onUploadTransactions,
           );
           return widget.showBackButton
@@ -218,31 +210,25 @@ class _FinancialDashboardData {
   const _FinancialDashboardData({
     required this.snapshot,
     required this.budgetPerformance,
-    required this.uncategorizedQueue,
   });
 
   final DashboardSnapshot snapshot;
   final BudgetPerformanceSnapshot budgetPerformance;
-  final List<BankStatementLine> uncategorizedQueue;
 }
 
 class _DashboardScrollBody extends StatelessWidget {
   const _DashboardScrollBody({
     required this.title,
     required this.controller,
-    required this.scope,
     required this.snapshot,
     required this.budgetPerformance,
-    required this.attentionCount,
     required this.onUploadTransactions,
   });
 
   final String title;
   final DashboardUiController controller;
-  final DashboardScope scope;
   final DashboardSnapshot snapshot;
   final BudgetPerformanceSnapshot budgetPerformance;
-  final int attentionCount;
   final Future<void> Function()? onUploadTransactions;
 
   @override
@@ -273,17 +259,6 @@ class _DashboardScrollBody extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (kDebugMode) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'debug: reviewQueue=$attentionCount · '
-                      'snapUncat=${snapshot.uncategorizedCount}',
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        fontFamily: 'monospace',
-                        color: cs.onSurface.withValues(alpha: 0.42),
-                      ),
-                    ),
-                  ],
                   const SizedBox(height: 20),
                   if (onUploadTransactions != null) ...[
                     _UploadTransactionsButton(onPressed: onUploadTransactions!),
@@ -301,22 +276,6 @@ class _DashboardScrollBody extends StatelessWidget {
                     child: const Text('Set Budgets'),
                   ),
                   const SizedBox(height: 20),
-                  if (attentionCount > 0) ...[
-                    _UncategorizedAttentionCard(
-                      count: attentionCount,
-                      onTap: () {
-                        Navigator.of(context).push<void>(
-                          MaterialPageRoute<void>(
-                            builder: (context) => TransactionReviewScreen(
-                              controller: controller.ui.transactions,
-                              scope: scope,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: _sectionGap),
-                  ],
                   _ResponsiveMetricCard(
                     label: 'Available this month',
                     value: formatMoney(snapshot.availableThisMonth),
@@ -450,76 +409,6 @@ class _UploadTransactionsButtonState extends State<_UploadTransactionsButton> {
                   const Text('+ Upload Transactions'),
                 ],
               ),
-      ),
-    );
-  }
-}
-
-class _UncategorizedAttentionCard extends StatelessWidget {
-  const _UncategorizedAttentionCard({required this.count, required this.onTap});
-
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final cs = theme.colorScheme;
-    const red = Color(0xFFB91C1C);
-    return Material(
-      color: const Color(0xFFFFF5F5),
-      borderRadius: BorderRadius.circular(22),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: red.withValues(alpha: 0.45)),
-            boxShadow: [
-              BoxShadow(
-                color: red.withValues(alpha: 0.08),
-                blurRadius: 24,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 20),
-            child: Row(
-              children: [
-                const Icon(Icons.label_off_outlined, color: red, size: 28),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '$count transaction${count == 1 ? '' : 's'} need attention',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: red,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Tap to review uncategorized items',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: cs.onSurface.withValues(alpha: 0.5),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: red.withValues(alpha: 0.65),
-                ),
-              ],
-            ),
-          ),
-        ),
       ),
     );
   }

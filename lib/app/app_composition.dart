@@ -158,8 +158,6 @@ final class AppComposition {
       budgetWorkflowService: budgetWorkflowService,
       aiCategorizationService: aiCategorizationService,
       accountWorkflowService: accountWorkflowService,
-      importAiEngineConfigured: () =>
-          openAiProxyClient.isConfigured && authController.isAuthenticated,
     ),
   );
 

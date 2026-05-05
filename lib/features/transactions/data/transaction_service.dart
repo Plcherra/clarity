@@ -156,6 +156,34 @@ final class TransactionService {
     }
   }
 
+  Future<void> updateTransactionsCategory({
+    required List<String> ids,
+    required String categoryId,
+  }) async {
+    final user = _currentUser;
+    final cleanedIds = ids.map((id) => id.trim()).where((id) => id.isNotEmpty);
+    final uniqueIds = cleanedIds.toSet().toList();
+    final cleanedCategoryId = categoryId.trim();
+    if (uniqueIds.isEmpty || cleanedCategoryId.isEmpty) return;
+
+    try {
+      await _supabaseService.client
+          .from('transactions')
+          .update({'category_id': cleanedCategoryId})
+          .eq('user_id', user.id)
+          .inFilter('id', uniqueIds);
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'updateTransactionsCategory',
+        message: 'Could not update transaction categories.',
+        cause: e,
+      );
+    }
+  }
+
   Future<void> deleteTransaction(String id) async {
     final user = _currentUser;
     try {
@@ -171,6 +199,44 @@ final class TransactionService {
         table: 'transactions',
         action: 'deleteTransaction',
         message: 'Could not delete transaction.',
+        cause: e,
+      );
+    }
+  }
+
+  Future<int> deleteTransactionsForImportBatch({
+    required String accountId,
+    required String importId,
+  }) async {
+    final user = _currentUser;
+    final id = accountId.trim();
+    final batchId = importId.trim();
+    if (id.isEmpty || batchId.isEmpty) return 0;
+
+    try {
+      final rows = await _supabaseService.client
+          .from('transactions')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('account_id', id)
+          .eq('import_id', batchId);
+      final count = rows.length;
+      if (count == 0) return 0;
+
+      await _supabaseService.client
+          .from('transactions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('account_id', id)
+          .eq('import_id', batchId);
+      return count;
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'deleteTransactionsForImportBatch',
+        message: 'Could not delete CSV import transactions.',
         cause: e,
       );
     }

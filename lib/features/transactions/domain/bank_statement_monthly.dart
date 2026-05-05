@@ -97,36 +97,6 @@ List<MonthlyBankGroup> monthlyGroupsFromTransactions(
   return out;
 }
 
-/// Statement lines whose effective display category is Uncategorized, newest date first.
-///
-/// Uses the same grouping and labels as [monthlyGroupsFromTransactions] for [transactions].
-List<BankStatementLine> uncategorizedBankStatementLines(
-  List<Transaction> transactions, {
-  required Map<String, String> categoryOverrides,
-  required Map<String, String> categoryDisplayRenamesLower,
-}) {
-  final kept = transactions.where(isBankStatementDataRow).toList();
-  final resolved = resolveTransactions(
-    kept,
-    categoryOverrides: categoryOverrides,
-    categoryDisplayRenamesLower: categoryDisplayRenamesLower,
-    accountsById: const {},
-    allTransactions: transactions,
-  );
-  final out = <BankStatementLine>[];
-  for (final r in resolved) {
-    if (!r.needsCategorization) continue;
-    out.add(
-      BankStatementLine(
-        transaction: r.transaction,
-        suggestedCategory: r.displayCategory,
-      ),
-    );
-  }
-  out.sort((a, b) => b.transaction.date.compareTo(a.transaction.date));
-  return out;
-}
-
 /// Reads a bank CSV, then groups via [monthlyGroupsFromTransactions].
 ///
 /// Prefer parsing once with [parseBankCsv] and calling
