@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/ui_dependencies.dart';
-import 'import_ai_progress_banner.dart';
+import 'import_job_progress_banner.dart';
 import '../../accounts/presentation/accounts_screen.dart';
 import '../../budgets/presentation/budgets_screen.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
@@ -31,8 +31,8 @@ class _HomeShellState extends State<HomeShell> {
     ];
 
     return Scaffold(
-      body: ImportAiStatusHost(
-        controller: widget.ui.importAiStatus,
+      body: ImportJobStatusHost(
+        controller: widget.ui.importJobStatus,
         child: IndexedStack(index: _idx, children: pages),
       ),
       floatingActionButton: widget.signOut == null

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../transactions/domain/spend_categories.dart';
 import '../data/category_service.dart';
+import '../domain/category_normalization.dart';
 
 final class CategoryReadModel extends ChangeNotifier {
   CategoryReadModel({required CategoryService categoryService})
@@ -19,13 +20,16 @@ final class CategoryReadModel extends ChangeNotifier {
   List<String> get customCategories {
     final builtIns = {
       for (final category in kSelectableSpendCategories)
-        category.trim().toLowerCase(),
+        normalizedCategoryKey(category),
     };
     final names = <String>[];
     final seen = <String>{};
     for (final category in _categories) {
       final name = category.name.trim();
-      final key = name.toLowerCase();
+      final key = categoryRecordKey(
+        name: name,
+        normalizedName: category.normalizedName,
+      );
       if (name.isEmpty || builtIns.contains(key) || seen.contains(key)) {
         continue;
       }
@@ -73,10 +77,16 @@ final class CategoryReadModel extends ChangeNotifier {
   }
 
   CategoryRecord? categoryByName(String name) {
-    final key = name.trim().toLowerCase();
+    final key = normalizedCategoryKey(name);
     if (key.isEmpty) return null;
     for (final category in _categories) {
-      if (category.name.trim().toLowerCase() == key) return category;
+      if (categoryRecordKey(
+            name: category.name,
+            normalizedName: category.normalizedName,
+          ) ==
+          key) {
+        return category;
+      }
     }
     return null;
   }
@@ -84,11 +94,14 @@ final class CategoryReadModel extends ChangeNotifier {
   String? categoryNameForId(String? id) => categoryById(id)?.name;
 
   Future<CategoryRecord> ensureExpenseCategory(String name) async {
-    final trimmed = name.trim();
-    final existing = categoryByName(trimmed);
+    final normalized = normalizeCategoryName(name);
+    if (normalized == null) {
+      throw const FormatException('Invalid category name.');
+    }
+    final existing = categoryByName(normalized.displayName);
     if (existing != null) return existing;
     final created = await _categoryService.createCategory(
-      name: trimmed,
+      name: normalized.displayName,
       type: 'expense',
     );
     _setCategories([..._categories, created]);

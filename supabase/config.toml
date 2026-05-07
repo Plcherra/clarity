@@ -1,2 +1,5 @@
 [functions.call-openai]
 verify_jwt = true
+
+[functions.categorize-transactions]
+verify_jwt = true

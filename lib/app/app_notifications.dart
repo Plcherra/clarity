@@ -25,7 +25,7 @@ final class AppNotifications {
     ui.notifyDataChanged();
   }
 
-  void importAiStatusChanged() {
-    ui.notifyImportAiStatus();
+  void importJobStatusChanged() {
+    ui.notifyImportJobStatus();
   }
 }

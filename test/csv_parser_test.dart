@@ -23,4 +23,29 @@ Date,Description,Amount,Balance
   test('parseBankCsv rejects empty files', () {
     expect(() => parseBankCsv('   '), throwsFormatException);
   });
+
+  test('parseBankCsv handles large files without dropping older months', () {
+    final rows = StringBuffer('Date,Description,Amount,Balance\n');
+    final start = DateTime(2025);
+    for (var i = 0; i < 1562; i += 1) {
+      final date = start.add(Duration(days: i % 471));
+      final yyyy = date.year.toString().padLeft(4, '0');
+      final mm = date.month.toString().padLeft(2, '0');
+      final dd = date.day.toString().padLeft(2, '0');
+      rows.writeln(
+        '$yyyy-$mm-$dd,Merchant $i,-${(i % 90) + 1}.25,${5000 - i}.00',
+      );
+    }
+
+    final result = parseBankCsv(rows.toString());
+    final months = {
+      for (final transaction in result.transactions)
+        '${transaction.date.year}-${transaction.date.month.toString().padLeft(2, '0')}',
+    };
+
+    expect(result.transactions, hasLength(1562));
+    expect(months, contains('2025-01'));
+    expect(months, contains('2025-05'));
+    expect(months, contains('2026-04'));
+  });
 }

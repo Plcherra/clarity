@@ -45,6 +45,7 @@ final class CategoryRecord {
     required this.id,
     required this.userId,
     required this.name,
+    this.normalizedName,
     required this.type,
     this.color,
     this.icon,
@@ -55,6 +56,7 @@ final class CategoryRecord {
   final String id;
   final String userId;
   final String name;
+  final String? normalizedName;
   final String type;
   final String? color;
   final String? icon;
@@ -66,6 +68,7 @@ final class CategoryRecord {
       id: _string(json, 'id'),
       userId: _string(json, 'user_id'),
       name: _string(json, 'name'),
+      normalizedName: _nullableString(json, 'normalized_name'),
       type: _string(json, 'type'),
       color: _nullableString(json, 'color'),
       icon: _nullableString(json, 'icon'),
@@ -77,6 +80,7 @@ final class CategoryRecord {
   Map<String, dynamic> toInsertJson(String userId) => {
     'user_id': userId,
     'name': name,
+    if (normalizedName != null) 'normalized_name': normalizedName,
     'type': type,
     'color': color,
     'icon': icon,
@@ -84,6 +88,7 @@ final class CategoryRecord {
 
   Map<String, dynamic> toUpdateJson() => {
     'name': name,
+    if (normalizedName != null) 'normalized_name': normalizedName,
     'type': type,
     'color': color,
     'icon': icon,

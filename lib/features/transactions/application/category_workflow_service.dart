@@ -3,6 +3,7 @@ import '../../../core/supabase/supabase_records.dart';
 import '../../accounts/data/account_service.dart';
 import '../../categories/application/category_read_model.dart';
 import '../../categories/data/category_service.dart';
+import '../../categories/domain/category_normalization.dart';
 import '../../profile/application/profile_service.dart';
 import '../data/transaction_service.dart';
 import '../domain/spend_categories.dart';
@@ -69,11 +70,13 @@ class CategoryWorkflowService {
     final categoryByName = <String, CategoryRecord>{};
     for (final categoryName in keyToCanonicalCategory.values) {
       final name = categoryName.trim();
-      if (name.isEmpty || categoryByName.containsKey(name.toLowerCase())) {
+      final normalized = normalizeCategoryName(name);
+      if (normalized == null ||
+          categoryByName.containsKey(normalized.normalizedName)) {
         continue;
       }
-      categoryByName[name.toLowerCase()] = await categoryReadModel
-          .ensureExpenseCategory(name);
+      categoryByName[normalized.normalizedName] = await categoryReadModel
+          .ensureExpenseCategory(normalized.displayName);
     }
 
     final transactionIdsByCategoryId = <String, List<String>>{};
@@ -82,7 +85,9 @@ class CategoryWorkflowService {
       if (categoryName.isEmpty) continue;
       final transactionId = transactionIdsByKey[entry.key];
       if (transactionId == null) continue;
-      final categoryRecord = categoryByName[categoryName.toLowerCase()];
+      final normalized = normalizeCategoryName(categoryName);
+      if (normalized == null) continue;
+      final categoryRecord = categoryByName[normalized.normalizedName];
       if (categoryRecord == null) continue;
       transactionIdsByCategoryId
           .putIfAbsent(categoryRecord.id, () => <String>[])

@@ -11,9 +11,8 @@ import '../features/categories/application/category_read_model.dart';
 import '../features/categories/data/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/dashboard/domain/dashboard_snapshot.dart';
-import '../features/transactions/application/ai_categorization_service.dart'
-    as app_ai;
 import '../features/transactions/application/category_workflow_service.dart';
+import '../features/transactions/application/import_job_status_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
 import '../features/transactions/data/csv_import_service.dart';
 import '../features/transactions/data/transaction_service.dart';
@@ -33,7 +32,7 @@ final class AppUiControllerBindings {
     required this.accountService,
     required this.budgetService,
     required this.budgetWorkflowService,
-    required this.aiCategorizationService,
+    required this.importJobStatusService,
     required this.accountWorkflowService,
   });
 
@@ -46,7 +45,7 @@ final class AppUiControllerBindings {
   final AccountService accountService;
   final BudgetService budgetService;
   final BudgetWorkflowService budgetWorkflowService;
-  final app_ai.AiCategorizationApplicationService aiCategorizationService;
+  final ImportJobStatusService importJobStatusService;
   final AccountWorkflowService accountWorkflowService;
 }
 
@@ -56,7 +55,7 @@ final class AppUiDependencies {
       transactions = TransactionUiController._(bindings),
       accounts = AccountUiController._(bindings),
       budgets = BudgetUiController._(bindings),
-      importAiStatus = ImportAiStatusController._(bindings) {
+      importJobStatus = ImportJobStatusController._(bindings) {
     dashboard._ui = this;
     transactions._ui = this;
     accounts._ui = this;
@@ -66,13 +65,13 @@ final class AppUiDependencies {
   final TransactionUiController transactions;
   final AccountUiController accounts;
   final BudgetUiController budgets;
-  final ImportAiStatusController importAiStatus;
+  final ImportJobStatusController importJobStatus;
 
   void notifyDashboard() => dashboard.notifyChanged();
   void notifyTransactions() => transactions.notifyChanged();
   void notifyAccounts() => accounts.notifyChanged();
   void notifyBudgets() => budgets.notifyChanged();
-  void notifyImportAiStatus() => importAiStatus.notifyChanged();
+  void notifyImportJobStatus() => importJobStatus.notifyChanged();
 
   void notifyDataChanged() {
     notifyDashboard();
@@ -83,7 +82,7 @@ final class AppUiDependencies {
 
   void notifyAll() {
     notifyDataChanged();
-    notifyImportAiStatus();
+    notifyImportJobStatus();
   }
 
   void dispose() {
@@ -91,7 +90,7 @@ final class AppUiDependencies {
     transactions.dispose();
     accounts.dispose();
     budgets.dispose();
-    importAiStatus.dispose();
+    importJobStatus.dispose();
   }
 }
 
@@ -337,6 +336,23 @@ final class AccountUiController extends _UiController {
     );
   }
 
+  void showImportPreparationProgress(String message) {
+    bindings.importJobStatusService.applyCsvImportProgress(
+      CsvImportProgress(
+        stage: CsvImportStage.parsing,
+        value: 0.01,
+        message: message,
+      ),
+      notifyStatusChanged: _ui.notifyImportJobStatus,
+    );
+  }
+
+  void clearImportJobStatus() {
+    bindings.importJobStatusService.clear(
+      notifyStatusChanged: _ui.notifyImportJobStatus,
+    );
+  }
+
   Future<List<CsvImportBatchSummary>> csvImportBatchesForAccount(
     String accountId,
   ) async {
@@ -494,23 +510,34 @@ final class BudgetUiController extends _UiController {
   }
 }
 
-final class ImportAiStatusController extends _UiController {
-  ImportAiStatusController._(super.bindings);
+final class ImportJobStatusController extends _UiController {
+  ImportJobStatusController._(super.bindings);
 
-  bool get importAiCategorizationRunning =>
-      bindings.aiCategorizationService.importAiCategorizationRunning;
+  bool get importRunning => bindings.importJobStatusService.importRunning;
 
-  int get importAiProgressCompleted =>
-      bindings.aiCategorizationService.importAiProgressCompleted;
+  int get importProgressCompleted =>
+      bindings.importJobStatusService.importProgressCompleted;
 
-  int get importAiProgressTotal =>
-      bindings.aiCategorizationService.importAiProgressTotal;
+  int get importProgressTotal =>
+      bindings.importJobStatusService.importProgressTotal;
 
   String get importProgressMessage =>
-      bindings.aiCategorizationService.importProgressMessage;
+      bindings.importJobStatusService.importProgressMessage;
 
-  String? consumeImportAiSnackMessage() {
-    return bindings.aiCategorizationService.consumeImportAiSnackMessage();
+  String? get persistentImportMessage =>
+      bindings.importJobStatusService.persistentImportMessage;
+
+  bool get persistentImportMessageIsError =>
+      bindings.importJobStatusService.persistentImportMessageIsError;
+
+  String? consumeImportSnackMessage() {
+    return bindings.importJobStatusService.consumeImportSnackMessage();
+  }
+
+  void dismissPersistentImportMessage() {
+    bindings.importJobStatusService.dismissPersistentImportMessage(
+      notifyStatusChanged: notifyChanged,
+    );
   }
 }
 

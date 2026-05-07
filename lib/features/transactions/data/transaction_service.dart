@@ -4,6 +4,34 @@ import '../../../core/supabase/supabase_exceptions.dart';
 import '../../../core/supabase/supabase_records.dart';
 import '../../../core/supabase/supabase_service.dart';
 
+const int _transactionPageSize = 1000;
+const int _transactionInsertChunkSize = 500;
+const int _transactionUpdateChunkSize = 100;
+
+final class TransactionCreateInput {
+  const TransactionCreateInput({
+    required this.accountId,
+    this.categoryId,
+    required this.amount,
+    required this.type,
+    this.description,
+    required this.date,
+    this.merchant,
+    this.importedFromCsv = false,
+    this.importId,
+  });
+
+  final String accountId;
+  final String? categoryId;
+  final double amount;
+  final String type;
+  final String? description;
+  final DateTime date;
+  final String? merchant;
+  final bool importedFromCsv;
+  final String? importId;
+}
+
 final class TransactionService {
   TransactionService({required SupabaseService supabaseService})
     : _supabaseService = supabaseService;
@@ -46,8 +74,17 @@ final class TransactionService {
         query = query.lte('date', _dateOnly(endDate));
       }
 
-      final rows = await query.order('date', ascending: false);
-      return rows.map<TransactionRecord>(TransactionRecord.fromJson).toList();
+      final out = <TransactionRecord>[];
+      var from = 0;
+      while (true) {
+        final rows = await query
+            .order('date', ascending: false)
+            .range(from, from + _transactionPageSize - 1);
+        out.addAll(rows.map<TransactionRecord>(TransactionRecord.fromJson));
+        if (rows.length < _transactionPageSize) break;
+        from += _transactionPageSize;
+      }
+      return out;
     } on SupabaseDataException {
       rethrow;
     } on Object catch (e) {
@@ -97,6 +134,52 @@ final class TransactionService {
         table: 'transactions',
         action: 'createTransaction',
         message: 'Could not create transaction.',
+        cause: e,
+      );
+    }
+  }
+
+  Future<List<TransactionRecord>> createTransactions(
+    List<TransactionCreateInput> transactions,
+  ) async {
+    if (transactions.isEmpty) return const [];
+    final user = _currentUser;
+    final out = <TransactionRecord>[];
+    try {
+      for (
+        var i = 0;
+        i < transactions.length;
+        i += _transactionInsertChunkSize
+      ) {
+        final end = i + _transactionInsertChunkSize > transactions.length
+            ? transactions.length
+            : i + _transactionInsertChunkSize;
+        final chunk = transactions.sublist(i, end);
+        final rows = await _supabaseService.client.from('transactions').insert([
+          for (final transaction in chunk)
+            {
+              'user_id': user.id,
+              'account_id': transaction.accountId,
+              'category_id': transaction.categoryId,
+              'amount': transaction.amount,
+              'type': transaction.type,
+              'description': transaction.description,
+              'date': _dateOnly(transaction.date),
+              'merchant': transaction.merchant,
+              'imported_from_csv': transaction.importedFromCsv,
+              'import_id': transaction.importId,
+            },
+        ]).select();
+        out.addAll(rows.map<TransactionRecord>(TransactionRecord.fromJson));
+      }
+      return out;
+    } on SupabaseDataException {
+      rethrow;
+    } on Object catch (e) {
+      throw SupabaseDataException(
+        table: 'transactions',
+        action: 'createTransactions',
+        message: 'Could not create transactions.',
         cause: e,
       );
     }
@@ -167,11 +250,27 @@ final class TransactionService {
     if (uniqueIds.isEmpty || cleanedCategoryId.isEmpty) return;
 
     try {
-      await _supabaseService.client
-          .from('transactions')
-          .update({'category_id': cleanedCategoryId})
-          .eq('user_id', user.id)
-          .inFilter('id', uniqueIds);
+      for (var i = 0; i < uniqueIds.length; i += _transactionUpdateChunkSize) {
+        final end = i + _transactionUpdateChunkSize > uniqueIds.length
+            ? uniqueIds.length
+            : i + _transactionUpdateChunkSize;
+        final chunk = uniqueIds.sublist(i, end);
+        final rows = await _supabaseService.client
+            .from('transactions')
+            .update({'category_id': cleanedCategoryId})
+            .eq('user_id', user.id)
+            .inFilter('id', chunk)
+            .select('id');
+        if (rows.length != chunk.length) {
+          throw SupabaseDataException(
+            table: 'transactions',
+            action: 'updateTransactionsCategory',
+            message:
+                'Could not update every transaction category '
+                '(${rows.length}/${chunk.length} updated).',
+          );
+        }
+      }
     } on SupabaseDataException {
       rethrow;
     } on Object catch (e) {

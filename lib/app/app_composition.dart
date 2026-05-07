@@ -12,10 +12,10 @@ import '../features/categories/data/category_service.dart';
 import '../features/dashboard/application/dashboard_service.dart';
 import '../features/profile/application/profile_controller.dart';
 import '../features/profile/application/profile_service.dart';
-import '../features/transactions/application/ai_categorization_service.dart'
-    as app_ai;
 import '../features/transactions/application/category_workflow_service.dart';
+import '../features/transactions/application/import_job_status_service.dart';
 import '../features/transactions/application/transaction_workflow_service.dart';
+import '../features/transactions/data/csv_import_service.dart';
 import '../features/transactions/data/csv_parser.dart';
 import '../features/transactions/data/openai_proxy_client.dart';
 import '../features/transactions/data/transaction_service.dart';
@@ -53,8 +53,8 @@ final class AppComposition {
   late final BudgetService budgetService = supabaseRepository.budgets;
   late final AccountService accountService = supabaseRepository.accounts;
   final DashboardService dashboardService = DashboardService();
-  final app_ai.AiCategorizationApplicationService aiCategorizationService =
-      app_ai.AiCategorizationApplicationService();
+  final ImportJobStatusService importJobStatusService =
+      ImportJobStatusService();
 
   late final AuthService authService = AuthService(
     supabaseService: supabaseService,
@@ -131,18 +131,16 @@ final class AppComposition {
   late final TransactionWorkflowService transactionWorkflowService =
       TransactionWorkflowService(
         transactionService: transactionService,
-        categoryWorkflowService: categoryWorkflowService,
-        accountService: accountService,
+        csvImportService: csvImportService,
         dashboardService: dashboardService,
-        aiCategorizationService: aiCategorizationService,
-        importAiEngineConfigured: () =>
-            openAiProxyClient.isConfigured && authController.isAuthenticated,
+        importJobStatusService: importJobStatusService,
+        refreshCategories: categoryReadModel.refresh,
         refreshAllState: dashboardRefreshCoordinator.refreshAllState,
         recomputeDashboard: _syncDashboardAfterTransactionWorkflow,
         notifyTransactionDataChanged: () =>
             notifications.transactionDataChanged(),
-        notifyImportAiStatusChanged: () =>
-            notifications.importAiStatusChanged(),
+        notifyImportJobStatusChanged: () =>
+            notifications.importJobStatusChanged(),
       );
 
   late final AppUiDependencies ui = AppUiDependencies(
@@ -156,13 +154,20 @@ final class AppComposition {
       accountService: accountService,
       budgetService: budgetService,
       budgetWorkflowService: budgetWorkflowService,
-      aiCategorizationService: aiCategorizationService,
+      importJobStatusService: importJobStatusService,
       accountWorkflowService: accountWorkflowService,
     ),
   );
 
   late final OpenAiProxyClient openAiProxyClient = SupabaseOpenAiProxyClient(
     supabaseService: supabaseService,
+  );
+
+  late final CsvImportService csvImportService = CsvImportService(
+    accountService: accountService,
+    transactionService: transactionService,
+    categoryService: categoryService,
+    openAiClient: openAiProxyClient,
   );
 
   void _syncDashboardAfterTransactionWorkflow({

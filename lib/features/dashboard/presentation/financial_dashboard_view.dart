@@ -6,7 +6,7 @@ import '../domain/dashboard_snapshot.dart';
 import '../../../core/formatting/formatting.dart';
 import '../../../core/models/models.dart';
 import '../../budgets/presentation/budgets_screen.dart';
-import '../../shell/presentation/import_ai_progress_banner.dart';
+import '../../shell/presentation/import_job_progress_banner.dart';
 import '../../transactions/domain/bank_statement_monthly.dart';
 import 'month_detail_screen.dart';
 
@@ -166,8 +166,8 @@ class _FinancialDashboardViewState extends State<FinancialDashboardView> {
             onUploadTransactions: widget.onUploadTransactions,
           );
           return widget.showBackButton
-              ? ImportAiStatusHost(
-                  controller: widget.controller.ui.importAiStatus,
+              ? ImportJobStatusHost(
+                  controller: widget.controller.ui.importJobStatus,
                   child: scrollBody,
                 )
               : scrollBody;

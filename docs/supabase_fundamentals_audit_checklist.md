@@ -288,8 +288,9 @@ Done notes:
 - Focused analyzer passed for dashboard, account, transaction, budget, auth,
   onboarding, and `ClarityApp` presentation/routing files.
 - Screens no longer treat Supabase `Future<List<T>>` values as synchronous
-  lists. Dashboard, account, transaction review, uncategorized, AI review, and
-  budget screens use `FutureBuilder` or explicit `async` handlers.
+  lists. Dashboard, account, month detail, upload, and budget screens load
+  through scoped controller/service state instead of directly treating futures
+  as lists.
 - Added async error handling for category mutations in
   `TransactionCategoryField`. Category rename/select/create/delete now runs
   through an observed future and shows a snackbar if the mutation fails.
@@ -298,16 +299,11 @@ Done notes:
 - Error states are present in the main `FutureBuilder` screens, but they mostly
   show raw error text. Later UI polish should map Supabase/auth/data errors to
   user-safe copy.
-- Keep the tight-rebuild checkbox open. Several screens create fresh futures in
-  `build` or inside `ListenableBuilder`, which can refetch more often than
-  needed:
-  `FinancialDashboardView`, `AccountsScreen`, `AccountDetailScreen`,
-  `AccountSelectionScreen`, `MonthDetailScreen`,
-  `TransactionReviewScreen`, `UncategorizedTransactionsScreen`,
-  `AiLowConfidenceReviewScreen`, and `BudgetsScreen`.
-- Permanent direction: move account lists, transaction queues, dashboard
-  snapshot data, and budget screen data into scoped stream/viewmodel state
-  instead of rebuilding fresh futures from the widget tree.
+- Keep the tight-rebuild checkbox open for any new screen that starts a fresh
+  data future in `build`.
+- Permanent direction: account lists, dashboard snapshot data, import progress,
+  and budget screen data should stay in scoped stream/viewmodel state instead
+  of rebuilding fresh futures from the widget tree.
 
 ## Phase 8 - CSV Import And Transaction Workflows
 
@@ -316,16 +312,16 @@ Done notes:
 - [x] Confirm imported transactions start from zero for a fresh user
 - [x] Confirm duplicate detection still works or document that it needs redesign
 - [x] Confirm import batch delete is either removed or redesigned for Supabase
-- [x] Confirm AI-after-import flow is either functional or clearly disabled
+- [x] Confirm AI-after-import flow is functional and automatic
 - [x] Decide whether `transactions.imported_from_csv` is enough or if `import_batches` table is needed
 
 Done notes:
 
 - `parseBankCsv` remains a pure parser. It does not touch Supabase, local
   storage, UI state, or files after the caller has read the CSV text.
-- `TransactionWorkflowService.loadFromCsv` validates the selected Supabase
-  account, parses the CSV, dedupes against existing Supabase transactions for
-  that account, and writes new rows through `TransactionService.createTransaction`.
+- CSV import validates the selected Supabase account, parses the CSV, dedupes
+  against existing Supabase transactions for that account, and writes new rows
+  through Supabase-backed transaction services.
 - Fresh users/accounts start from zero because import dedupe only fetches rows
   from the authenticated user's selected account.
 - Duplicate detection still uses the stable transaction fingerprint:
@@ -342,9 +338,10 @@ Done notes:
 - Old imported rows without `import_id` fall back to the display-level `csv`
   marker, but they cannot be grouped into real upload batches. This is
   acceptable because the current goal is a fresh Supabase start.
-- AI-after-import is explicitly disabled for now. If triggered, the app shows a
-  status message explaining that AI categorization after import is waiting on
-  Supabase-backed category assignments.
+- AI-after-import is the default product path. The import job saves
+  transactions, calls the Supabase AI categorization function, applies category
+  IDs, and refreshes app state. The current product contract lives in
+  `docs/csv_import_ai_categorization.md`.
 - Apply the new schema change with `supabase db push` before testing CSV upload
   against a remote Supabase project.
 - Focused analyzer and full `flutter analyze` passed.
@@ -352,6 +349,7 @@ Done notes:
 ## Phase 9 - OpenAI Edge Function Path
 
 - [x] Check `supabase/functions/call-openai/index.ts`
+- [x] Check `supabase/functions/categorize-transactions/index.ts`
 - [x] Check `lib/features/transactions/data/openai_proxy_client.dart`
 - [x] Check AI categorization data service
 - [x] Confirm Flutter calls Supabase Edge Function, not OpenAI directly
@@ -368,25 +366,24 @@ rg -n "api\.openai\.com|OPENAI_API_KEY|functions\.invoke" lib supabase
 
 Done notes:
 
-- Flutter does not call `https://api.openai.com` directly. The only client call
-  is `Supabase.functions.invoke('call-openai')` through
-  `SupabaseOpenAiProxyClient`.
-- The only direct OpenAI API call is inside
-  `supabase/functions/call-openai/index.ts`.
+- Flutter does not call `https://api.openai.com` directly. Client calls go
+  through `Supabase.functions.invoke(...)` in `SupabaseOpenAiProxyClient`.
+- Direct OpenAI API calls belong only inside Supabase Edge Functions such as
+  `call-openai` and `categorize-transactions`.
 - The Edge Function reads the OpenAI key only with
   `Deno.env.get('OPENAI_API_KEY')`; the Flutter app still only needs public
   Supabase config.
 - Added `supabase/config.toml` with `[functions.call-openai] verify_jwt = true`
   so JWT verification is explicit instead of relying on deploy defaults.
-- Updated `docs/supabase_auth_openai_setup.md` to warn against deploying
-  `call-openai` with `--no-verify-jwt`.
+- Updated `docs/supabase_auth_openai_setup.md` to warn against deploying Edge
+  Functions with `--no-verify-jwt`.
 - The function still checks for an `Authorization: Bearer ...` header and the
   Supabase function gateway should verify the JWT before the function runs.
 - Error messages identify missing auth, invalid body, missing server secret, or
   upstream failure, but do not expose secret values.
-- `AICategorizationService` sends chat-completions-compatible payloads with
-  `messages`, `model`, and `response_format`, and still parses the returned
-  `choices[0].message.content` envelope expected by current app code.
+- CSV import categorization uses a focused Edge Function that accepts the
+  import transaction list, chunks large imports internally, and returns one
+  merged suggestions response to Flutter.
 - Focused analyzer passed for the Dart OpenAI proxy and AI categorization path.
 - `deno` is not installed in this workspace, so TypeScript checking for the Edge
   Function was not run locally.
@@ -454,14 +451,12 @@ Done notes:
 - Documentation now states Flutter `.env` should contain only
   `SUPABASE_URL`/`SUPABASE_ANON_KEY`, and OpenAI secrets belong only in
   Supabase Edge Function secrets.
-- Documentation now includes `supabase db push`, `supabase functions deploy
-  call-openai`, `supabase secrets set OPENAI_API_KEY=...`, and
-  `deno check supabase/functions/call-openai/index.ts`.
-- Known temporary gaps are documented: local compatibility helpers remain for
-  category catalog/merchant memory, AI categorization uses the Supabase Edge
-  Function and applies selected categories through Supabase-backed
-  transaction/category services, and repeated `FutureBuilder` fetches should
-  later move to scoped stream/viewmodel state.
+- Documentation now includes `supabase db push`, Edge Function deploy commands,
+  `supabase secrets set OPENAI_API_KEY=...`, and Deno type-check commands.
+- The CSV import and AI categorization contract is documented in
+  `docs/csv_import_ai_categorization.md`: upload should save transactions,
+  categorize all imported rows, create needed categories, update budgets from
+  active transaction categories, and learn from manual merchant corrections.
 
 ## Phase 12 - Final Verification
 

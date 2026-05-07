@@ -43,25 +43,39 @@ All app tables use RLS. Profiles are keyed by `auth.users(id)`. Accounts,
 categories, budgets, and transactions are scoped by `user_id`. Transactions
 also include `import_id` for CSV upload history and batch deletion.
 
-## Edge Function
+## Edge Functions
 
-The function lives at `supabase/functions/call-openai/index.ts`.
+The general OpenAI proxy function lives at:
 
-`supabase/config.toml` explicitly keeps JWT verification enabled:
+```text
+supabase/functions/call-openai/index.ts
+```
+
+The CSV import categorization function lives at:
+
+```text
+supabase/functions/categorize-transactions/index.ts
+```
+
+Recommended explicit `supabase/config.toml` entries:
 
 ```toml
 [functions.call-openai]
 verify_jwt = true
+
+[functions.categorize-transactions]
+verify_jwt = true
 ```
 
-Deploy it:
+Deploy them:
 
 ```sh
 supabase functions deploy call-openai
+supabase functions deploy categorize-transactions
 ```
 
-Do not deploy this function with `--no-verify-jwt`; the Flutter app must call it
-with the signed-in user's Supabase session.
+Do not deploy these functions with `--no-verify-jwt`; the Flutter app must call
+them with the signed-in user's Supabase session.
 
 Set the server-side OpenAI secret:
 
@@ -73,6 +87,7 @@ Run locally:
 
 ```sh
 supabase functions serve call-openai --env-file supabase/functions/.env
+supabase functions serve categorize-transactions --env-file supabase/functions/.env
 ```
 
 For local Edge Function testing only, `supabase/functions/.env` may contain:
@@ -87,13 +102,18 @@ Type-check the Edge Function after installing Deno:
 
 ```sh
 deno check supabase/functions/call-openai/index.ts
+deno check supabase/functions/categorize-transactions/index.ts
 ```
 
 ## Flutter AI Boundary
 
 Flutter calls the Edge Function through
-`Supabase.functions.invoke('call-openai')` in
+`Supabase.functions.invoke(...)` in
 `lib/features/transactions/data/openai_proxy_client.dart`.
 
-The only direct `https://api.openai.com` call should be inside
-`supabase/functions/call-openai/index.ts`.
+CSV import categorization uses `categorize-transactions`. That function may
+split a large import into smaller OpenAI calls internally, then return one
+merged suggestions response to Flutter.
+
+The only direct `https://api.openai.com` calls should be inside Supabase Edge
+Functions.

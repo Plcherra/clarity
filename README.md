@@ -4,6 +4,10 @@ Flutter personal finance app with Supabase Auth, Supabase-backed profile and
 financial tables, CSV import, dashboard/budget views, and AI categorization
 through a Supabase Edge Function.
 
+Feature contract: [`docs/csv_import_ai_categorization.md`](docs/csv_import_ai_categorization.md)
+is the source of truth for CSV import, automatic AI categorization, category
+creation, Budget page category visibility, and merchant learning.
+
 ## Current Architecture
 
 - App startup: `lib/main.dart` -> `lib/app/bootstrap.dart`
@@ -43,15 +47,16 @@ Apply database migrations:
 supabase db push
 ```
 
-Deploy the OpenAI proxy Edge Function:
+Deploy the OpenAI Edge Functions:
 
 ```sh
 supabase functions deploy call-openai
+supabase functions deploy categorize-transactions
 supabase secrets set OPENAI_API_KEY=your-real-openai-key
 ```
 
-`supabase/config.toml` keeps JWT verification enabled for `call-openai`.
-Do not deploy this function with `--no-verify-jwt`.
+Keep JWT verification enabled for Edge Functions. Do not deploy these functions
+with `--no-verify-jwt`.
 
 ## Verification
 
@@ -67,13 +72,15 @@ Optional Edge Function type check, after installing Deno:
 
 ```sh
 deno check supabase/functions/call-openai/index.ts
+deno check supabase/functions/categorize-transactions/index.ts
 ```
 
-## Known Temporary Gaps
+## Product Direction
 
-- Category catalog, merchant memory, and AI suggestion storage still have
-  local-storage-backed compatibility helpers.
-- AI categorization after CSV import is temporarily disabled until category
-  assignments are fully Supabase-backed.
-- Some screens still use `FutureBuilder` directly and should later move to
-  scoped stream/viewmodel state.
+- CSV import is intended to be near-zero effort: select a file, save
+  transactions, categorize everything with AI, apply categories, then refresh
+  dashboard and budgets.
+- Budget categories should be driven by categories that actually have
+  transactions, not an empty static list.
+- Manual category corrections should become Supabase-backed merchant learning
+  and apply to matching past and future transactions.

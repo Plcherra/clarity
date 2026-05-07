@@ -8,10 +8,10 @@ Record **what we chose** so refactors do not re-litigate the same questions. Upd
 |-------|----------|
 | **Overview dashboard default** | **Global** — all accounts in `buildDashboardSnapshot` with `GlobalDashboardScope`. |
 | **Per-account view** | **Account** scope on account detail — same snapshot pipeline, scoped transactions. |
-| **Banner “needs attention” vs Review** | Same definition: `uncategorizedTransactionCount` / `uncategorizedBankStatementLines` on **`transactionsForDashboardScope(scope)`** — was fixed so Overview and `TransactionReviewScreen` share scope. |
+| **CSV import + AI categorization** | Import is automatic: save transactions, categorize all inserted rows through Supabase AI, apply category IDs, and refresh. See [`csv_import_ai_categorization.md`](csv_import_ai_categorization.md). |
 | **Month detail** | Driven by **passed `MonthlyBankGroup`** from snapshot list, not a global state month lookup. |
-| **Rules** | Removed from active app behavior. Categorization now uses saved category IDs, manual overrides, merchant memory, keywords, and CSV labels. |
-| **AI categorization** | Flutter calls the Supabase `call-openai` Edge Function through `Supabase.functions.invoke`; the real OpenAI key is stored only as a Supabase secret. |
+| **Rules** | Removed from active app behavior. Categorization now uses saved category IDs, learned merchant mappings, AI categories, keywords, and CSV labels. |
+| **AI categorization** | Flutter calls Supabase Edge Functions through `Supabase.functions.invoke`; the real OpenAI key is stored only as a Supabase secret. |
 | **Auth/profile** | Supabase Auth owns sessions. `profiles` rows are keyed by `auth.users(id)`. `ProfileController` owns profile/onboarding route state. |
 | **Composition** | `AppState` has been deleted. `AppComposition` wires services, workflows, controllers, and startup. |
 | **CSV import batches** | Imported transactions store `import_id`; upload history and batch deletion use `account_id + import_id`. |
@@ -22,8 +22,8 @@ Record **what we chose** so refactors do not re-litigate the same questions. Upd
 - Whether **Budgets** tab sums should be global vs account (verify [`budgets_screen.dart`](../lib/features/budgets/presentation/budgets_screen.dart) when touching budgets).
 - **Append vs replace** on re-import: current CSV import appends non-duplicate
   Supabase transaction rows for the selected account.
-- **AI after import**: temporarily disabled until category assignments are
-  fully Supabase-backed.
+- Exact merchant-similarity rules for learning aliases such as `Dunkin`, `DD`,
+  and `Dunkin Donuts`.
 
 ## When you change behavior
 

@@ -5,6 +5,11 @@ Tester: Pedro Martins
 Build target: macOS desktop, Flutter debug build  
 Scope: First manual test pass after Supabase Auth, Supabase data services, CSV import, and Edge Function migration.
 
+Historical note: this report records bugs observed on May 4, 2026. Current CSV
+import, automatic AI categorization, Budget category visibility, and merchant
+learning requirements are defined in
+[`csv_import_ai_categorization.md`](csv_import_ai_categorization.md).
+
 ## Summary
 
 Automated checks passed before manual testing:

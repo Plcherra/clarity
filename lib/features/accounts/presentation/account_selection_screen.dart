@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../../../app/ui_dependencies.dart';
 import '../../../core/models/models.dart';
 import '../../shell/presentation/home_shell.dart';
-import '../../shell/presentation/import_ai_progress_banner.dart';
+import '../../shell/presentation/import_job_progress_banner.dart';
 
 /// Shown after the user picks a CSV; they must pick or create an account before import runs.
 class AccountSelectionScreen extends StatefulWidget {
@@ -124,8 +124,8 @@ class _AccountSelectionScreenState extends State<AccountSelectionScreen> {
         backgroundColor: theme.colorScheme.surface,
         surfaceTintColor: Colors.transparent,
       ),
-      body: ImportAiStatusHost(
-        controller: widget.controller.ui.importAiStatus,
+      body: ImportJobStatusHost(
+        controller: widget.controller.ui.importJobStatus,
         child: DecoratedBox(
           decoration: BoxDecoration(
             gradient: LinearGradient(
